@@ -6,22 +6,22 @@ An xBRZ shader for RetroArch that only rounds corners between clearly different 
 
 Drag the line between xBRZ and xBRZ crisp on 9 Game Boy Advance scenes, compare minimum contrast 16, 24 and 32, and zoom in up to 3×.
 
-[![Animated comparison: xBRZ on the left, xBRZ crisp on the right](comparisons/preview.webp)](https://ele3131.github.io/xbrz-crisp/)
+[![Animated comparison: xBRZ on the left, xBRZ crisp on the right](comparisons/preview-24.webp)](https://ele3131.github.io/xbrz-crisp/)
 
-![Golden Sun](comparisons/1-golden-sun.png)
+![Golden Sun](comparisons/1-golden-sun-24.png)
 
 ![Golden Sun village, current xBRZ on the left and xBRZ crisp on the right](comparisons/split-gs_village.png)
 
-More: [other games](comparisons/3-other-games.png) · [Minish Cap](comparisons/2-minish-cap.png) · [Golden Sun battle](comparisons/split-gs_battle.png) · [Castlevania](comparisons/split-cv_aria.png)
+More: [other games](comparisons/3-other-games-24.png) · [Minish Cap](comparisons/2-minish-cap-24.png) · [Golden Sun battle](comparisons/split-gs_battle.png) · [Castlevania](comparisons/split-cv_aria.png)
 
 ## Presets
 
-There is one preset, `xbrz-crisp`, with a minimum contrast of 16. For a sharper look, raise `XBRZ_MINC` in Quick Menu › Shaders › Shader Parameters and save the preset. Good steps:
+There is one preset, `xbrz-crisp`, with a minimum contrast of 24, which keeps the textures closest to the original art. To change it, set `XBRZ_MINC` in Quick Menu › Shaders › Shader Parameters and save the preset. Good steps:
 
 | `XBRZ_MINC` | Look |
 |---|---|
-| 16 (default) | Textures stop melting, soft shadows and faces stay like xBRZ. |
-| 24 | More texture detail in grass and foliage. Some soft diagonals turn into steps. |
+| 16 | Softer, closer to xBRZ. Textures stop melting, soft shadows and faces stay like xBRZ. |
+| 24 (default) | More texture detail in grass and foliage, closer to the original art. Some soft diagonals turn into steps. |
 | 32 | Sharpest. Pale skin and soft shadows can start to look blocky. |
 
 The cost is the same as `xbrz-freescale-multipass` at any value.
@@ -36,7 +36,7 @@ The cost is the same as `xbrz-freescale-multipass` at any value.
 
 | Parameter | Default | What it does |
 |---|---|---|
-| `XBRZ_MINC` | 16 | Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off (the tolerance and steep thresholds below still apply). |
+| `XBRZ_MINC` | 24 | Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off (the tolerance and steep thresholds below still apply). |
 | `XBRZ_MINC_RAMP` | 0 | Width of a soft transition around the threshold, so corners shrink gradually. 0 is a hard cut. |
 | `XBRZ_TOL` | 15 | Equal color tolerance. Stock xBRZ uses 30. |
 | `XBRZ_STEEP` | 3.0 | Steep and shallow line threshold. Stock xBRZ uses 2.2, which turns 1-pixel steps into slopes. |

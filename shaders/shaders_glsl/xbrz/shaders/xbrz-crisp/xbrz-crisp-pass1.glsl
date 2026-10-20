@@ -53,7 +53,7 @@
 #pragma parameter XBRZ_DOM "xBRZ: dominant direction threshold" 3.6 1 8 0.1
 #pragma parameter XBRZ_STEEP "xBRZ: steep/shallow line threshold" 3 1 6 0.1
 #pragma parameter XBRZ_LUMA "xBRZ: luminance weight" 1 0.5 3 0.1
-#pragma parameter XBRZ_MINC "xBRZ crisp: minimum contrast to round a corner (x/255)" 16 0 80 2
+#pragma parameter XBRZ_MINC "xBRZ crisp: minimum contrast to round a corner (x/255)" 24 0 80 2
 #pragma parameter XBRZ_MINC_RAMP "xBRZ crisp: soft transition width (0 = hard cut)" 0 0 64 2
 
 #if defined(VERTEX)
@@ -130,7 +130,7 @@ uniform COMPAT_PRECISION float XBRZ_MINC_RAMP;
 #define XBRZ_DOM 3.6
 #define XBRZ_STEEP 3.0
 #define XBRZ_LUMA 1.0
-#define XBRZ_MINC 16.0
+#define XBRZ_MINC 24.0
 #define XBRZ_MINC_RAMP 0.0
 #endif
 
