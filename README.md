@@ -4,13 +4,17 @@ An xBRZ shader for RetroArch that only rounds corners between clearly different 
 
 ## [▶ Open the interactive comparison](https://ele3131.github.io/xbrz-crisp/)
 
-Drag the line between xBRZ and xBRZ crisp on 9 Game Boy Advance scenes, compare minimum contrast 16, 24 and 32, and zoom in up to 3×.
+Drag the line between xBRZ and xBRZ crisp on 10 Game Boy Advance scenes, compare minimum contrast 16, 24 and 32, zoom in up to 3×, and mark in red every spot crisp changes.
 
 [![Animated comparison: xBRZ on the left, xBRZ crisp on the right](comparisons/preview-24.webp)](https://ele3131.github.io/xbrz-crisp/)
 
 ![Golden Sun](comparisons/1-golden-sun-24.png)
 
 ![Golden Sun village, current xBRZ on the left and xBRZ crisp on the right](comparisons/split-gs_village.png)
+
+Text stays readable too. The spell name in the top-left corner of Harry Potter: Prisoner of Azkaban keeps its letter shapes with the steep threshold of 3.4 from version 1.3:
+
+![Harry Potter: Prisoner of Azkaban, spell name: original, xBRZ, crisp 1.2 and crisp 1.3](comparisons/6-azkaban-text.png)
 
 More: [other games](comparisons/3-other-games-24.png) · [Minish Cap](comparisons/2-minish-cap-24.png) · [Golden Sun battle](comparisons/split-gs_battle.png) · [Castlevania](comparisons/split-cv_aria.png)
 
@@ -28,7 +32,7 @@ The cost is the same as `xbrz-freescale-multipass` at any value.
 
 ## Install
 
-1. Download [xbrz-crisp-v1.2.zip](https://github.com/ele3131/xbrz-crisp/releases/latest/download/xbrz-crisp-v1.2.zip) from [Releases](https://github.com/ele3131/xbrz-crisp/releases) (or use the `shaders/` folder of this repository) and copy its contents into RetroArch's shader folder: `shaders_slang` is for the Vulkan, glcore, D3D and Metal drivers, `shaders_glsl` is for the gl driver.
+1. Download [xbrz-crisp-v1.3.zip](https://github.com/ele3131/xbrz-crisp/releases/latest/download/xbrz-crisp-v1.3.zip) from [Releases](https://github.com/ele3131/xbrz-crisp/releases) (or use the `shaders/` folder of this repository) and copy its contents into RetroArch's shader folder: `shaders_slang` is for the Vulkan, glcore, D3D and Metal drivers, `shaders_glsl` is for the gl driver.
 2. In a game, open Quick Menu › Shaders › Load and pick `edge-smoothing/xbrz/xbrz-crisp.slangp` (slang) or `xbrz/xbrz-crisp.glslp` (glsl).
 3. Save it with Quick Menu › Shaders › Save › Save Global Preset, or per game with Save Game Preset.
 
@@ -39,7 +43,7 @@ The cost is the same as `xbrz-freescale-multipass` at any value.
 | `XBRZ_MINC` | 24 | Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off (the tolerance and steep thresholds below still apply). |
 | `XBRZ_MINC_RAMP` | 0 | Width of a soft transition around the threshold, so corners shrink gradually. 0 is a hard cut. |
 | `XBRZ_TOL` | 15 | Equal color tolerance. Stock xBRZ uses 30. |
-| `XBRZ_STEEP` | 3.0 | Steep and shallow line threshold. Stock xBRZ uses 2.2, which turns 1-pixel steps into slopes. |
+| `XBRZ_STEEP` | 3.4 | Steep and shallow line threshold. Stock xBRZ uses 2.2, which turns 1-pixel steps into slopes; 3.4 keeps letters and 1-pixel details closer to the original. |
 | `XBRZ_DOM` | 3.6 | Dominant direction threshold. |
 | `XBRZ_LUMA` | 1.0 | Weight of brightness against color in the comparisons. |
 

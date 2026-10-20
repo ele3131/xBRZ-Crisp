@@ -5,7 +5,7 @@
    square, so low-contrast shading, dithering and textures (grass, foliage, stone) keep their
    pixel detail instead of melting into blobs, while outlines, text and sprites are smoothed
    exactly as in xBRZ. XBRZ_MINC = 0 gives plain xBRZ with the thresholds below.
-   Defaults: equal color tolerance 15 and steep/shallow line threshold 3.0 (stock xBRZ: 30 and 2.2).
+   Defaults: equal color tolerance 15 and steep/shallow line threshold 3.4 (stock xBRZ: 30 and 2.2).
 
    Based on "xbrz-freescale-multipass" from libretro glsl-shaders / slang-shaders, with these
    differences from that port so it matches the reference C++ xBRZ more closely:
@@ -51,7 +51,7 @@
 // Pass 0 of xbrz-crisp (OpenGL / GLES)
 #pragma parameter XBRZ_TOL "xBRZ: equal color tolerance (x/255)" 15 1 80 1
 #pragma parameter XBRZ_DOM "xBRZ: dominant direction threshold" 3.6 1 8 0.1
-#pragma parameter XBRZ_STEEP "xBRZ: steep/shallow line threshold" 3 1 6 0.1
+#pragma parameter XBRZ_STEEP "xBRZ: steep/shallow line threshold" 3.4 1 6 0.1
 #pragma parameter XBRZ_LUMA "xBRZ: luminance weight" 1 0.5 3 0.1
 #pragma parameter XBRZ_MINC "xBRZ crisp: minimum contrast to round a corner (x/255)" 24 0 80 2
 #pragma parameter XBRZ_MINC_RAMP "xBRZ crisp: soft transition width (0 = hard cut)" 0 0 64 2
@@ -128,7 +128,7 @@ uniform COMPAT_PRECISION float XBRZ_MINC_RAMP;
 #else
 #define XBRZ_TOL 15.0
 #define XBRZ_DOM 3.6
-#define XBRZ_STEEP 3.0
+#define XBRZ_STEEP 3.4
 #define XBRZ_LUMA 1.0
 #define XBRZ_MINC 24.0
 #define XBRZ_MINC_RAMP 0.0
