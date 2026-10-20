@@ -150,6 +150,7 @@ float mincKeep(float d)
 // moves the blend line towards the pixel corner cp, so that only the fraction k of the cut remains
 vec2 shrinkOrigin(vec2 origin, vec2 direction, vec2 cp, float k)
 {
+  if (k >= 1.0) return origin;
   vec2 n = normalize(vec2(-direction.y, direction.x));
   return origin + n * ((1.0 - k) * dot(cp - origin, n));
 }
@@ -191,12 +192,19 @@ void main()
   vec4 haveShallowLine = floor(mod(info / 16.0, 4.0));
   vec4 haveSteepLine = floor(mod(info / 64.0, 4.0));
 
+  vec3 res = E;
+
+  // most output pixels have no corner to blend
+  if (blendResult.x + blendResult.y + blendResult.z + blendResult.w <= 0.0)
+  {
+    FRAG_OUT = vec4(res, 1.0);
+    return;
+  }
+
   float dEB = DistYCbCr(E, B);
   float dED = DistYCbCr(E, D);
   float dEF = DistYCbCr(E, F);
   float dEH = DistYCbCr(E, H);
-
-  vec3 res = E;
 
   // Corners are applied in the same order as the original xBRZ (0, 90, 180, 270 degrees)
   // and the blend colour ties go to the same neighbour as the original "dist(e,f) <= dist(e,h) ? f : h".
@@ -215,7 +223,7 @@ void main()
       direction.y -= haveSteepLine.z;
     }
     vec3 blendPix = (dEF <= dEH) ? F : H;
-    float keep = mincKeep(DistYCbCr(E, blendPix));
+    float keep = mincKeep((dEF <= dEH) ? dEF : dEH);
     if (keep > 0.0)
       res = mix(res, blendPix, get_left_ratio(pos, shrinkOrigin(origin, direction, vec2( 0.5, 0.5), keep), direction, scale));
   }
@@ -234,7 +242,7 @@ void main()
       direction.x -= haveSteepLine.y;
     }
     vec3 blendPix = (dEB <= dEF) ? B : F;
-    float keep = mincKeep(DistYCbCr(E, blendPix));
+    float keep = mincKeep((dEB <= dEF) ? dEB : dEF);
     if (keep > 0.0)
       res = mix(res, blendPix, get_left_ratio(pos, shrinkOrigin(origin, direction, vec2( 0.5,-0.5), keep), direction, scale));
   }
@@ -253,7 +261,7 @@ void main()
       direction.y += haveSteepLine.x;
     }
     vec3 blendPix = (dED <= dEB) ? D : B;
-    float keep = mincKeep(DistYCbCr(E, blendPix));
+    float keep = mincKeep((dED <= dEB) ? dED : dEB);
     if (keep > 0.0)
       res = mix(res, blendPix, get_left_ratio(pos, shrinkOrigin(origin, direction, vec2(-0.5,-0.5), keep), direction, scale));
   }
@@ -272,7 +280,7 @@ void main()
       direction.x += haveSteepLine.w;
     }
     vec3 blendPix = (dEH <= dED) ? H : D;
-    float keep = mincKeep(DistYCbCr(E, blendPix));
+    float keep = mincKeep((dEH <= dED) ? dEH : dED);
     if (keep > 0.0)
       res = mix(res, blendPix, get_left_ratio(pos, shrinkOrigin(origin, direction, vec2(-0.5, 0.5), keep), direction, scale));
   }

@@ -28,7 +28,7 @@ The cost is the same as `xbrz-freescale-multipass` at any value.
 
 ## Install
 
-1. Download [xbrz-crisp-v1.0.zip](https://github.com/ele3131/xbrz-crisp/releases/latest/download/xbrz-crisp-v1.0.zip) from [Releases](https://github.com/ele3131/xbrz-crisp/releases) (or use the `shaders/` folder of this repository) and copy its contents into RetroArch's shader folder: `shaders_slang` is for the Vulkan, glcore, D3D and Metal drivers, `shaders_glsl` is for the gl driver.
+1. Download [xbrz-crisp-v1.1.zip](https://github.com/ele3131/xbrz-crisp/releases/latest/download/xbrz-crisp-v1.1.zip) from [Releases](https://github.com/ele3131/xbrz-crisp/releases) (or use the `shaders/` folder of this repository) and copy its contents into RetroArch's shader folder: `shaders_slang` is for the Vulkan, glcore, D3D and Metal drivers, `shaders_glsl` is for the gl driver.
 2. In a game, open Quick Menu › Shaders › Load and pick `edge-smoothing/xbrz/xbrz-crisp.slangp` (slang) or `xbrz/xbrz-crisp.glslp` (glsl).
 3. Save it with Quick Menu › Shaders › Save › Save Global Preset, or per game with Save Game Preset.
 
