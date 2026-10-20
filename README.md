@@ -36,7 +36,7 @@ The cost is the same as `xbrz-freescale-multipass` at any value.
 
 | Parameter | Default | What it does |
 |---|---|---|
-| `XBRZ_MINC` | 16 | Minimum color contrast (x/255) for a corner to be rounded. 0 gives plain xBRZ. |
+| `XBRZ_MINC` | 16 | Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off (the tolerance and steep thresholds below still apply). |
 | `XBRZ_MINC_RAMP` | 0 | Width of a soft transition around the threshold, so corners shrink gradually. 0 is a hard cut. |
 | `XBRZ_TOL` | 15 | Equal color tolerance. Stock xBRZ uses 30. |
 | `XBRZ_STEEP` | 3.0 | Steep and shallow line threshold. Stock xBRZ uses 2.2, which turns 1-pixel steps into slopes. |

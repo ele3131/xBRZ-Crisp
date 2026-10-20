@@ -166,7 +166,7 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
     <table>
       <thead><tr><th>Parameter</th><th>Default</th><th>What it does</th></tr></thead>
       <tbody>
-        <tr><td class="mono">XBRZ_MINC</td><td class="num">16</td><td>Minimum color contrast (x/255) for a corner to be rounded. 0 gives plain xBRZ.</td></tr>
+        <tr><td class="mono">XBRZ_MINC</td><td class="num">16</td><td>Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off (the tolerance and steep thresholds below still apply).</td></tr>
         <tr><td class="mono">XBRZ_MINC_RAMP</td><td class="num">0</td><td>Width of a soft transition around the threshold, so corners shrink gradually instead of switching at once. 0 is a hard cut.</td></tr>
         <tr><td class="mono">XBRZ_TOL</td><td class="num">15</td><td>Equal color tolerance. Stock xBRZ uses 30.</td></tr>
         <tr><td class="mono">XBRZ_STEEP</td><td class="num">3.0</td><td>Steep and shallow line threshold. Stock xBRZ uses 2.2, which turns 1-pixel steps into slopes.</td></tr>

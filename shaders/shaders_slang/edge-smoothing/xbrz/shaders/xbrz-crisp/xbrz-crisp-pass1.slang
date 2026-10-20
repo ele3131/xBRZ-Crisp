@@ -142,6 +142,7 @@ bool IsPixEqual(vec3 pixA, vec3 pixB)
 // Minimum contrast: how much of the corner cut a blend keeps, from its colour contrast (0 none, 1 all)
 float mincKeep(float d)
 {
+  if (XBRZ_MINC <= 0.0) return 1.0;
   if (XBRZ_MINC_RAMP < 0.5) return d * 255.0 >= XBRZ_MINC ? 1.0 : 0.0;
   return clamp((d * 255.0 - (XBRZ_MINC - 0.5 * XBRZ_MINC_RAMP)) / XBRZ_MINC_RAMP, 0.0, 1.0);
 }
