@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>xBRZ crisp</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=Archivo:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one narrow reading column; the comparison viewer breaks out wider, controls sit right above it. */
+:root {
+  --bg: #eef0f3;
+  --panel: #ffffff;
+  --fg: #1b2230;
+  --muted: #5a6577;
+  --line: #d3d8e0;
+  --accent: #2f6fd6;
+  --accent-ink: #ffffff;
+  --stage: #12161d;
+  --font-display: "Pixelify Sans", "Archivo", system-ui, sans-serif;
+  --font-body: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11151c; --panel: #1a2029; --fg: #e4e8ef; --muted: #9aa5b6; --line: #2c3442;
+    --accent: #6ea2ff; --accent-ink: #0d1320; --stage: #07090c; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11151c; --panel: #1a2029; --fg: #e4e8ef; --muted: #9aa5b6; --line: #2c3442;
+  --accent: #6ea2ff; --accent-ink: #0d1320; --stage: #07090c; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font: 16px/1.6 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 64px;
+}
+.wrap { max-width: 1100px; margin: 0 auto; display: grid; gap: 28px; }
+.prose { max-width: 68ch; display: grid; gap: 12px; }
+h1 { font: 700 clamp(2.4rem, 6vw, 3.6rem)/1 var(--font-display); margin: 0; letter-spacing: .01em; }
+h2 { font: 600 1.25rem/1.3 var(--font-body); margin: 0; text-wrap: balance; }
+p { margin: 0; }
+.lede { font-size: 1.12rem; color: var(--fg); }
+.muted { color: var(--muted); }
+code, .mono { font-family: var(--font-mono); font-size: .9em; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: end; }
+.group { display: grid; gap: 6px; min-width: 0; }
+.group > span { font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.seg button {
+  font: 500 .9rem/1 var(--font-body); color: var(--fg); background: transparent; border: 0;
+  padding: 9px 12px; cursor: pointer; border-right: 1px solid var(--line);
+}
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.seg button:focus-visible, select:focus-visible, .handle:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+select {
+  font: 500 .95rem/1.2 var(--font-body); color: var(--fg); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; max-width: 100%;
+}
+
+.viewer { position: relative; background: var(--stage); border-radius: 10px; overflow: hidden; }
+.frame { overflow: auto; max-height: 78vh; overscroll-behavior: contain; }
+.stage { position: relative; width: 100%; aspect-ratio: 3 / 2; max-width: none; }
+.stage img {
+  position: absolute; inset: 0; width: 100%; height: 100%; display: block; max-width: none;
+  image-rendering: pixelated; image-rendering: crisp-edges; user-select: none; -webkit-user-drag: none;
+}
+.overlay { position: absolute; inset: 0; pointer-events: none; }
+.divider { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+.handle {
+  position: absolute; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%;
+  background: #fff; color: #12161d; border: 0; box-shadow: 0 2px 10px rgba(0,0,0,.45);
+  display: grid; place-items: center; pointer-events: auto; cursor: ew-resize; touch-action: none;
+  font: 700 15px/1 var(--font-mono);
+}
+.tag {
+  position: absolute; top: 10px; padding: 4px 9px; border-radius: 6px; font: 600 .82rem/1.2 var(--font-body);
+  background: rgba(10,12,16,.78); color: #fff; white-space: nowrap;
+}
+.tag.left { left: 10px; } .tag.right { right: 10px; }
+.hint { font-size: .85rem; color: var(--muted); }
+
+table { border-collapse: collapse; width: 100%; font-size: .95rem; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+td.num { font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+.tablebox { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
+@media (max-width: 560px) { .tag { font-size: .72rem; } .frame { max-height: 70vh; } }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+</head><body>
+
+<div class="wrap">
+  <header class="prose">
+    <h1>xBRZ crisp</h1>
+    <p class="lede">xBRZ smooths every corner it finds, so soft shading and textures melt into blobs. xBRZ crisp only rounds a corner when its two colors are clearly different. Outlines, text and sprites are smoothed as in xBRZ, and grass, foliage and stone keep the pixels the artists drew.</p>
+    <p class="muted">Drag the line to compare xBRZ with xBRZ crisp at minimum contrast 20. All frames are Game Boy Advance screens at 6x, rendered with the RetroArch shader code.</p>
+  </header>
+
+  <section class="controls" aria-label="Comparison settings">
+    <label class="group" for="scene"><span>Scene</span>
+      <select id="scene"></select>
+    </label>
+    <div class="group"><span>Left</span>
+      <div class="seg" id="left" role="group" aria-label="Left image">
+        <button type="button" data-v="xbrz">xBRZ</button>
+        <button type="button" data-v="original">Original</button>
+      </div>
+    </div>
+    <div class="group"><span>Zoom</span>
+      <div class="seg" id="zoom" role="group" aria-label="Zoom">
+        <button type="button" data-v="1">1×</button>
+        <button type="button" data-v="2">2×</button>
+        <button type="button" data-v="3">3×</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="viewer" id="viewer">
+    <div class="frame" id="frame">
+      <div class="stage" id="stage">
+        <img id="imgL" alt="">
+        <img id="imgR" alt="">
+      </div>
+    </div>
+    <div class="overlay">
+      <div class="divider" id="divider"></div>
+      <button class="handle" id="handle" type="button" aria-label="Comparison divider. Use the arrow keys to move it.">⇆</button>
+      <span class="tag left" id="tagL"></span>
+      <span class="tag right" id="tagR"></span>
+    </div>
+  </div>
+  <p class="hint">Tip: at 2× and 3× the view scrolls; the line stays where you put it. Arrow keys move the line when it has focus.</p>
+
+  <section class="prose">
+    <h2>Presets</h2>
+    <p>All three presets use the same two shader passes and cost the same as <code>xbrz-freescale-multipass</code>. They only differ in the minimum contrast a corner needs before it is rounded.</p>
+  </section>
+  <div class="tablebox">
+    <table>
+      <thead><tr><th>Preset</th><th>Minimum contrast</th><th>Look</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">xbrz-crisp</td><td class="num">18 / 255</td><td>Default. Textures stop melting, soft shadows and faces stay like xBRZ.</td></tr>
+        <tr><td class="mono">xbrz-crisp-24</td><td class="num">24 / 255</td><td>More texture detail in grass and foliage. Some soft diagonals turn into steps.</td></tr>
+        <tr><td class="mono">xbrz-crisp-32</td><td class="num">32 / 255</td><td>Sharpest. Pale skin and soft shadows can start to look blocky.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <section class="prose">
+    <h2>Parameters</h2>
+    <p>Every value can be changed live in Quick Menu › Shaders › Shader Parameters.</p>
+  </section>
+  <div class="tablebox">
+    <table>
+      <thead><tr><th>Parameter</th><th>Default</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">XBRZ_MINC</td><td class="num">18</td><td>Minimum color contrast (x/255) for a corner to be rounded. 0 gives plain xBRZ.</td></tr>
+        <tr><td class="mono">XBRZ_MINC_RAMP</td><td class="num">0</td><td>Width of a soft transition around the threshold, so corners shrink gradually instead of switching at once. 0 is a hard cut.</td></tr>
+        <tr><td class="mono">XBRZ_TOL</td><td class="num">15</td><td>Equal color tolerance. Stock xBRZ uses 30.</td></tr>
+        <tr><td class="mono">XBRZ_STEEP</td><td class="num">3.0</td><td>Steep and shallow line threshold. Stock xBRZ uses 2.2, which turns 1-pixel steps into slopes.</td></tr>
+        <tr><td class="mono">XBRZ_DOM</td><td class="num">3.6</td><td>Dominant direction threshold.</td></tr>
+        <tr><td class="mono">XBRZ_LUMA</td><td class="num">1.0</td><td>Weight of brightness against color in the comparisons.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <section class="prose">
+    <h2>How it works</h2>
+    <p>xBRZ decides corner by corner whether to cut a pixel's corner with a neighbor's color. xBRZ crisp keeps that decision and adds one check before drawing: if the pixel and the blend color are closer than the minimum contrast (YCbCr distance), the corner stays square. Edge detection is unchanged, so shapes are found exactly as before, and only the low-contrast blends are skipped.</p>
+    <p>The shader is based on the libretro <code>xbrz-freescale-multipass</code> port. A few details were aligned with the reference C++ xBRZ: blend color ties and the order of the four corners follow the original, and the GLSL version takes the output scale from the image size instead of the texture size.</p>
+  </section>
+
+  <section class="prose">
+    <h2>Install</h2>
+    <ol>
+      <li>Copy the <code>xbrz</code> files into RetroArch's shader folder: <code>shaders_slang/edge-smoothing/xbrz/</code> for Vulkan, glcore, D3D and Metal, or <code>shaders_glsl/xbrz/</code> for the gl driver.</li>
+      <li>In a game, open Quick Menu › Shaders › Load and pick <code>xbrz-crisp</code>, <code>xbrz-crisp-24</code> or <code>xbrz-crisp-32</code>.</li>
+      <li>Save it with Quick Menu › Shaders › Save › Save Global Preset, or per game with Save Game Preset.</li>
+    </ol>
+  </section>
+</div>
+
+<script>
+(function () {
+  var SCENES = [
+    ["gs_village", "Golden Sun · village"],
+    ["gs_battle", "Golden Sun · battle"],
+    ["gs2_battle", "Golden Sun: The Lost Age · battle"],
+    ["gs_menu", "Golden Sun · menu"],
+    ["cv_aria", "Castlevania: Aria of Sorrow"],
+    ["tales", "Tales of Phantasia"],
+    ["ffta", "Final Fantasy Tactics Advance"],
+    ["mc_eu", "The Minish Cap · overworld"],
+    ["mc_kiosk", "The Minish Cap · temple"]
+  ];
+  var LABEL = { xbrz: "xBRZ freescale", original: "Original", crisp20: "xBRZ crisp 20" };
+  var state = { scene: "gs_village", left: "xbrz", right: "crisp20", zoom: 1, pos: 0.5 };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var sel = $("scene"), frame = $("frame"), stage = $("stage"), imgL = $("imgL"), imgR = $("imgR");
+  var divider = $("divider"), handle = $("handle"), tagL = $("tagL"), tagR = $("tagR");
+
+  SCENES.forEach(function (s) { var o = document.createElement("option"); o.value = s[0]; o.textContent = s[1]; sel.appendChild(o); });
+  var fromHash = (location.hash || "").slice(1);
+  if (SCENES.some(function (s) { return s[0] === fromHash; })) state.scene = fromHash;
+
+  function src(scene, v) { return "img/" + scene + "-" + v + (v === "original" ? ".png" : ".webp"); }
+
+  // preload the current scene's three images so switching sides is instant
+  function preload(scene) { ["original", "xbrz", "crisp20"].forEach(function (v) { var i = new Image(); i.src = src(scene, v); }); }
+
+  function setPressed(groupId, value) {
+    Array.prototype.forEach.call($(groupId).querySelectorAll("button"), function (b) { b.setAttribute("aria-pressed", String(b.dataset.v === String(value))); });
+  }
+
+  function render() {
+    sel.value = state.scene;
+    imgL.src = src(state.scene, state.left);
+    imgR.src = src(state.scene, state.right);
+    imgL.alt = LABEL[state.left]; imgR.alt = LABEL[state.right];
+    tagL.textContent = LABEL[state.left]; tagR.textContent = LABEL[state.right];
+    setPressed("left", state.left); setPressed("zoom", state.zoom);
+    stage.style.width = (state.zoom * 100) + "%";
+    clip();
+  }
+
+  // the divider lives in viewport coordinates; the clip is computed in stage coordinates
+  function clip() {
+    var fw = frame.clientWidth, sw = stage.clientWidth || fw;
+    var x = state.pos * fw;
+    divider.style.left = x + "px";
+    handle.style.left = x + "px";
+    var cut = Math.max(0, Math.min(sw, frame.scrollLeft + x));
+    imgR.style.clipPath = "inset(0 0 0 " + cut + "px)";
+    handle.setAttribute("aria-valuenow", Math.round(state.pos * 100));
+  }
+
+  function setPos(clientX) {
+    var r = frame.getBoundingClientRect();
+    state.pos = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+    clip();
+  }
+
+  var dragging = false;
+  handle.addEventListener("pointerdown", function (e) { dragging = true; handle.setPointerCapture(e.pointerId); e.preventDefault(); });
+  handle.addEventListener("pointermove", function (e) { if (dragging) setPos(e.clientX); });
+  handle.addEventListener("pointerup", function () { dragging = false; });
+  handle.addEventListener("pointercancel", function () { dragging = false; });
+  // a click (not a scroll gesture) on the picture moves the line there
+  var downX = null, downY = null;
+  stage.addEventListener("pointerdown", function (e) { downX = e.clientX; downY = e.clientY; });
+  stage.addEventListener("pointerup", function (e) {
+    if (downX !== null && Math.abs(e.clientX - downX) < 6 && Math.abs(e.clientY - downY) < 6) setPos(e.clientX);
+    downX = null;
+  });
+  // on a mouse, dragging across the picture also moves the line
+  stage.addEventListener("pointermove", function (e) { if (e.pointerType === "mouse" && e.buttons === 1) { setPos(e.clientX); e.preventDefault(); } });
+  handle.addEventListener("keydown", function (e) {
+    var step = e.shiftKey ? 0.1 : 0.02;
+    if (e.key === "ArrowLeft") { state.pos = Math.max(0, state.pos - step); clip(); e.preventDefault(); }
+    if (e.key === "ArrowRight") { state.pos = Math.min(1, state.pos + step); clip(); e.preventDefault(); }
+  });
+  frame.addEventListener("scroll", clip, { passive: true });
+  window.addEventListener("resize", clip);
+
+  sel.addEventListener("change", function () { state.scene = sel.value; preload(state.scene); render(); });
+  $("left").addEventListener("click", function (e) { var b = e.target.closest("button"); if (b) { state.left = b.dataset.v; render(); } });
+  $("zoom").addEventListener("click", function (e) {
+    var b = e.target.closest("button"); if (!b) return;
+    var old = state.zoom, z = Number(b.dataset.v);
+    var cx = (frame.scrollLeft + frame.clientWidth / 2) / (stage.clientWidth || 1);
+    var cy = (frame.scrollTop + frame.clientHeight / 2) / (stage.clientHeight || 1);
+    state.zoom = z; render();
+    if (z !== old) { frame.scrollLeft = cx * stage.clientWidth - frame.clientWidth / 2; frame.scrollTop = cy * stage.clientHeight - frame.clientHeight / 2; clip(); }
+  });
+
+  preload(state.scene);
+  render();
+})();
+</script>
+</body></html>

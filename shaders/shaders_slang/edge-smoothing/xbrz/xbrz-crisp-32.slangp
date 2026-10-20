@@ -1,0 +1,14 @@
+shaders = 2
+
+shader0 = shaders/xbrz-crisp/xbrz-crisp-pass0.slang
+filter_linear0 = false
+scale_type0 = source
+scale0 = 1.0
+
+shader1 = shaders/xbrz-crisp/xbrz-crisp-pass1.slang
+filter_linear1 = false
+scale_type1 = viewport
+scale1 = 1.0
+
+parameters = "XBRZ_MINC"
+XBRZ_MINC = "32.000000"
