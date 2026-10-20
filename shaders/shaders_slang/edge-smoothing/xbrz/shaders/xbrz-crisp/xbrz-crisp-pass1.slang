@@ -177,37 +177,30 @@ void main()
   vec2 pos = fract(vTexCoord * ORIG_SIZE.xy) - vec2(0.5, 0.5);
   vec2 coord = vTexCoord - pos * ORIG_SIZE.zw;
 
-  vec3 B = P( 0.,-1.);
-  vec3 D = P(-1., 0.);
-  vec3 E = P( 0., 0.);
-  vec3 F = P( 1., 0.);
-  vec3 H = P( 0., 1.);
-
   vec4 info = floor(INFO(coord) * 255.0 + 0.5);
+  vec3 E = P( 0., 0.);
+  vec3 res = E;
 
   // info Mapping: x|y|
   //               w|z|
-  vec4 blendResult = floor(mod(info, 4.0));
-  vec4 doLineBlend = floor(mod(info / 4.0, 4.0));
-  vec4 haveShallowLine = floor(mod(info / 16.0, 4.0));
-  vec4 haveSteepLine = floor(mod(info / 64.0, 4.0));
+  vec4 blendResult = mod(info, 4.0);
 
-  vec3 res = E;
-
-  // most output pixels have no corner to blend
+  // most output pixels have no corner to blend, and only need these two reads
   if (blendResult.x + blendResult.y + blendResult.z + blendResult.w <= 0.0)
   {
     FRAG_OUT = vec4(res, 1.0);
     return;
   }
 
-  float dEB = DistYCbCr(E, B);
-  float dED = DistYCbCr(E, D);
-  float dEF = DistYCbCr(E, F);
-  float dEH = DistYCbCr(E, H);
+  vec4 doLineBlend = mod(floor(info / 4.0), 2.0);
+  vec4 secondPix = mod(floor(info / 8.0), 2.0);
+  vec4 haveShallowLine = floor(mod(info / 16.0, 4.0));
+  vec4 haveSteepLine = floor(mod(info / 64.0, 4.0));
+  bool ramp = XBRZ_MINC > 0.0 && XBRZ_MINC_RAMP >= 0.5;
 
-  // Corners are applied in the same order as the original xBRZ (0, 90, 180, 270 degrees)
-  // and the blend colour ties go to the same neighbour as the original "dist(e,f) <= dist(e,h) ? f : h".
+  // Corners are applied in the same order as the original xBRZ (0, 90, 180, 270 degrees). The first
+  // pass picked each blend colour ("dist(e,f) <= dist(e,h) ? f : h") and applied the minimum contrast;
+  // only the soft transition still needs the contrast here.
 
   // Pixel Tap Mapping: -|-|-
   //                    -|E|F
@@ -222,8 +215,8 @@ void main()
       direction.x += haveShallowLine.z;
       direction.y -= haveSteepLine.z;
     }
-    vec3 blendPix = (dEF <= dEH) ? F : H;
-    float keep = mincKeep((dEF <= dEH) ? dEF : dEH);
+    vec3 blendPix = (secondPix.z > 0.0) ? P( 0., 1.) : P( 1., 0.);
+    float keep = ramp ? mincKeep(DistYCbCr(E, blendPix)) : 1.0;
     if (keep > 0.0)
       res = mix(res, blendPix, get_left_ratio(pos, shrinkOrigin(origin, direction, vec2( 0.5, 0.5), keep), direction, scale));
   }
@@ -241,8 +234,8 @@ void main()
       direction.y -= haveShallowLine.y;
       direction.x -= haveSteepLine.y;
     }
-    vec3 blendPix = (dEB <= dEF) ? B : F;
-    float keep = mincKeep((dEB <= dEF) ? dEB : dEF);
+    vec3 blendPix = (secondPix.y > 0.0) ? P( 1., 0.) : P( 0.,-1.);
+    float keep = ramp ? mincKeep(DistYCbCr(E, blendPix)) : 1.0;
     if (keep > 0.0)
       res = mix(res, blendPix, get_left_ratio(pos, shrinkOrigin(origin, direction, vec2( 0.5,-0.5), keep), direction, scale));
   }
@@ -260,8 +253,8 @@ void main()
       direction.x -= haveShallowLine.x;
       direction.y += haveSteepLine.x;
     }
-    vec3 blendPix = (dED <= dEB) ? D : B;
-    float keep = mincKeep((dED <= dEB) ? dED : dEB);
+    vec3 blendPix = (secondPix.x > 0.0) ? P( 0.,-1.) : P(-1., 0.);
+    float keep = ramp ? mincKeep(DistYCbCr(E, blendPix)) : 1.0;
     if (keep > 0.0)
       res = mix(res, blendPix, get_left_ratio(pos, shrinkOrigin(origin, direction, vec2(-0.5,-0.5), keep), direction, scale));
   }
@@ -279,8 +272,8 @@ void main()
       direction.y += haveShallowLine.w;
       direction.x += haveSteepLine.w;
     }
-    vec3 blendPix = (dEH <= dED) ? H : D;
-    float keep = mincKeep((dEH <= dED) ? dEH : dED);
+    vec3 blendPix = (secondPix.w > 0.0) ? P(-1., 0.) : P( 0., 1.);
+    float keep = ramp ? mincKeep(DistYCbCr(E, blendPix)) : 1.0;
     if (keep > 0.0)
       res = mix(res, blendPix, get_left_ratio(pos, shrinkOrigin(origin, direction, vec2(-0.5, 0.5), keep), direction, scale));
   }

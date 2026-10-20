@@ -324,6 +324,19 @@ void main()
       res.x += 64.0;
   }
 
+  // Decisions for the output pass, made once per input pixel instead of once per output pixel:
+  // +8 when a corner blends with its second candidate colour (ties go to the first, as in xBRZ),
+  // and with a hard minimum contrast a corner below XBRZ_MINC is cleared here.
+  float dEB = DistYCbCr(E, B);
+  float dED = DistYCbCr(E, D);
+  float dEF = DistYCbCr(E, F);
+  float dEH = DistYCbCr(E, H);
+  vec4 second = vec4(dED <= dEB ? 0.0 : 1.0, dEB <= dEF ? 0.0 : 1.0, dEF <= dEH ? 0.0 : 1.0, dEH <= dED ? 0.0 : 1.0);
+  vec4 contrast = vec4(min(dED, dEB), min(dEB, dEF), min(dEF, dEH), min(dEH, dED)) * 255.0;
+  res += 8.0 * second;
+  if (XBRZ_MINC > 0.0 && XBRZ_MINC_RAMP < 0.5)
+    res *= vec4(greaterThanEqual(contrast, vec4(XBRZ_MINC)));
+
   FRAG_OUT = res / 255.0;
 }
 
