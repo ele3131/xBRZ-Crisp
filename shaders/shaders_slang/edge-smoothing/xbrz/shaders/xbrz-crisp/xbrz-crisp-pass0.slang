@@ -72,7 +72,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #pragma parameter XBRZ_DOM "xBRZ: dominant direction threshold" 3.6 1 8 0.1
 #pragma parameter XBRZ_STEEP "xBRZ: steep/shallow line threshold" 3 1 6 0.1
 #pragma parameter XBRZ_LUMA "xBRZ: luminance weight" 1 0.5 3 0.1
-#pragma parameter XBRZ_MINC "xBRZ crisp: minimum contrast to round a corner (x/255)" 18 0 80 2
+#pragma parameter XBRZ_MINC "xBRZ crisp: minimum contrast to round a corner (x/255)" 20 0 80 2
 #pragma parameter XBRZ_MINC_RAMP "xBRZ crisp: soft transition width (0 = hard cut)" 0 0 64 2
 #define XBRZ_TOL global.XBRZ_TOL
 #define XBRZ_DOM global.XBRZ_DOM

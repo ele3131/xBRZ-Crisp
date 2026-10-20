@@ -2,7 +2,11 @@
 
 An xBRZ shader for RetroArch that only rounds corners between clearly different colors. Outlines, text and sprites are smoothed as in xBRZ, while low-contrast shading and textures (grass, foliage, stone, dithering) keep their pixel detail instead of melting into blobs.
 
-**[Interactive comparison: drag the line between xBRZ and xBRZ crisp](https://ele3131.github.io/xbrz-crisp/)**
+## [▶ Open the interactive comparison](https://ele3131.github.io/xbrz-crisp/)
+
+Drag the line between xBRZ and xBRZ crisp on 9 Game Boy Advance scenes, compare strengths 16, 18 and 20, and zoom in up to 3×.
+
+[![Animated comparison: xBRZ on the left, xBRZ crisp on the right](comparisons/preview.webp)](https://ele3131.github.io/xbrz-crisp/)
 
 ![Golden Sun](comparisons/1-golden-sun.png)
 
@@ -14,7 +18,7 @@ More: [other games](comparisons/3-other-games.png) · [Minish Cap](comparisons/2
 
 | Preset | Minimum contrast | Look |
 |---|---|---|
-| `xbrz-crisp` | 18 / 255 | Default. Textures stop melting, soft shadows and faces stay like xBRZ. |
+| `xbrz-crisp` | 20 / 255 | Default. Textures stop melting, soft shadows and faces stay like xBRZ. |
 | `xbrz-crisp-24` | 24 / 255 | More texture detail in grass and foliage. Some soft diagonals turn into steps. |
 | `xbrz-crisp-32` | 32 / 255 | Sharpest. Pale skin and soft shadows can start to look blocky. |
 
@@ -30,7 +34,7 @@ All three use the same two passes and cost the same as `xbrz-freescale-multipass
 
 | Parameter | Default | What it does |
 |---|---|---|
-| `XBRZ_MINC` | 18 | Minimum color contrast (x/255) for a corner to be rounded. 0 gives plain xBRZ. |
+| `XBRZ_MINC` | 20 | Minimum color contrast (x/255) for a corner to be rounded. 0 gives plain xBRZ. |
 | `XBRZ_MINC_RAMP` | 0 | Width of a soft transition around the threshold, so corners shrink gradually. 0 is a hard cut. |
 | `XBRZ_TOL` | 15 | Equal color tolerance. Stock xBRZ uses 30. |
 | `XBRZ_STEEP` | 3.0 | Steep and shallow line threshold. Stock xBRZ uses 2.2, which turns 1-pixel steps into slopes. |
