@@ -4,7 +4,7 @@ An xBRZ shader for RetroArch that only rounds corners between clearly different 
 
 ## [▶ Open the interactive comparison](https://ele3131.github.io/xbrz-crisp/)
 
-Drag the line between xBRZ and xBRZ crisp on 9 Game Boy Advance scenes, compare strengths 16, 18 and 20, and zoom in up to 3×.
+Drag the line between xBRZ and xBRZ crisp on 9 Game Boy Advance scenes, compare minimum contrast 16, 24 and 32, and zoom in up to 3×.
 
 [![Animated comparison: xBRZ on the left, xBRZ crisp on the right](comparisons/preview.webp)](https://ele3131.github.io/xbrz-crisp/)
 
@@ -16,25 +16,27 @@ More: [other games](comparisons/3-other-games.png) · [Minish Cap](comparisons/2
 
 ## Presets
 
-| Preset | Minimum contrast | Look |
-|---|---|---|
-| `xbrz-crisp` | 20 / 255 | Default. Textures stop melting, soft shadows and faces stay like xBRZ. |
-| `xbrz-crisp-24` | 24 / 255 | More texture detail in grass and foliage. Some soft diagonals turn into steps. |
-| `xbrz-crisp-32` | 32 / 255 | Sharpest. Pale skin and soft shadows can start to look blocky. |
+There is one preset, `xbrz-crisp`, with a minimum contrast of 16. For a sharper look, raise `XBRZ_MINC` in Quick Menu › Shaders › Shader Parameters and save the preset. Good steps:
 
-All three use the same two passes and cost the same as `xbrz-freescale-multipass`.
+| `XBRZ_MINC` | Look |
+|---|---|
+| 16 (default) | Textures stop melting, soft shadows and faces stay like xBRZ. |
+| 24 | More texture detail in grass and foliage. Some soft diagonals turn into steps. |
+| 32 | Sharpest. Pale skin and soft shadows can start to look blocky. |
+
+The cost is the same as `xbrz-freescale-multipass` at any value.
 
 ## Install
 
 1. Copy the contents of `shaders/` into RetroArch's shader folder: `shaders_slang` is for the Vulkan, glcore, D3D and Metal drivers, `shaders_glsl` is for the gl driver.
-2. In a game, open Quick Menu › Shaders › Load and pick `edge-smoothing/xbrz/xbrz-crisp.slangp` (slang) or `xbrz/xbrz-crisp.glslp` (glsl), or one of the `-24` and `-32` presets.
+2. In a game, open Quick Menu › Shaders › Load and pick `edge-smoothing/xbrz/xbrz-crisp.slangp` (slang) or `xbrz/xbrz-crisp.glslp` (glsl).
 3. Save it with Quick Menu › Shaders › Save › Save Global Preset, or per game with Save Game Preset.
 
 ## Parameters
 
 | Parameter | Default | What it does |
 |---|---|---|
-| `XBRZ_MINC` | 20 | Minimum color contrast (x/255) for a corner to be rounded. 0 gives plain xBRZ. |
+| `XBRZ_MINC` | 16 | Minimum color contrast (x/255) for a corner to be rounded. 0 gives plain xBRZ. |
 | `XBRZ_MINC_RAMP` | 0 | Width of a soft transition around the threshold, so corners shrink gradually. 0 is a hard cut. |
 | `XBRZ_TOL` | 15 | Equal color tolerance. Stock xBRZ uses 30. |
 | `XBRZ_STEEP` | 3.0 | Steep and shallow line threshold. Stock xBRZ uses 2.2, which turns 1-pixel steps into slopes. |

@@ -113,9 +113,9 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
     </div>
     <div class="group"><span>Right</span>
       <div class="seg" id="right" role="group" aria-label="Right image">
-        <button type="button" data-v="crisp16">crisp 16</button>
-        <button type="button" data-v="crisp18">crisp 18</button>
-        <button type="button" data-v="crisp20">crisp 20 (default)</button>
+        <button type="button" data-v="crisp16">crisp 16 (default)</button>
+        <button type="button" data-v="crisp24">crisp 24</button>
+        <button type="button" data-v="crisp32">crisp 32</button>
       </div>
     </div>
     <div class="group"><span>Zoom</span>
@@ -145,15 +145,15 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
 
   <section class="prose">
     <h2>Presets</h2>
-    <p>All three presets use the same two shader passes and cost the same as <code>xbrz-freescale-multipass</code>. They only differ in the minimum contrast a corner needs before it is rounded.</p>
+    <p>There is one preset, <code>xbrz-crisp</code>, with a minimum contrast of 16. For a sharper look, raise <code>XBRZ_MINC</code> in Quick Menu › Shaders › Shader Parameters and save the preset. The cost is the same as <code>xbrz-freescale-multipass</code> at any value. Good steps:</p>
   </section>
   <div class="tablebox">
     <table>
-      <thead><tr><th>Preset</th><th>Minimum contrast</th><th>Look</th></tr></thead>
+      <thead><tr><th>XBRZ_MINC</th><th>Look</th></tr></thead>
       <tbody>
-        <tr><td class="mono">xbrz-crisp</td><td class="num">20 / 255</td><td>Default. Textures stop melting, soft shadows and faces stay like xBRZ.</td></tr>
-        <tr><td class="mono">xbrz-crisp-24</td><td class="num">24 / 255</td><td>More texture detail in grass and foliage. Some soft diagonals turn into steps.</td></tr>
-        <tr><td class="mono">xbrz-crisp-32</td><td class="num">32 / 255</td><td>Sharpest. Pale skin and soft shadows can start to look blocky.</td></tr>
+        <tr><td class="num">16 (default)</td><td>Textures stop melting, soft shadows and faces stay like xBRZ.</td></tr>
+        <tr><td class="num">24</td><td>More texture detail in grass and foliage. Some soft diagonals turn into steps.</td></tr>
+        <tr><td class="num">32</td><td>Sharpest. Pale skin and soft shadows can start to look blocky.</td></tr>
       </tbody>
     </table>
   </div>
@@ -166,7 +166,7 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
     <table>
       <thead><tr><th>Parameter</th><th>Default</th><th>What it does</th></tr></thead>
       <tbody>
-        <tr><td class="mono">XBRZ_MINC</td><td class="num">20</td><td>Minimum color contrast (x/255) for a corner to be rounded. 0 gives plain xBRZ.</td></tr>
+        <tr><td class="mono">XBRZ_MINC</td><td class="num">16</td><td>Minimum color contrast (x/255) for a corner to be rounded. 0 gives plain xBRZ.</td></tr>
         <tr><td class="mono">XBRZ_MINC_RAMP</td><td class="num">0</td><td>Width of a soft transition around the threshold, so corners shrink gradually instead of switching at once. 0 is a hard cut.</td></tr>
         <tr><td class="mono">XBRZ_TOL</td><td class="num">15</td><td>Equal color tolerance. Stock xBRZ uses 30.</td></tr>
         <tr><td class="mono">XBRZ_STEEP</td><td class="num">3.0</td><td>Steep and shallow line threshold. Stock xBRZ uses 2.2, which turns 1-pixel steps into slopes.</td></tr>
@@ -186,7 +186,7 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
     <h2>Install</h2>
     <ol>
       <li>Copy the <code>xbrz</code> files into RetroArch's shader folder: <code>shaders_slang/edge-smoothing/xbrz/</code> for Vulkan, glcore, D3D and Metal, or <code>shaders_glsl/xbrz/</code> for the gl driver.</li>
-      <li>In a game, open Quick Menu › Shaders › Load and pick <code>xbrz-crisp</code>, <code>xbrz-crisp-24</code> or <code>xbrz-crisp-32</code>.</li>
+      <li>In a game, open Quick Menu › Shaders › Load and pick <code>xbrz-crisp</code>.</li>
       <li>Save it with Quick Menu › Shaders › Save › Save Global Preset, or per game with Save Game Preset.</li>
     </ol>
   </section>
@@ -205,8 +205,8 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
     ["mc_eu", "The Minish Cap · overworld"],
     ["mc_kiosk", "The Minish Cap · temple"]
   ];
-  var LABEL = { xbrz: "xBRZ freescale", original: "Original", crisp16: "xBRZ crisp 16", crisp18: "xBRZ crisp 18", crisp20: "xBRZ crisp 20" };
-  var state = { scene: "gs_village", left: "xbrz", right: "crisp20", zoom: 1, pos: 0.5 };
+  var LABEL = { xbrz: "xBRZ freescale", original: "Original", crisp16: "xBRZ crisp 16", crisp24: "xBRZ crisp 24", crisp32: "xBRZ crisp 32" };
+  var state = { scene: "gs_village", left: "xbrz", right: "crisp16", zoom: 1, pos: 0.5 };
 
   var $ = function (id) { return document.getElementById(id); };
   var sel = $("scene"), frame = $("frame"), stage = $("stage"), imgL = $("imgL"), imgR = $("imgR");
@@ -219,7 +219,7 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
   function src(scene, v) { return "img/" + scene + "-" + v + (v === "original" ? ".png" : ".webp"); }
 
   // preload the current scene's five images so switching sides is instant
-  function preload(scene) { ["original", "xbrz", "crisp16", "crisp18", "crisp20"].forEach(function (v) { var i = new Image(); i.src = src(scene, v); }); }
+  function preload(scene) { ["original", "xbrz", "crisp16", "crisp24", "crisp32"].forEach(function (v) { var i = new Image(); i.src = src(scene, v); }); }
 
   function setPressed(groupId, value) {
     Array.prototype.forEach.call($(groupId).querySelectorAll("button"), function (b) { b.setAttribute("aria-pressed", String(b.dataset.v === String(value))); });
