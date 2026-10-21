@@ -12,6 +12,9 @@
    one of those colors sits between the pixel and the other one, use XBRZ_DIAG_AA instead,
    shallow and steep lines are never blocked, and a blocked corner is still cut when a neighbour
    on the same diagonal is cut, so lines are drawn to the end. XBRZ_DIAG = 0 turns this off.
+   Where a stack of 1-pixel stripes of different colors ends flush, like the bars of a gauge, the
+   end corners stay square when their diagonal colors differ by more than XBRZ_TIP, so every
+   stripe ends the same way. XBRZ_TIP = 0 turns this off.
    Defaults: equal color tolerance 15 and steep/shallow line threshold 3.2 (stock xBRZ: 30 and 2.2).
 
    Based on "xbrz-freescale-multipass" from libretro glsl-shaders / slang-shaders, with these
@@ -62,8 +65,9 @@
 #pragma parameter XBRZ_LUMA "xBRZ: luminance weight" 1 0.5 3 0.1
 #pragma parameter XBRZ_MINC "xBRZ crisp: minimum contrast to round a corner (x/255)" 16 0 80 2
 #pragma parameter XBRZ_MINC_RAMP "xBRZ crisp: soft transition width (0 = hard cut)" 0 0 64 2
-#pragma parameter XBRZ_DIAG "xBRZ crisp: max color distance along a corner's diagonal (0 = off)" 108 0 160 4
-#pragma parameter XBRZ_DIAG_AA "xBRZ crisp: same limit for antialiasing ramps" 96 0 160 4
+#pragma parameter XBRZ_DIAG "xBRZ crisp: max color distance along a corner's diagonal (0 = off)" 100 0 160 4
+#pragma parameter XBRZ_DIAG_AA "xBRZ crisp: same limit for antialiasing ramps" 92 0 160 4
+#pragma parameter XBRZ_TIP "xBRZ crisp: square ends of stacked 1-pixel stripes above this distance (0 = off)" 64 0 160 4
 
 #if defined(VERTEX)
 
@@ -136,6 +140,7 @@ uniform COMPAT_PRECISION float XBRZ_MINC;
 uniform COMPAT_PRECISION float XBRZ_MINC_RAMP;
 uniform COMPAT_PRECISION float XBRZ_DIAG;
 uniform COMPAT_PRECISION float XBRZ_DIAG_AA;
+uniform COMPAT_PRECISION float XBRZ_TIP;
 #else
 #define XBRZ_TOL 15.0
 #define XBRZ_DOM 3.8
@@ -143,8 +148,9 @@ uniform COMPAT_PRECISION float XBRZ_DIAG_AA;
 #define XBRZ_LUMA 1.0
 #define XBRZ_MINC 16.0
 #define XBRZ_MINC_RAMP 0.0
-#define XBRZ_DIAG 108.0
-#define XBRZ_DIAG_AA 96.0
+#define XBRZ_DIAG 100.0
+#define XBRZ_DIAG_AA 92.0
+#define XBRZ_TIP 64.0
 #endif
 
 #define SRC_SIZE vec4(TextureSize, 1.0 / TextureSize)
@@ -360,6 +366,24 @@ void main()
     vec4 keep = max(vec4(lessThanEqual(pair * 255.0, limit)), vec4(greaterThanEqual(res, vec4(16.0))));
     // a blocked corner is flagged (+128); the output pass keeps it only when it continues a cut line
     res += 128.0 * (1.0 - keep) * vec4(greaterThan(mod(res, 4.0), vec4(0.0)));
+  }
+  if (XBRZ_TIP > 0.0)
+  {
+    // a line tip: E ends a 1-pixel horizontal line (left or right end) or vertical line (top or bottom end)
+    bool eB = eq(E, B), eD = eq(E, D), eF = eq(E, F), eH = eq(E, H);
+    // the stripes on both sides differ from each other too, so outlines (same color on both sides) are left alone
+    bool thinH = !eB && !eH && !eq(B, H), thinV = !eD && !eF && !eq(D, F);
+    // only inside a stack of parallel stripes: the rows (or columns) on both sides run along the line too
+    // and they all end flush at the same column (or row), like the stripes of a gauge
+    // all three stripes run at least 3 pixels back from the end
+    float endL = (thinH && eF && !eD && eq(B, C) && eq(H, I) && !eq(B, A) && !eq(H, G) && eq(E, P(2., 0.)) && eq(C, P(2., -1.)) && eq(I, P(2., 1.))) ? 1.0 : 0.0;
+    float endR = (thinH && eD && !eF && eq(B, A) && eq(H, G) && !eq(B, C) && !eq(H, I) && eq(E, P(-2., 0.)) && eq(A, P(-2., -1.)) && eq(G, P(-2., 1.))) ? 1.0 : 0.0;
+    float endT = (thinV && eH && !eB && eq(D, G) && eq(F, I) && !eq(D, A) && !eq(F, C) && eq(E, P(0., 2.)) && eq(G, P(-1., 2.)) && eq(I, P(1., 2.))) ? 1.0 : 0.0;
+    float endB = (thinV && eB && !eH && eq(D, A) && eq(F, C) && !eq(D, G) && !eq(F, I) && eq(E, P(0., -2.)) && eq(A, P(-1., -2.)) && eq(C, P(1., -2.))) ? 1.0 : 0.0;
+    vec4 tip = vec4(max(endL, endT), max(endR, endT), max(endR, endB), max(endL, endB));
+    vec4 pairT = vec4(DistYCbCr(D, B), DistYCbCr(B, F), DistYCbCr(F, H), DistYCbCr(H, D)) * 255.0;
+    tip *= vec4(greaterThan(pairT, vec4(XBRZ_TIP)));
+    res *= 1.0 - tip;
   }
   if (XBRZ_MINC > 0.0 && XBRZ_MINC_RAMP < 0.5)
     res *= vec4(greaterThanEqual(contrast, vec4(XBRZ_MINC)));

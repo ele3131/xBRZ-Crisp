@@ -39,9 +39,9 @@ Pick integer scaling, xBRZ, MMPX Advanced or xBRZ Crisp (contrast 12 to 30) on e
   </tr>
 </table>
 
-Faces keep their expression. Since 1.4, a corner where three different colors meet is no longer cut into a fake diagonal, so Link's eyebrow stays straight instead of being pulled into his eye:
+Faces keep their expression. Since 1.4, a corner where three different colors meet is no longer cut into a fake diagonal, so Link's eyebrow stays straight instead of being pulled into his eye, and stacked stripes such as health bars end square:
 
-<img src="comparisons/7-faces.png" alt="Link in The Minish Cap and a face in Final Fantasy Tactics Advance: original, xBRZ freescale, xBRZ Crisp 1.3 and 1.4" width="100%">
+<img src="comparisons/7-faces.png" alt="Link in The Minish Cap, a face in Final Fantasy Tactics Advance and the health bar of Castlevania: Aria of Sorrow: original, xBRZ freescale, xBRZ Crisp 1.3 and 1.4" width="100%">
 
 Text and portraits keep their shape too, as in the spell menu of Harry Potter: Prisoner of Azkaban:
 
@@ -70,8 +70,9 @@ One preset, `xbrz-crisp`, with a minimum contrast of 16. Change `XBRZ_MINC` in Q
 |---|---|---|
 | `XBRZ_MINC` | 16 | Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off. |
 | `XBRZ_MINC_RAMP` | 0 | Width of a soft transition around the threshold. 0 is a hard cut. |
-| `XBRZ_DIAG` | 108 | Maximum color distance (x/255) between the two colors a cut would join. Above it, the corner stays square. 0 turns it off. |
-| `XBRZ_DIAG_AA` | 96 | The same limit for antialiasing ramps, where one of the two colors sits between the pixel and the other one. |
+| `XBRZ_DIAG` | 100 | Maximum color distance (x/255) between the two colors a cut would join. Above it, the corner stays square. 0 turns it off. |
+| `XBRZ_DIAG_AA` | 92 | The same limit for antialiasing ramps, where one of the two colors sits between the pixel and the other one. |
+| `XBRZ_TIP` | 64 | Where stacked 1-pixel stripes of different colors end flush, like the bars of a gauge, their end corners stay square above this distance, so every stripe ends the same way. 0 turns it off. |
 | `XBRZ_TOL` | 15 | Equal color tolerance. Stock xBRZ uses 30. |
 | `XBRZ_STEEP` | 3.2 | Steep and shallow line threshold. Stock xBRZ uses 2.2, which turns 1-pixel steps into slopes. |
 | `XBRZ_DOM` | 3.8 | Dominant direction threshold. Stock xBRZ uses 3.6; 3.8 keeps small corners close to square instead of cutting them into long tips. |
@@ -84,7 +85,7 @@ One preset, `xbrz-crisp`, with a minimum contrast of 16. Change `XBRZ_MINC` in Q
 xBRZ decides corner by corner whether to cut a pixel's corner with a neighbor's color. xBRZ crisp keeps that decision and adds two checks before drawing:
 
 1. **Minimum contrast.** If the pixel and the blend color are closer than `XBRZ_MINC` (YCbCr distance), the corner stays square, so soft shading and textures keep their pixels.
-2. **Similar diagonal.** A cut joins the two neighbors on the corner's diagonal. If those two colors differ by more than `XBRZ_DIAG`, the corner is a junction of different colors, not a diagonal line, and it stays square. Antialiasing ramps use `XBRZ_DIAG_AA`. Corners that are part of a shallow or steep line are never blocked, and a blocked corner is still cut when the next corner along the same diagonal is cut, so lines are drawn to the end.
+2. **Similar diagonal.** A cut joins the two neighbors on the corner's diagonal. If those two colors differ by more than `XBRZ_DIAG`, the corner is a junction of different colors, not a diagonal line, and it stays square. Antialiasing ramps use `XBRZ_DIAG_AA`. Corners that are part of a shallow or steep line are never blocked, and a blocked corner is still cut when the next corner along the same diagonal is cut, so lines are drawn to the end. Where stacked 1-pixel stripes end flush, as in health bars, the end corners stay square (`XBRZ_TIP`), so every stripe ends the same way.
 
 Edge detection is unchanged, so shapes are found exactly as before and only these blends are skipped. The idea of only joining colors that match along the diagonal comes from [cleanEdge](https://github.com/libretro/slang-shaders/tree/master/edge-smoothing/cleanEdge) by torcado.
 
