@@ -66,7 +66,7 @@ One preset, `xbrz-crisp`, with a minimum contrast of 24. Change `XBRZ_MINC` in Q
 | `XBRZ_MINC_RAMP` | 0 | Width of a soft transition around the threshold. 0 is a hard cut. |
 | `XBRZ_TOL` | 15 | Equal color tolerance. Stock xBRZ uses 30. |
 | `XBRZ_STEEP` | 3.2 | Steep and shallow line threshold. Stock xBRZ uses 2.2, which turns 1-pixel steps into slopes. |
-| `XBRZ_DOM` | 3.8 | Dominant direction threshold. Stock xBRZ uses 3.6; 3.8 cuts fewer curve tips. |
+| `XBRZ_DOM` | 3.75 | Dominant direction threshold. Stock xBRZ uses 3.6; 3.75 cuts fewer curve tips. |
 | `XBRZ_LUMA` | 1.0 | Weight of brightness against color in the comparisons. |
 
 </details>
