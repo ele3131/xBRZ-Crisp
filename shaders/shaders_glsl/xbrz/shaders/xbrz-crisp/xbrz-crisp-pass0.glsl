@@ -189,6 +189,7 @@ bool IsPixEqual(vec3 pixA, vec3 pixB)
 
 #define eq(a,b)  (a == b)
 #define neq(a,b) (a != b)
+#define alike(a,b) (DistYCbCr(a, b) * 255.0 <= 20.0)
 
 void main()
 {
@@ -344,8 +345,7 @@ void main()
   }
 
   // Decisions for the output pass, made once per input pixel instead of once per output pixel:
-  // +8 when a corner blends with its second candidate colour (ties go to the first, as in xBRZ),
-  // and with a hard minimum contrast a corner below XBRZ_MINC is cleared here.
+  // +8 when a corner blends with its second candidate colour (ties go to the first, as in xBRZ).
   float dEB = DistYCbCr(E, B);
   float dED = DistYCbCr(E, D);
   float dEF = DistYCbCr(E, F);
@@ -353,40 +353,51 @@ void main()
   vec4 second = vec4(dED <= dEB ? 0.0 : 1.0, dEB <= dEF ? 0.0 : 1.0, dEF <= dEH ? 0.0 : 1.0, dEH <= dED ? 0.0 : 1.0);
   vec4 contrast = vec4(min(dED, dEB), min(dEB, dEF), min(dEF, dEH), min(dEH, dED)) * 255.0;
   res += 8.0 * second;
-  if (XBRZ_DIAG > 0.0)
+  // with a hard minimum contrast a corner below XBRZ_MINC is cleared first, so the checks below only run
+  // on pixels that still have a corner to cut
+  if (XBRZ_MINC > 0.0 && XBRZ_MINC_RAMP < 0.5)
+    res *= vec4(greaterThanEqual(contrast, vec4(XBRZ_MINC)));
+  vec4 cut = vec4(greaterThan(mod(res, 4.0), vec4(0.0)));
+  if (dot(cut, vec4(1.0)) > 0.0)
   {
     // the two colors on each corner's diagonal: top-left D-B, top-right B-F, bottom-right F-H, bottom-left H-D
     vec4 pair = vec4(DistYCbCr(D, B), DistYCbCr(B, F), DistYCbCr(F, H), DistYCbCr(H, D));
-    vec4 dEP = vec4(dED, dEB, dEF, dEH);
-    vec4 dEQ = vec4(dEB, dEF, dEH, dED);
-    // a ramp: one diagonal color lies (almost) on the way from E to the other one
-    vec4 ramp = min((dEP + pair) / max(dEQ, vec4(1e-5)), (dEQ + pair) / max(dEP, vec4(1e-5)));
-    vec4 limit = mix(vec4(XBRZ_DIAG), vec4(XBRZ_DIAG_AA), vec4(lessThanEqual(ramp, vec4(1.15))));
-    // shallow and steep lines (+16, +64) are never blocked
-    vec4 keep = max(vec4(lessThanEqual(pair * 255.0, limit)), vec4(greaterThanEqual(res, vec4(16.0))));
-    // a blocked corner is flagged (+128); the output pass keeps it only when it continues a cut line
-    res += 128.0 * (1.0 - keep) * vec4(greaterThan(mod(res, 4.0), vec4(0.0)));
+    if (XBRZ_DIAG > 0.0)
+    {
+      vec4 dEP = vec4(dED, dEB, dEF, dEH);
+      vec4 dEQ = vec4(dEB, dEF, dEH, dED);
+      // a ramp: one diagonal color lies (almost) on the way from E to the other one
+      vec4 ramp = min((dEP + pair) / max(dEQ, vec4(1e-5)), (dEQ + pair) / max(dEP, vec4(1e-5)));
+      vec4 limit = mix(vec4(XBRZ_DIAG), vec4(XBRZ_DIAG_AA), vec4(lessThanEqual(ramp, vec4(1.15))));
+      // shallow and steep lines (+16, +64) are never blocked
+      vec4 keep = max(vec4(lessThanEqual(pair * 255.0, limit)), vec4(greaterThanEqual(res, vec4(16.0))));
+      // a blocked corner is flagged (+128); the output pass keeps it only when it continues a cut line
+      res += 128.0 * (1.0 - keep) * cut;
+    }
+    if (XBRZ_TIP > 0.0)
+    {
+      // a line tip: E ends a 1-pixel horizontal line (left or right end) or vertical line (top or bottom end)
+      bool eB = eq(E, B), eD = eq(E, D), eF = eq(E, F), eH = eq(E, H);
+      // the stripes on both sides differ from each other too, so outlines (same color on both sides) are left alone
+      bool thinH = !eB && !eH && !eq(B, H), thinV = !eD && !eF && !eq(D, F);
+      if (thinH || thinV)
+      {
+        // the stripes only need to keep a similar color (within 20/255) along their length, so a background
+        // with a slight gradient still counts as one stripe
+        bool nB = alike(E, B), nD = alike(E, D), nF = alike(E, F), nH = alike(E, H);
+        // only inside a stack of parallel stripes: the rows (or columns) on both sides run along the line too
+        // and they all end flush at the same column (or row), like the stripes of a gauge
+        // all three stripes run at least 3 pixels back from the end
+        float endL = (thinH && nF && !eD && alike(B, C) && alike(H, I) && !eq(B, A) && !eq(H, G) && alike(E, P(2., 0.)) && alike(C, P(2., -1.)) && alike(I, P(2., 1.))) ? 1.0 : 0.0;
+        float endR = (thinH && nD && !eF && alike(B, A) && alike(H, G) && !eq(B, C) && !eq(H, I) && alike(E, P(-2., 0.)) && alike(A, P(-2., -1.)) && alike(G, P(-2., 1.))) ? 1.0 : 0.0;
+        float endT = (thinV && nH && !eB && alike(D, G) && alike(F, I) && !eq(D, A) && !eq(F, C) && alike(E, P(0., 2.)) && alike(G, P(-1., 2.)) && alike(I, P(1., 2.))) ? 1.0 : 0.0;
+        float endB = (thinV && nB && !eH && alike(D, A) && alike(F, C) && !eq(D, G) && !eq(F, I) && alike(E, P(0., -2.)) && alike(A, P(-1., -2.)) && alike(C, P(1., -2.))) ? 1.0 : 0.0;
+        vec4 tip = vec4(max(endL, endT), max(endR, endT), max(endR, endB), max(endL, endB));
+        tip *= vec4(greaterThan(pair * 255.0, vec4(XBRZ_TIP)));
+        res *= 1.0 - tip;
+      }
+    }
   }
-  if (XBRZ_TIP > 0.0)
-  {
-    // a line tip: E ends a 1-pixel horizontal line (left or right end) or vertical line (top or bottom end)
-    bool eB = eq(E, B), eD = eq(E, D), eF = eq(E, F), eH = eq(E, H);
-    // the stripes on both sides differ from each other too, so outlines (same color on both sides) are left alone
-    bool thinH = !eB && !eH && !eq(B, H), thinV = !eD && !eF && !eq(D, F);
-    // only inside a stack of parallel stripes: the rows (or columns) on both sides run along the line too
-    // and they all end flush at the same column (or row), like the stripes of a gauge
-    // all three stripes run at least 3 pixels back from the end
-    float endL = (thinH && eF && !eD && eq(B, C) && eq(H, I) && !eq(B, A) && !eq(H, G) && eq(E, P(2., 0.)) && eq(C, P(2., -1.)) && eq(I, P(2., 1.))) ? 1.0 : 0.0;
-    float endR = (thinH && eD && !eF && eq(B, A) && eq(H, G) && !eq(B, C) && !eq(H, I) && eq(E, P(-2., 0.)) && eq(A, P(-2., -1.)) && eq(G, P(-2., 1.))) ? 1.0 : 0.0;
-    float endT = (thinV && eH && !eB && eq(D, G) && eq(F, I) && !eq(D, A) && !eq(F, C) && eq(E, P(0., 2.)) && eq(G, P(-1., 2.)) && eq(I, P(1., 2.))) ? 1.0 : 0.0;
-    float endB = (thinV && eB && !eH && eq(D, A) && eq(F, C) && !eq(D, G) && !eq(F, I) && eq(E, P(0., -2.)) && eq(A, P(-1., -2.)) && eq(C, P(1., -2.))) ? 1.0 : 0.0;
-    vec4 tip = vec4(max(endL, endT), max(endR, endT), max(endR, endB), max(endL, endB));
-    vec4 pairT = vec4(DistYCbCr(D, B), DistYCbCr(B, F), DistYCbCr(F, H), DistYCbCr(H, D)) * 255.0;
-    tip *= vec4(greaterThan(pairT, vec4(XBRZ_TIP)));
-    res *= 1.0 - tip;
-  }
-  if (XBRZ_MINC > 0.0 && XBRZ_MINC_RAMP < 0.5)
-    res *= vec4(greaterThanEqual(contrast, vec4(XBRZ_MINC)));
 
   FRAG_OUT = res / 255.0;
 }
