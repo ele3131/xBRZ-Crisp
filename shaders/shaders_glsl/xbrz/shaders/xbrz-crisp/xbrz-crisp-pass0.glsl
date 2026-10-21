@@ -19,20 +19,18 @@
 // XBRZ_MINC = 0 and XBRZ_DIAG = 0 turn the first two off.
 //#crisp}
 //#plain // xBRZ freescale, multipass: xBRZ at any scale factor, in two passes.
+//#plain //
+//#plain // XBRZ_MINC leaves a corner square when its two colors differ by less than this (x/255, YCbCr
+//#plain // distance), so soft shading and textures keep their pixels. 0 (default) is plain xBRZ; the
+//#plain // xbrz-crisp preset uses 16.
 //
-// Differences from the earlier libretro port, which make it closer to the reference C++ xBRZ
-// and lighter:
-// - blend color ties and the order of the four corners follow the original xBRZ;
-// - the GLSL version uses the input image size (not the texture size) for the output scale;
-// - the second pass reads the original image from the pass before xBRZ, so it also works after
-//   other shaders in a preset;
-// - the first pass makes the blend decisions once per input pixel, so most output pixels only
-//   read two textures;
-// - the equal color tolerance, dominant direction and steep/shallow line thresholds are shader
-//#crisp{
-//   parameters, with defaults 15, 3.8 and 3.2 (reference xBRZ: 30, 3.6 and 2.2).
-//#crisp}
-//#plain //   parameters, with defaults 30, 3.8 and 3.2 (reference xBRZ: 30, 3.6 and 2.2).
+// The first pass makes every blend decision once per input pixel (blend type, line type, blend
+// color and the minimum contrast), so the second pass, which runs once per output pixel, only
+// reads two textures where no corner is cut. Blend color ties and the order of the four corners
+// follow the reference C++ xBRZ, and the second pass reads the image from the pass before xBRZ,
+// so it also works after other shaders in a preset.
+// Defaults: equal color tolerance 15, dominant direction 3.8, steep/shallow line 3.2
+// (reference xBRZ: 30, 3.6 and 2.2).
 /*
    Hyllian's xBR-vertex code and texel mapping
    Copyright (C) 2011/2016 Hyllian - sergiogdb@gmail.com
@@ -74,11 +72,11 @@
 //#crisp}
 //#plain // Pass 0 of xbrz-freescale-multipass (OpenGL / GLES)
 #pragma parameter XBRZ_TOL "xBRZ: equal color tolerance (x/255)" 15 1 80 1
-//#plain-default XBRZ_TOL 30
 #pragma parameter XBRZ_DOM "xBRZ: dominant direction threshold" 3.8 1 8 0.05
 #pragma parameter XBRZ_STEEP "xBRZ: steep/shallow line threshold" 3.2 1 6 0.1
+#pragma parameter XBRZ_MINC "xBRZ: minimum contrast to round a corner (x/255, 0 = off)" 16 0 80 2
+//#plain-default XBRZ_MINC 0
 //#crisp{
-#pragma parameter XBRZ_MINC "xBRZ crisp: minimum contrast to round a corner (x/255)" 16 0 80 2
 #pragma parameter XBRZ_DIAG "xBRZ crisp: max color distance on the diagonal (0 = off)" 100 0 160 4
 //#crisp}
 
@@ -148,16 +146,16 @@ COMPAT_VARYING vec4 TEX0;
 uniform COMPAT_PRECISION float XBRZ_TOL;
 uniform COMPAT_PRECISION float XBRZ_DOM;
 uniform COMPAT_PRECISION float XBRZ_STEEP;
-//#crisp{
 uniform COMPAT_PRECISION float XBRZ_MINC;
+//#crisp{
 uniform COMPAT_PRECISION float XBRZ_DIAG;
 //#crisp}
 #else
 #define XBRZ_TOL 15.0
 #define XBRZ_DOM 3.8
 #define XBRZ_STEEP 3.2
-//#crisp{
 #define XBRZ_MINC 16.0
+//#crisp{
 #define XBRZ_DIAG 100.0
 //#crisp}
 #endif
@@ -209,13 +207,7 @@ bool IsPixEqual(vec3 pixA, vec3 pixB)
 vec4 crispRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 G, vec3 H, vec3 I,
                 float dEB, float dED, float dEF, float dEH)
 {
-  // minimum contrast: a corner below XBRZ_MINC is cleared first, so the rules below only run on pixels
-  // that still have a corner to cut
-  if (XBRZ_MINC > 0.0)
-  {
-    vec4 contrast = vec4(min(dED, dEB), min(dEB, dEF), min(dEF, dEH), min(dEH, dED)) * 255.0;
-    res *= vec4(greaterThanEqual(contrast, vec4(XBRZ_MINC)));
-  }
+  // only pixels that still have a corner to cut
   vec4 cut = vec4(greaterThan(mod(res, 4.0), vec4(0.0)));
   if (dot(cut, vec4(1.0)) <= 0.0)
     return res;
@@ -422,6 +414,13 @@ void main()
   float dEH = DistYCbCr(E, H);
   vec4 second = vec4(dED <= dEB ? 0.0 : 1.0, dEB <= dEF ? 0.0 : 1.0, dEF <= dEH ? 0.0 : 1.0, dEH <= dED ? 0.0 : 1.0);
   res += 8.0 * second;
+  // minimum contrast: a corner whose two colors (the pixel and its closer blend candidate) differ by
+  // less than XBRZ_MINC stays square
+  if (XBRZ_MINC > 0.0)
+  {
+    vec4 contrast = vec4(min(dED, dEB), min(dEB, dEF), min(dEF, dEH), min(dEH, dED)) * 255.0;
+    res *= vec4(greaterThanEqual(contrast, vec4(XBRZ_MINC)));
+  }
 //#crisp{
   res = crispRules(res, coord, A, B, C, D, E, F, G, H, I, dEB, dED, dEF, dEH);
 //#crisp}

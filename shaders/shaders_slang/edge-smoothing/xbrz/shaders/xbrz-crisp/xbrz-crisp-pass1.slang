@@ -20,20 +20,18 @@
 // XBRZ_MINC = 0 and XBRZ_DIAG = 0 turn the first two off.
 //#crisp}
 //#plain // xBRZ freescale, multipass: xBRZ at any scale factor, in two passes.
+//#plain //
+//#plain // XBRZ_MINC leaves a corner square when its two colors differ by less than this (x/255, YCbCr
+//#plain // distance), so soft shading and textures keep their pixels. 0 (default) is plain xBRZ; the
+//#plain // xbrz-crisp preset uses 16.
 //
-// Differences from the earlier libretro port, which make it closer to the reference C++ xBRZ
-// and lighter:
-// - blend color ties and the order of the four corners follow the original xBRZ;
-// - the GLSL version uses the input image size (not the texture size) for the output scale;
-// - the second pass reads the original image from the pass before xBRZ, so it also works after
-//   other shaders in a preset;
-// - the first pass makes the blend decisions once per input pixel, so most output pixels only
-//   read two textures;
-// - the equal color tolerance, dominant direction and steep/shallow line thresholds are shader
-//#crisp{
-//   parameters, with defaults 15, 3.8 and 3.2 (reference xBRZ: 30, 3.6 and 2.2).
-//#crisp}
-//#plain //   parameters, with defaults 30, 3.8 and 3.2 (reference xBRZ: 30, 3.6 and 2.2).
+// The first pass makes every blend decision once per input pixel (blend type, line type, blend
+// color and the minimum contrast), so the second pass, which runs once per output pixel, only
+// reads two textures where no corner is cut. Blend color ties and the order of the four corners
+// follow the reference C++ xBRZ, and the second pass reads the image from the pass before xBRZ,
+// so it also works after other shaders in a preset.
+// Defaults: equal color tolerance 15, dominant direction 3.8, steep/shallow line 3.2
+// (reference xBRZ: 30, 3.6 and 2.2).
 /*
    Hyllian's xBR-vertex code and texel mapping
    Copyright (C) 2011/2016 Hyllian - sergiogdb@gmail.com
