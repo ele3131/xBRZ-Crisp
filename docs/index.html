@@ -218,11 +218,10 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
       <thead><tr><th>Parameter</th><th>Default</th><th>What it does</th></tr></thead>
       <tbody>
         <tr><td class="mono">XBRZ_MINC</td><td class="num">16</td><td>Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off (the tolerance and steep thresholds below still apply).</td></tr>
-        <tr><td class="mono">XBRZ_MINC_RAMP</td><td class="num">0</td><td>Width of a soft transition around the threshold, so corners shrink gradually instead of switching at once. 0 is a hard cut.</td></tr>
+        <tr><td class="mono">XBRZ_DIAG</td><td class="num">100</td><td>Maximum color distance (x/255) between the two colors a cut would join. Above it, the corner stays square. 0 turns it off.</td></tr>
         <tr><td class="mono">XBRZ_TOL</td><td class="num">15</td><td>Equal color tolerance. Stock xBRZ uses 30.</td></tr>
         <tr><td class="mono">XBRZ_STEEP</td><td class="num">3.2</td><td>Steep and shallow line threshold. Stock xBRZ uses 2.2, which turns 1-pixel steps into slopes; 3.2 keeps letters and 1-pixel details closer to the original.</td></tr>
         <tr><td class="mono">XBRZ_DOM</td><td class="num">3.8</td><td>Dominant direction threshold. Stock xBRZ uses 3.6; 3.8 keeps small corners close to square instead of cutting them into long tips.</td></tr>
-        <tr><td class="mono">XBRZ_LUMA</td><td class="num">1.0</td><td>Weight of brightness against color in the comparisons.</td></tr>
       </tbody>
     </table>
   </div>
@@ -230,8 +229,8 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
   <section class="prose">
     <h2>How it works</h2>
     <p>xBRZ decides corner by corner whether to cut a pixel's corner with a neighbor's color. xBRZ crisp keeps that decision and adds one check before drawing: if the pixel and the blend color are closer than the minimum contrast (YCbCr distance), the corner stays square. Edge detection is unchanged, so shapes are found exactly as before, and only the low-contrast blends are skipped.</p>
-    <p>Since 1.4 there is a second check: a cut joins the two neighbors on the corner's diagonal, and if those two colors differ by more than <code>XBRZ_DIAG</code> (100), the corner is a junction of different colors and stays square. Antialiasing ramps use <code>XBRZ_DIAG_AA</code> (92), corners on shallow or steep lines are never blocked, and a blocked corner is still cut when the next corner along the same diagonal is cut, so lines are drawn to the end. Where stacked 1-pixel stripes end flush, as in health bars, the end corners stay square (<code>XBRZ_TIP</code>, 64), so every stripe ends the same way. The idea comes from <a href="https://github.com/libretro/slang-shaders/tree/master/edge-smoothing/cleanEdge">cleanEdge</a> by torcado.</p>
-    <p>The shader is based on the libretro <code>xbrz-freescale-multipass</code> port. A few details were aligned with the reference C++ xBRZ: blend color ties and the order of the four corners follow the original, and the GLSL version takes the output scale from the image size instead of the texture size.</p>
+    <p>Since 1.4 there is a second check: a cut joins the two neighbors on the corner's diagonal, and if those two colors differ by more than <code>XBRZ_DIAG</code> (100), the corner is a junction of different colors and stays square. Antialiasing ramps, where one of the two colors sits between the pixel and the other one, use a limit of 92, corners on shallow or steep lines are never blocked, and a blocked corner is still cut when the next corner along the same diagonal is cut, so lines are drawn to the end. Where stacked 1-pixel stripes end flush, as in health bars, the end corners stay square when their diagonal colors differ by more than 64, so every stripe ends the same way. The idea comes from <a href="https://github.com/libretro/slang-shaders/tree/master/edge-smoothing/cleanEdge">cleanEdge</a> by torcado.</p>
+    <p>The shader is based on the libretro <code>xbrz-freescale-multipass</code> port. A few details were aligned with the reference C++ xBRZ: blend color ties and the order of the four corners follow the original, the GLSL version takes the output scale from the image size instead of the texture size, and the output pass reads the image from the pass before xBRZ, so it also works after other shaders in a preset.</p>
   </section>
 
   <section class="prose">

@@ -1,28 +1,39 @@
+//#crisp{
+// xBRZ crisp: xBRZ freescale that only rounds corners between clearly different colors.
+//
+// The xBRZ part is xbrz-freescale-multipass. The crisp rules sit between //#crisp{ and //#crisp}
+// markers; tools/make-multipass.py removes them (and turns the //#plain lines on) to write that shader.
+//
+// - Minimum contrast: a corner whose two colors differ by less than XBRZ_MINC (x/255, YCbCr
+//   distance) is left square, so low-contrast shading, dithering and textures (grass, foliage,
+//   stone) keep their pixel detail, while outlines, text and sprites are smoothed as in xBRZ.
+// - Diagonal: a corner is left square when the two colors on its diagonal (the colors the cut
+//   would join) differ by more than XBRZ_DIAG, so a junction of three different colors is not
+//   pulled into a fake diagonal (an idea from torcado's cleanEdge, MIT license). Antialiasing
+//   ramps, where one of those colors sits between the pixel and the other one, use 92 instead,
+//   shallow and steep lines are never blocked, and a blocked corner is still cut when a neighbour
+//   on the same diagonal is cut, so lines are drawn to the end.
+// - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
+//   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
+//   so every stripe ends the same way.
+// XBRZ_MINC = 0 and XBRZ_DIAG = 0 turn the first two off.
+//#crisp}
+//#plain // xBRZ freescale, multipass: xBRZ at any scale factor, in two passes.
+//
+// Differences from the earlier libretro port, which make it closer to the reference C++ xBRZ
+// and lighter:
+// - blend color ties and the order of the four corners follow the original xBRZ;
+// - the GLSL version uses the input image size (not the texture size) for the output scale;
+// - the second pass reads the original image from the pass before xBRZ, so it also works after
+//   other shaders in a preset;
+// - the first pass makes the blend decisions once per input pixel, so most output pixels only
+//   read two textures;
+// - the equal color tolerance, dominant direction and steep/shallow line thresholds are shader
+//#crisp{
+//   parameters, with defaults 15, 3.8 and 3.2 (reference xBRZ: 30, 3.6 and 2.2).
+//#crisp}
+//#plain //   parameters, with defaults 30, 3.8 and 3.2 (reference xBRZ: 30, 3.6 and 2.2).
 /*
-   xBRZ crisp: xBRZ freescale that only rounds corners between clearly different colors.
-
-   A corner whose two colors differ by less than XBRZ_MINC (x/255, YCbCr distance) is left
-   square, so low-contrast shading, dithering and textures (grass, foliage, stone) keep their
-   pixel detail instead of melting into blobs, while outlines, text and sprites are smoothed
-   exactly as in xBRZ. XBRZ_MINC = 0 gives plain xBRZ with the thresholds below.
-
-   A corner is also left square when the two colors on its diagonal (the colors the cut would
-   join) differ by more than XBRZ_DIAG, so a junction of three different colors is not pulled
-   into a fake diagonal (an idea from torcado's cleanEdge, MIT license). Antialiasing ramps, where
-   one of those colors sits between the pixel and the other one, use XBRZ_DIAG_AA instead,
-   shallow and steep lines are never blocked, and a blocked corner is still cut when a neighbour
-   on the same diagonal is cut, so lines are drawn to the end. XBRZ_DIAG = 0 turns this off.
-   Where a stack of 1-pixel stripes of different colors ends flush, like the bars of a gauge, the
-   end corners stay square when their diagonal colors differ by more than XBRZ_TIP, so every
-   stripe ends the same way. XBRZ_TIP = 0 turns this off.
-   Defaults: equal color tolerance 15 and steep/shallow line threshold 3.2 (stock xBRZ: 30 and 2.2).
-
-   Based on "xbrz-freescale-multipass" from libretro glsl-shaders / slang-shaders, with these
-   differences from that port so it matches the reference C++ xBRZ more closely:
-   - blend color ties and the corner order follow the original xBRZ;
-   - the GLSL pass uses the input image size (not the texture size) for the output scale;
-   - the thresholds are runtime parameters.
-
    Hyllian's xBR-vertex code and texel mapping
    Copyright (C) 2011/2016 Hyllian - sergiogdb@gmail.com
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -58,16 +69,18 @@
 // * do so, delete this exception statement from your version.                *
 // ****************************************************************************
 
+//#crisp{
 // Pass 0 of xbrz-crisp (OpenGL / GLES)
+//#crisp}
+//#plain // Pass 0 of xbrz-freescale-multipass (OpenGL / GLES)
 #pragma parameter XBRZ_TOL "xBRZ: equal color tolerance (x/255)" 15 1 80 1
+//#plain-default XBRZ_TOL 30
 #pragma parameter XBRZ_DOM "xBRZ: dominant direction threshold" 3.8 1 8 0.05
 #pragma parameter XBRZ_STEEP "xBRZ: steep/shallow line threshold" 3.2 1 6 0.1
-#pragma parameter XBRZ_LUMA "xBRZ: luminance weight" 1 0.5 3 0.1
+//#crisp{
 #pragma parameter XBRZ_MINC "xBRZ crisp: minimum contrast to round a corner (x/255)" 16 0 80 2
-#pragma parameter XBRZ_MINC_RAMP "xBRZ crisp: soft transition width (0 = hard cut)" 0 0 64 2
 #pragma parameter XBRZ_DIAG "xBRZ crisp: max color distance on the diagonal (0 = off)" 100 0 160 4
-#pragma parameter XBRZ_DIAG_AA "xBRZ crisp: same limit for antialiasing ramps" 92 0 160 4
-#pragma parameter XBRZ_TIP "xBRZ crisp: square stripe ends above this distance (0 = off)" 64 0 160 4
+//#crisp}
 
 #if defined(VERTEX)
 
@@ -135,22 +148,18 @@ COMPAT_VARYING vec4 TEX0;
 uniform COMPAT_PRECISION float XBRZ_TOL;
 uniform COMPAT_PRECISION float XBRZ_DOM;
 uniform COMPAT_PRECISION float XBRZ_STEEP;
-uniform COMPAT_PRECISION float XBRZ_LUMA;
+//#crisp{
 uniform COMPAT_PRECISION float XBRZ_MINC;
-uniform COMPAT_PRECISION float XBRZ_MINC_RAMP;
 uniform COMPAT_PRECISION float XBRZ_DIAG;
-uniform COMPAT_PRECISION float XBRZ_DIAG_AA;
-uniform COMPAT_PRECISION float XBRZ_TIP;
+//#crisp}
 #else
 #define XBRZ_TOL 15.0
 #define XBRZ_DOM 3.8
 #define XBRZ_STEEP 3.2
-#define XBRZ_LUMA 1.0
+//#crisp{
 #define XBRZ_MINC 16.0
-#define XBRZ_MINC_RAMP 0.0
 #define XBRZ_DIAG 100.0
-#define XBRZ_DIAG_AA 92.0
-#define XBRZ_TIP 64.0
+//#crisp}
 #endif
 
 #define SRC_SIZE vec4(TextureSize, 1.0 / TextureSize)
@@ -179,7 +188,7 @@ float DistYCbCr(vec3 pixA, vec3 pixB)
   float Y = dot(diff.rgb, w);
   float Cb = scaleB * (diff.b - Y);
   float Cr = scaleR * (diff.r - Y);
-  return sqrt(((XBRZ_LUMA * Y) * (XBRZ_LUMA * Y)) + (Cb * Cb) + (Cr * Cr));
+  return sqrt((Y * Y) + (Cb * Cb) + (Cr * Cr));
 }
 
 bool IsPixEqual(vec3 pixA, vec3 pixB)
@@ -189,7 +198,68 @@ bool IsPixEqual(vec3 pixA, vec3 pixB)
 
 #define eq(a,b)  (a == b)
 #define neq(a,b) (a != b)
+
+//#crisp{
+// ---- xBRZ crisp rules ----
+#define XBRZ_DIAG_AA 92.0   // diagonal limit for antialiasing ramps
+#define XBRZ_TIP 64.0       // stripe ends stay square above this diagonal distance
 #define alike(a,b) (DistYCbCr(a, b) * 255.0 <= 20.0)
+
+// res holds the xBRZ decisions of the four corners (blend type +4 line +8 second color +16 shallow +64 steep)
+vec4 crispRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 G, vec3 H, vec3 I,
+                float dEB, float dED, float dEF, float dEH)
+{
+  // minimum contrast: a corner below XBRZ_MINC is cleared first, so the rules below only run on pixels
+  // that still have a corner to cut
+  if (XBRZ_MINC > 0.0)
+  {
+    vec4 contrast = vec4(min(dED, dEB), min(dEB, dEF), min(dEF, dEH), min(dEH, dED)) * 255.0;
+    res *= vec4(greaterThanEqual(contrast, vec4(XBRZ_MINC)));
+  }
+  vec4 cut = vec4(greaterThan(mod(res, 4.0), vec4(0.0)));
+  if (dot(cut, vec4(1.0)) <= 0.0)
+    return res;
+
+  // the two colors on each corner's diagonal: top-left D-B, top-right B-F, bottom-right F-H, bottom-left H-D
+  vec4 pair = vec4(DistYCbCr(D, B), DistYCbCr(B, F), DistYCbCr(F, H), DistYCbCr(H, D));
+
+  // diagonal
+  if (XBRZ_DIAG > 0.0)
+  {
+    vec4 dEP = vec4(dED, dEB, dEF, dEH);
+    vec4 dEQ = vec4(dEB, dEF, dEH, dED);
+    // a ramp: one diagonal color lies (almost) on the way from E to the other one
+    vec4 ramp = min((dEP + pair) / max(dEQ, vec4(1e-5)), (dEQ + pair) / max(dEP, vec4(1e-5)));
+    vec4 limit = mix(vec4(XBRZ_DIAG), vec4(XBRZ_DIAG_AA), vec4(lessThanEqual(ramp, vec4(1.15))));
+    // shallow and steep lines (+16, +64) are never blocked
+    vec4 keep = max(vec4(lessThanEqual(pair * 255.0, limit)), vec4(greaterThanEqual(res, vec4(16.0))));
+    // a blocked corner is flagged (+128); the output pass keeps it only when it continues a cut line
+    res += 128.0 * (1.0 - keep) * cut;
+  }
+
+  // stripe ends: E ends a 1-pixel horizontal line (left or right end) or vertical line (top or bottom end)
+  bool eB = eq(E, B), eD = eq(E, D), eF = eq(E, F), eH = eq(E, H);
+  // the stripes on both sides differ from each other too, so outlines (same color on both sides) are left alone
+  bool thinH = !eB && !eH && !eq(B, H), thinV = !eD && !eF && !eq(D, F);
+  if (thinH || thinV)
+  {
+    // the stripes only need to keep a similar color (within 20/255) along their length, so a background
+    // with a slight gradient still counts as one stripe
+    bool nB = alike(E, B), nD = alike(E, D), nF = alike(E, F), nH = alike(E, H);
+    // only inside a stack of parallel stripes: the rows (or columns) on both sides run along the line too
+    // and they all end flush at the same column (or row), like the stripes of a gauge
+    // all three stripes run at least 3 pixels back from the end
+    float endL = (thinH && nF && !eD && alike(B, C) && alike(H, I) && !eq(B, A) && !eq(H, G) && alike(E, P(2., 0.)) && alike(C, P(2., -1.)) && alike(I, P(2., 1.))) ? 1.0 : 0.0;
+    float endR = (thinH && nD && !eF && alike(B, A) && alike(H, G) && !eq(B, C) && !eq(H, I) && alike(E, P(-2., 0.)) && alike(A, P(-2., -1.)) && alike(G, P(-2., 1.))) ? 1.0 : 0.0;
+    float endT = (thinV && nH && !eB && alike(D, G) && alike(F, I) && !eq(D, A) && !eq(F, C) && alike(E, P(0., 2.)) && alike(G, P(-1., 2.)) && alike(I, P(1., 2.))) ? 1.0 : 0.0;
+    float endB = (thinV && nB && !eH && alike(D, A) && alike(F, C) && !eq(D, G) && !eq(F, I) && alike(E, P(0., -2.)) && alike(A, P(-1., -2.)) && alike(C, P(1., -2.))) ? 1.0 : 0.0;
+    vec4 tip = vec4(max(endL, endT), max(endR, endT), max(endR, endB), max(endL, endB));
+    tip *= vec4(greaterThan(pair * 255.0, vec4(XBRZ_TIP)));
+    res *= 1.0 - tip;
+  }
+  return res;
+}
+//#crisp}
 
 void main()
 {
@@ -351,53 +421,10 @@ void main()
   float dEF = DistYCbCr(E, F);
   float dEH = DistYCbCr(E, H);
   vec4 second = vec4(dED <= dEB ? 0.0 : 1.0, dEB <= dEF ? 0.0 : 1.0, dEF <= dEH ? 0.0 : 1.0, dEH <= dED ? 0.0 : 1.0);
-  vec4 contrast = vec4(min(dED, dEB), min(dEB, dEF), min(dEF, dEH), min(dEH, dED)) * 255.0;
   res += 8.0 * second;
-  // with a hard minimum contrast a corner below XBRZ_MINC is cleared first, so the checks below only run
-  // on pixels that still have a corner to cut
-  if (XBRZ_MINC > 0.0 && XBRZ_MINC_RAMP < 0.5)
-    res *= vec4(greaterThanEqual(contrast, vec4(XBRZ_MINC)));
-  vec4 cut = vec4(greaterThan(mod(res, 4.0), vec4(0.0)));
-  if (dot(cut, vec4(1.0)) > 0.0)
-  {
-    // the two colors on each corner's diagonal: top-left D-B, top-right B-F, bottom-right F-H, bottom-left H-D
-    vec4 pair = vec4(DistYCbCr(D, B), DistYCbCr(B, F), DistYCbCr(F, H), DistYCbCr(H, D));
-    if (XBRZ_DIAG > 0.0)
-    {
-      vec4 dEP = vec4(dED, dEB, dEF, dEH);
-      vec4 dEQ = vec4(dEB, dEF, dEH, dED);
-      // a ramp: one diagonal color lies (almost) on the way from E to the other one
-      vec4 ramp = min((dEP + pair) / max(dEQ, vec4(1e-5)), (dEQ + pair) / max(dEP, vec4(1e-5)));
-      vec4 limit = mix(vec4(XBRZ_DIAG), vec4(XBRZ_DIAG_AA), vec4(lessThanEqual(ramp, vec4(1.15))));
-      // shallow and steep lines (+16, +64) are never blocked
-      vec4 keep = max(vec4(lessThanEqual(pair * 255.0, limit)), vec4(greaterThanEqual(res, vec4(16.0))));
-      // a blocked corner is flagged (+128); the output pass keeps it only when it continues a cut line
-      res += 128.0 * (1.0 - keep) * cut;
-    }
-    if (XBRZ_TIP > 0.0)
-    {
-      // a line tip: E ends a 1-pixel horizontal line (left or right end) or vertical line (top or bottom end)
-      bool eB = eq(E, B), eD = eq(E, D), eF = eq(E, F), eH = eq(E, H);
-      // the stripes on both sides differ from each other too, so outlines (same color on both sides) are left alone
-      bool thinH = !eB && !eH && !eq(B, H), thinV = !eD && !eF && !eq(D, F);
-      if (thinH || thinV)
-      {
-        // the stripes only need to keep a similar color (within 20/255) along their length, so a background
-        // with a slight gradient still counts as one stripe
-        bool nB = alike(E, B), nD = alike(E, D), nF = alike(E, F), nH = alike(E, H);
-        // only inside a stack of parallel stripes: the rows (or columns) on both sides run along the line too
-        // and they all end flush at the same column (or row), like the stripes of a gauge
-        // all three stripes run at least 3 pixels back from the end
-        float endL = (thinH && nF && !eD && alike(B, C) && alike(H, I) && !eq(B, A) && !eq(H, G) && alike(E, P(2., 0.)) && alike(C, P(2., -1.)) && alike(I, P(2., 1.))) ? 1.0 : 0.0;
-        float endR = (thinH && nD && !eF && alike(B, A) && alike(H, G) && !eq(B, C) && !eq(H, I) && alike(E, P(-2., 0.)) && alike(A, P(-2., -1.)) && alike(G, P(-2., 1.))) ? 1.0 : 0.0;
-        float endT = (thinV && nH && !eB && alike(D, G) && alike(F, I) && !eq(D, A) && !eq(F, C) && alike(E, P(0., 2.)) && alike(G, P(-1., 2.)) && alike(I, P(1., 2.))) ? 1.0 : 0.0;
-        float endB = (thinV && nB && !eH && alike(D, A) && alike(F, C) && !eq(D, G) && !eq(F, I) && alike(E, P(0., -2.)) && alike(A, P(-1., -2.)) && alike(C, P(1., -2.))) ? 1.0 : 0.0;
-        vec4 tip = vec4(max(endL, endT), max(endR, endT), max(endR, endB), max(endL, endB));
-        tip *= vec4(greaterThan(pair * 255.0, vec4(XBRZ_TIP)));
-        res *= 1.0 - tip;
-      }
-    }
-  }
+//#crisp{
+  res = crispRules(res, coord, A, B, C, D, E, F, G, H, I, dEB, dED, dEF, dEH);
+//#crisp}
 
   FRAG_OUT = res / 255.0;
 }
