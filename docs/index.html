@@ -68,8 +68,12 @@ select {
   position: absolute; inset: 0; width: 100%; height: 100%; display: block; max-width: none;
   image-rendering: pixelated; image-rendering: crisp-edges; user-select: none; -webkit-user-drag: none;
 }
-.stage img.mask { pointer-events: none; }
-.stage img[hidden] { display: none; }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; image-rendering: pixelated; }
+.stage canvas[hidden] { display: none; }
+.sides { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.side { display: grid; gap: 10px; align-content: start; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); min-width: 0; }
+.side h2 { font-size: 1rem; }
+.side .minc[hidden] { display: none; }
 .checkrow { display: flex; align-items: center; gap: 8px; min-height: 36px; font-size: .95rem; }
 .checkrow input { width: 20px; height: 20px; margin: 0; accent-color: var(--accent); }
 .overlay { position: absolute; inset: 0; pointer-events: none; }
@@ -109,19 +113,44 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
     <label class="group" for="scene"><span>Scene</span>
       <select id="scene"></select>
     </label>
-    <div class="group"><span>Left</span>
-      <div class="seg" id="left" role="group" aria-label="Left image">
-        <button type="button" data-v="xbrz">xBRZ</button>
+  </section>
+
+  <section class="sides" aria-label="Images to compare">
+    <div class="side" data-side="left">
+      <h2>Left</h2>
+      <div class="seg alg" role="group" aria-label="Left algorithm">
         <button type="button" data-v="original">Integer scaling</button>
+        <button type="button" data-v="xbrz">xBRZ</button>
         <button type="button" data-v="mmpx">MMPX Advanced</button>
+        <button type="button" data-v="crisp">xBRZ Crisp</button>
+      </div>
+      <div class="group minc"><span>Crisp contrast</span>
+        <div class="seg" role="group" aria-label="Left crisp contrast">
+          <button type="button" data-v="12">12</button>
+          <button type="button" data-v="16">16 (default)</button>
+          <button type="button" data-v="24">24</button>
+        </div>
       </div>
     </div>
-    <div class="group"><span>Right</span>
-      <div class="seg" id="right" role="group" aria-label="Right image">
-        <button type="button" data-v="crisp12">crisp 12</button>
-        <button type="button" data-v="crisp24">crisp 24 (default)</button>
+    <div class="side" data-side="right">
+      <h2>Right</h2>
+      <div class="seg alg" role="group" aria-label="Right algorithm">
+        <button type="button" data-v="original">Integer scaling</button>
+        <button type="button" data-v="xbrz">xBRZ</button>
+        <button type="button" data-v="mmpx">MMPX Advanced</button>
+        <button type="button" data-v="crisp">xBRZ Crisp</button>
+      </div>
+      <div class="group minc"><span>Crisp contrast</span>
+        <div class="seg" role="group" aria-label="Right crisp contrast">
+          <button type="button" data-v="12">12</button>
+          <button type="button" data-v="16">16 (default)</button>
+          <button type="button" data-v="24">24</button>
+        </div>
       </div>
     </div>
+  </section>
+
+  <section class="controls" aria-label="View">
     <div class="group"><span>Zoom</span>
       <div class="seg" id="zoom" role="group" aria-label="Zoom">
         <button type="button" data-v="1">1×</button>
@@ -129,8 +158,8 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
         <button type="button" data-v="3">3×</button>
       </div>
     </div>
-    <label class="group" for="marks"><span>Changes</span>
-      <span class="checkrow"><input type="checkbox" id="marks"> Mark what crisp changes</span>
+    <label class="group" for="marks"><span>Differences</span>
+      <span class="checkrow"><input type="checkbox" id="marks"> Mark differences</span>
     </label>
   </section>
 
@@ -139,7 +168,7 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
       <div class="stage" id="stage">
         <img id="imgL" alt="">
         <img id="imgR" alt="">
-        <img id="imgM" alt="" class="mask" hidden>
+        <canvas id="cvM" hidden></canvas>
       </div>
     </div>
     <div class="overlay">
@@ -149,18 +178,19 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
       <span class="tag right" id="tagR"></span>
     </div>
   </div>
-  <p class="hint">Tip: at 2× and 3× the view scrolls; the line stays where you put it. Arrow keys move the line when it has focus. "Mark what crisp changes" outlines in red every spot where the crisp image differs from xBRZ.</p>
+  <p class="hint" id="info">Tip: at 2× and 3× the view scrolls; the line stays where you put it. Arrow keys move the line when it has focus. "Mark differences" outlines in red every spot where the two sides differ.</p>
 
   <section class="prose">
     <h2>Presets</h2>
-    <p>There is one preset, <code>xbrz-crisp</code>, with a minimum contrast of 24, which keeps the textures closest to the original art. To change it, set <code>XBRZ_MINC</code> in Quick Menu › Shaders › Shader Parameters and save the preset. The cost is the same as <code>xbrz-freescale-multipass</code> at any value. Good steps:</p>
+    <p>There is one preset, <code>xbrz-crisp</code>, with a minimum contrast of 16, a balance between xBRZ smoothness and the original pixels. To change it, set <code>XBRZ_MINC</code> in Quick Menu › Shaders › Shader Parameters and save the preset. The cost is the same as <code>xbrz-freescale-multipass</code> at any value. Good steps:</p>
   </section>
   <div class="tablebox">
     <table>
       <thead><tr><th>XBRZ_MINC</th><th>Look</th></tr></thead>
       <tbody>
         <tr><td class="num">12</td><td>Closest to xBRZ, with a light gain in detail. Only the softest shading and textures keep their pixels.</td></tr>
-        <tr><td class="num">24 (default)</td><td>More texture detail in grass and foliage, closer to the original art. Some soft diagonals turn into steps.</td></tr>
+        <tr><td class="num">16 (default)</td><td>Textures and soft shading keep their pixels, while outlines, faces and text are smoothed as in xBRZ.</td></tr>
+        <tr><td class="num">24</td><td>More texture detail in grass and foliage, closer to the original art. Some soft diagonals turn into steps.</td></tr>
       </tbody>
     </table>
   </div>
@@ -173,11 +203,11 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
     <table>
       <thead><tr><th>Parameter</th><th>Default</th><th>What it does</th></tr></thead>
       <tbody>
-        <tr><td class="mono">XBRZ_MINC</td><td class="num">24</td><td>Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off (the tolerance and steep thresholds below still apply).</td></tr>
+        <tr><td class="mono">XBRZ_MINC</td><td class="num">16</td><td>Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off (the tolerance and steep thresholds below still apply).</td></tr>
         <tr><td class="mono">XBRZ_MINC_RAMP</td><td class="num">0</td><td>Width of a soft transition around the threshold, so corners shrink gradually instead of switching at once. 0 is a hard cut.</td></tr>
         <tr><td class="mono">XBRZ_TOL</td><td class="num">15</td><td>Equal color tolerance. Stock xBRZ uses 30.</td></tr>
         <tr><td class="mono">XBRZ_STEEP</td><td class="num">3.2</td><td>Steep and shallow line threshold. Stock xBRZ uses 2.2, which turns 1-pixel steps into slopes; 3.2 keeps letters and 1-pixel details closer to the original.</td></tr>
-        <tr><td class="mono">XBRZ_DOM</td><td class="num">3.75</td><td>Dominant direction threshold.</td></tr>
+        <tr><td class="mono">XBRZ_DOM</td><td class="num">3.75</td><td>Dominant direction threshold. Stock xBRZ uses 3.6; 3.75 cuts fewer curve tips.</td></tr>
         <tr><td class="mono">XBRZ_LUMA</td><td class="num">1.0</td><td>Weight of brightness against color in the comparisons.</td></tr>
       </tbody>
     </table>
@@ -213,38 +243,93 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
     ["mc_kiosk", "The Minish Cap · temple"],
     ["hpa_house", "Harry Potter: Prisoner of Azkaban · house"]
   ];
-  var LABEL = { xbrz: "xBRZ freescale", original: "Integer scaling", mmpx: "MMPX Advanced", crisp12: "xBRZ crisp 12", crisp24: "xBRZ crisp 24" };
-  var state = { scene: "gs_village", left: "xbrz", right: "crisp12", zoom: 1, pos: 0.5, marks: false };
+  var NAME = { original: "Integer scaling", xbrz: "xBRZ freescale", mmpx: "MMPX Advanced", crisp: "xBRZ Crisp" };
+  var state = { scene: "gs_village", left: { alg: "xbrz", minc: 16 }, right: { alg: "crisp", minc: 16 }, zoom: 1, pos: 0.5, marks: false };
 
   var $ = function (id) { return document.getElementById(id); };
-  var sel = $("scene"), frame = $("frame"), stage = $("stage"), imgL = $("imgL"), imgR = $("imgR"), imgM = $("imgM"), marks = $("marks");
+  var sel = $("scene"), frame = $("frame"), stage = $("stage"), imgL = $("imgL"), imgR = $("imgR"), cv = $("cvM"), marks = $("marks"), info = $("info");
   var divider = $("divider"), handle = $("handle"), tagL = $("tagL"), tagR = $("tagR");
+  var HINT = info.textContent;
 
   SCENES.forEach(function (s) { var o = document.createElement("option"); o.value = s[0]; o.textContent = s[1]; sel.appendChild(o); });
   var fromHash = (location.hash || "").slice(1);
   if (SCENES.some(function (s) { return s[0] === fromHash; })) state.scene = fromHash;
 
-  function src(scene, v) { return "img/" + scene + "-" + v + (v === "original" ? ".png" : ".webp"); }
+  function key(side) { return side.alg === "crisp" ? "crisp" + side.minc : side.alg; }
+  function label(side) { return side.alg === "crisp" ? NAME.crisp + " " + side.minc : NAME[side.alg]; }
+  function src(scene, k) { return "img/" + scene + "-" + k + ".png"; }
 
-  // preload the current scene's five images so switching sides is instant
-  function preload(scene) { ["original", "xbrz", "mmpx", "crisp12", "crisp24"].forEach(function (v) { var i = new Image(); i.src = src(scene, v); }); }
+  // preload the current scene's six images so switching sides is instant
+  function preload(scene) { ["original", "xbrz", "mmpx", "crisp12", "crisp16", "crisp24"].forEach(function (k) { var i = new Image(); i.src = src(scene, k); }); }
 
-  function setPressed(groupId, value) {
-    Array.prototype.forEach.call($(groupId).querySelectorAll("button"), function (b) { b.setAttribute("aria-pressed", String(b.dataset.v === String(value))); });
+  function setPressed(group, value) {
+    Array.prototype.forEach.call(group.querySelectorAll("button"), function (b) { b.setAttribute("aria-pressed", String(b.dataset.v === String(value))); });
   }
+
+  // pixels of each image at the 6x size (integer scaling is enlarged with nearest neighbour)
+  var cache = {};
+  function pixels(url, cb) {
+    if (cache[url]) return cb(cache[url]);
+    var im = new Image();
+    im.onload = function () {
+      var c = document.createElement("canvas"); c.width = 1440; c.height = 960;
+      var x = c.getContext("2d"); x.imageSmoothingEnabled = false; x.drawImage(im, 0, 0, 1440, 960);
+      cache[url] = x.getImageData(0, 0, 1440, 960).data; cb(cache[url]);
+    };
+    im.src = url;
+  }
+  var token = 0;
+  function drawMarks() {
+    var a = src(state.scene, key(state.left)), b = src(state.scene, key(state.right)), my = ++token;
+    if (!state.marks) { cv.hidden = true; info.textContent = HINT; return; }
+    if (a === b) { cv.hidden = true; info.textContent = "Both sides show the same image."; return; }
+    pixels(a, function (pa) { pixels(b, function (pb) {
+      if (my !== token) return;
+      var W = 1440, H = 960, n = W * H, d = new Uint8Array(n), cnt = 0, i, x, y, k;
+      for (i = 0; i < n; i++) {
+        var j = i * 4;
+        if (Math.max(Math.abs(pa[j] - pb[j]), Math.abs(pa[j + 1] - pb[j + 1]), Math.abs(pa[j + 2] - pb[j + 2])) > 8) { d[i] = 1; cnt++; }
+      }
+      // grow each changed spot by 3 px, then draw a translucent fill with a solid outline
+      var g = new Uint8Array(n);
+      for (y = 0; y < H; y++) for (x = 0; x < W; x++) if (d[y * W + x]) {
+        for (var dy = -3; dy <= 3; dy++) { var yy = y + dy; if (yy < 0 || yy >= H) continue;
+          for (var dx = -3; dx <= 3; dx++) { var xx = x + dx; if (xx >= 0 && xx < W) g[yy * W + xx] = 1; } }
+      }
+      cv.width = W; cv.height = H;
+      var ctx = cv.getContext("2d"), out = ctx.createImageData(W, H), o = out.data;
+      for (y = 0; y < H; y++) for (x = 0; x < W; x++) {
+        k = y * W + x; if (!g[k]) continue;
+        var edge = x < 2 || y < 2 || x >= W - 2 || y >= H - 2 || !g[k - 2] || !g[k + 2] || !g[k - 2 * W] || !g[k + 2 * W];
+        o[k * 4] = 255; o[k * 4 + 1] = 40; o[k * 4 + 2] = 40; o[k * 4 + 3] = edge ? 230 : 70;
+      }
+      ctx.putImageData(out, 0, 0); cv.hidden = false;
+      info.textContent = "The two sides differ in " + (100 * cnt / n).toFixed(2) + "% of the pixels.";
+    }); });
+  }
+
+  var sides = {};
+  Array.prototype.forEach.call(document.querySelectorAll(".side"), function (el) {
+    var name = el.dataset.side;
+    sides[name] = el;
+    el.querySelector(".alg").addEventListener("click", function (e) { var b = e.target.closest("button"); if (b) { state[name].alg = b.dataset.v; render(); } });
+    el.querySelector(".minc .seg").addEventListener("click", function (e) { var b = e.target.closest("button"); if (b) { state[name].minc = Number(b.dataset.v); render(); } });
+  });
 
   function render() {
     sel.value = state.scene;
-    imgL.src = src(state.scene, state.left);
-    imgR.src = src(state.scene, state.right);
-    imgL.alt = LABEL[state.left]; imgR.alt = LABEL[state.right];
-    // red marks: where the crisp version on the right differs from xBRZ freescale
-    imgM.hidden = !state.marks;
-    if (state.marks) imgM.src = "img/" + state.scene + "-marks" + state.right.slice(5) + ".png";
-    tagL.textContent = LABEL[state.left]; tagR.textContent = LABEL[state.right];
-    setPressed("left", state.left); setPressed("right", state.right); setPressed("zoom", state.zoom);
+    imgL.src = src(state.scene, key(state.left));
+    imgR.src = src(state.scene, key(state.right));
+    imgL.alt = tagL.textContent = label(state.left);
+    imgR.alt = tagR.textContent = label(state.right);
+    ["left", "right"].forEach(function (n) {
+      setPressed(sides[n].querySelector(".alg"), state[n].alg);
+      setPressed(sides[n].querySelector(".minc .seg"), state[n].minc);
+      sides[n].querySelector(".minc").hidden = state[n].alg !== "crisp";
+    });
+    setPressed($("zoom"), state.zoom);
     stage.style.width = (state.zoom * 100) + "%";
-    clip();
+    clip(); drawMarks();
   }
 
   // the divider lives in viewport coordinates; the clip is computed in stage coordinates
@@ -287,8 +372,6 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
   window.addEventListener("resize", clip);
 
   sel.addEventListener("change", function () { state.scene = sel.value; preload(state.scene); render(); });
-  $("left").addEventListener("click", function (e) { var b = e.target.closest("button"); if (b) { state.left = b.dataset.v; render(); } });
-  $("right").addEventListener("click", function (e) { var b = e.target.closest("button"); if (b) { state.right = b.dataset.v; render(); } });
   $("zoom").addEventListener("click", function (e) {
     var b = e.target.closest("button"); if (!b) return;
     var old = state.zoom, z = Number(b.dataset.v);
@@ -298,7 +381,7 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
     if (z !== old) { frame.scrollLeft = cx * stage.clientWidth - frame.clientWidth / 2; frame.scrollTop = cy * stage.clientHeight - frame.clientHeight / 2; clip(); }
   });
 
-  marks.addEventListener("change", function () { state.marks = marks.checked; render(); });
+  marks.addEventListener("change", function () { state.marks = marks.checked; drawMarks(); });
   preload(state.scene);
   render();
 })();

@@ -21,20 +21,20 @@
 
 ## 🎬 Interactive Comparison
 
-<a href="https://ele3131.github.io/xbrz-crisp/"><img src="comparisons/preview-12.webp" alt="Animated comparison: xBRZ on the left, xBRZ crisp on the right" width="100%"></a>
+<a href="https://ele3131.github.io/xbrz-crisp/"><img src="comparisons/preview-16.png" alt="Animated comparison: xBRZ on the left, xBRZ crisp on the right" width="100%"></a>
 
-Drag the line between xBRZ crisp and xBRZ, integer scaling or MMPX Advanced on 10 Game Boy Advance scenes, compare minimum contrast 12 and 24, zoom in up to 3×, and mark in red every spot crisp changes. The images on this page use contrast 12.
+Pick integer scaling, xBRZ, MMPX Advanced or xBRZ Crisp (contrast 12, 16 or 24) on each side, drag the line across 10 Game Boy Advance scenes, zoom in up to 3×, and mark in red every spot where the two sides differ.
 
 ## 🌄 Gallery
 
 <table>
   <tr>
-    <td width="50%"><a href="comparisons/1-golden-sun-12.png"><img src="comparisons/1-golden-sun-12.png" alt="Golden Sun"></a><p align="center"><b>Golden Sun</b></p></td>
-    <td width="50%"><a href="comparisons/2-minish-cap-12.png"><img src="comparisons/2-minish-cap-12.png" alt="The Minish Cap"></a><p align="center"><b>The Minish Cap</b></p></td>
+    <td width="50%"><a href="comparisons/1-golden-sun-16.png"><img src="comparisons/1-golden-sun-16.png" alt="Golden Sun"></a><p align="center"><b>Golden Sun</b></p></td>
+    <td width="50%"><a href="comparisons/2-minish-cap-16.png"><img src="comparisons/2-minish-cap-16.png" alt="The Minish Cap"></a><p align="center"><b>The Minish Cap</b></p></td>
   </tr>
   <tr>
-    <td width="50%"><a href="comparisons/5-golden-sun-battle-12.png"><img src="comparisons/5-golden-sun-battle-12.png" alt="Golden Sun battles"></a><p align="center"><b>Golden Sun battles</b></p></td>
-    <td width="50%"><a href="comparisons/4-castlevania-12.png"><img src="comparisons/4-castlevania-12.png" alt="Castlevania: Aria of Sorrow"></a><p align="center"><b>Castlevania: Aria of Sorrow</b></p></td>
+    <td width="50%"><a href="comparisons/5-golden-sun-battle-16.png"><img src="comparisons/5-golden-sun-battle-16.png" alt="Golden Sun battles"></a><p align="center"><b>Golden Sun battles</b></p></td>
+    <td width="50%"><a href="comparisons/4-castlevania-16.png"><img src="comparisons/4-castlevania-16.png" alt="Castlevania: Aria of Sorrow"></a><p align="center"><b>Castlevania: Aria of Sorrow</b></p></td>
   </tr>
 </table>
 
@@ -42,18 +42,19 @@ Text and portraits keep their shape too, as in the spell menu of Harry Potter: P
 
 <img src="comparisons/6-azkaban-menu.png" alt="Spell menu: original, xBRZ freescale, MMPX Advanced and xBRZ crisp" width="100%">
 
-<sub>More: [other games](comparisons/3-other-games-12.png)</sub>
+<sub>More: [other games](comparisons/3-other-games-16.png)</sub>
 
 ## 🎛️ Presets
 
-One preset, `xbrz-crisp`, with a minimum contrast of 24. Change `XBRZ_MINC` in Quick Menu › Shaders › Shader Parameters and save the preset to pick another look:
+One preset, `xbrz-crisp`, with a minimum contrast of 16. Change `XBRZ_MINC` in Quick Menu › Shaders › Shader Parameters and save the preset to pick another look:
 
-<img src="comparisons/design/presets-strip.png" alt="Golden Sun grass: original, xBRZ, crisp 12 and crisp 24" width="100%">
+<img src="comparisons/design/presets-strip.png" alt="Golden Sun grass: original, xBRZ, crisp 12, 16 and 24" width="100%">
 
 | `XBRZ_MINC` | Look |
 |---|---|
 | **12** | Closest to xBRZ, with a light gain in detail. |
-| **24** (default) | More texture detail in grass and foliage, closer to the original art. |
+| **16** (default) | Textures and soft shading keep their pixels, while outlines, faces and text are smoothed as in xBRZ. |
+| **24** | More texture detail in grass and foliage, closer to the original art. Some soft diagonals turn into steps. |
 
 ## 🛠️ Parameters
 
@@ -62,7 +63,7 @@ One preset, `xbrz-crisp`, with a minimum contrast of 24. Change `XBRZ_MINC` in Q
 
 | Parameter | Default | What it does |
 |---|---|---|
-| `XBRZ_MINC` | 24 | Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off. |
+| `XBRZ_MINC` | 16 | Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off. |
 | `XBRZ_MINC_RAMP` | 0 | Width of a soft transition around the threshold. 0 is a hard cut. |
 | `XBRZ_TOL` | 15 | Equal color tolerance. Stock xBRZ uses 30. |
 | `XBRZ_STEEP` | 3.2 | Steep and shallow line threshold. Stock xBRZ uses 2.2, which turns 1-pixel steps into slopes. |
