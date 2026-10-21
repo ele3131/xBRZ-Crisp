@@ -2,8 +2,8 @@
 //#crisp{
 // xBRZ crisp: xBRZ freescale that only rounds corners between clearly different colors.
 //
-// The xBRZ part is xbrz-freescale-multipass. The crisp rules sit between //#crisp{ and //#crisp}
-// markers; tools/make-multipass.py removes them (and turns the //#plain lines on) to write that shader.
+// This is xbrz-freescale-multipass with other defaults: tools/make-multipass.py writes that shader,
+// dropping the lines between //#crisp{ and //#crisp} and turning the //#plain lines on.
 //
 // - Minimum contrast: a corner whose two colors differ by less than XBRZ_MINC (x/255, YCbCr
 //   distance) is left square, so low-contrast shading, dithering and textures (grass, foliage,
@@ -17,13 +17,18 @@
 // - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
 //   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
 //   so every stripe ends the same way.
-// XBRZ_MINC = 0 and XBRZ_DIAG = 0 turn the first two off.
+// XBRZ_MINC = 0 turns the first rule off, and XBRZ_DIAG = 0 the other two.
 //#crisp}
 //#plain // xBRZ freescale, multipass: xBRZ at any scale factor, in two passes.
 //#plain //
-//#plain // XBRZ_MINC leaves a corner square when its two colors differ by less than this (x/255, YCbCr
-//#plain // distance), so soft shading and textures keep their pixels. 0 (default) is plain xBRZ; the
-//#plain // xbrz-crisp preset uses 16.
+//#plain // Two optional rules, both off by default (plain xBRZ); the xbrz-crisp preset turns them on:
+//#plain // - XBRZ_MINC (crisp: 16) leaves a corner square when its two colors differ by less than this
+//#plain //   (x/255, YCbCr distance), so soft shading and textures keep their pixels.
+//#plain // - XBRZ_DIAG (crisp: 100) leaves a corner square when the two colors its cut would join differ
+//#plain //   by more than this, so a junction of three colors is not pulled into a fake diagonal (an idea
+//#plain //   from torcado's cleanEdge, MIT license). Antialiasing ramps use 92, shallow and steep lines are
+//#plain //   never blocked, a blocked corner is still cut when a neighbour on the same diagonal is cut,
+//#plain //   and where 1-pixel stripes end flush (gauges, health bars) the end corners stay square.
 //
 // The first pass makes every blend decision once per input pixel (blend type, line type, blend
 // color and the minimum contrast), so the second pass, which runs once per output pixel, only
@@ -86,9 +91,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 	float XBRZ_DOM;
 	float XBRZ_STEEP;
 	float XBRZ_MINC;
-//#crisp{
 	float XBRZ_DIAG;
-//#crisp}
 } global;
 
 #pragma parameter XBRZ_TOL "xBRZ: equal color tolerance (x/255)" 15 1 80 1
@@ -96,16 +99,13 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #pragma parameter XBRZ_STEEP "xBRZ: steep/shallow line threshold" 3.2 1 6 0.1
 #pragma parameter XBRZ_MINC "xBRZ: minimum contrast to round a corner (x/255, 0 = off)" 16 0 80 2
 //#plain-default XBRZ_MINC 0
-//#crisp{
-#pragma parameter XBRZ_DIAG "xBRZ crisp: max color distance on the diagonal (0 = off)" 100 0 160 4
-//#crisp}
+#pragma parameter XBRZ_DIAG "xBRZ: max color distance on the diagonal (0 = off)" 100 0 160 4
+//#plain-default XBRZ_DIAG 0
 #define XBRZ_TOL global.XBRZ_TOL
 #define XBRZ_DOM global.XBRZ_DOM
 #define XBRZ_STEEP global.XBRZ_STEEP
 #define XBRZ_MINC global.XBRZ_MINC
-//#crisp{
 #define XBRZ_DIAG global.XBRZ_DIAG
-//#crisp}
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -160,37 +160,33 @@ bool IsPixEqual(vec3 pixA, vec3 pixB)
 #define eq(a,b)  (a == b)
 #define neq(a,b) (a != b)
 
-//#crisp{
-// ---- xBRZ crisp rules ----
+// ---- diagonal rules (XBRZ_DIAG) ----
 #define XBRZ_DIAG_AA 92.0   // diagonal limit for antialiasing ramps
 #define XBRZ_TIP 64.0       // stripe ends stay square above this diagonal distance
 #define alike(a,b) (DistYCbCr(a, b) * 255.0 <= 20.0)
 
 // res holds the xBRZ decisions of the four corners (blend type +4 line +8 second color +16 shallow +64 steep)
-vec4 crispRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 G, vec3 H, vec3 I,
-                float dEB, float dED, float dEF, float dEH)
+vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 G, vec3 H, vec3 I,
+                   float dEB, float dED, float dEF, float dEH)
 {
   // only pixels that still have a corner to cut
   vec4 cut = vec4(greaterThan(mod(res, 4.0), vec4(0.0)));
-  if (dot(cut, vec4(1.0)) <= 0.0)
+  if (XBRZ_DIAG <= 0.0 || dot(cut, vec4(1.0)) <= 0.0)
     return res;
 
   // the two colors on each corner's diagonal: top-left D-B, top-right B-F, bottom-right F-H, bottom-left H-D
   vec4 pair = vec4(DistYCbCr(D, B), DistYCbCr(B, F), DistYCbCr(F, H), DistYCbCr(H, D));
 
-  // diagonal
-  if (XBRZ_DIAG > 0.0)
-  {
-    vec4 dEP = vec4(dED, dEB, dEF, dEH);
-    vec4 dEQ = vec4(dEB, dEF, dEH, dED);
-    // a ramp: one diagonal color lies (almost) on the way from E to the other one
-    vec4 ramp = min((dEP + pair) / max(dEQ, vec4(1e-5)), (dEQ + pair) / max(dEP, vec4(1e-5)));
-    vec4 limit = mix(vec4(XBRZ_DIAG), vec4(XBRZ_DIAG_AA), vec4(lessThanEqual(ramp, vec4(1.15))));
-    // shallow and steep lines (+16, +64) are never blocked
-    vec4 keep = max(vec4(lessThanEqual(pair * 255.0, limit)), vec4(greaterThanEqual(res, vec4(16.0))));
-    // a blocked corner is flagged (+128); the output pass keeps it only when it continues a cut line
-    res += 128.0 * (1.0 - keep) * cut;
-  }
+  // similar diagonal
+  vec4 dEP = vec4(dED, dEB, dEF, dEH);
+  vec4 dEQ = vec4(dEB, dEF, dEH, dED);
+  // a ramp: one diagonal color lies (almost) on the way from E to the other one
+  vec4 ramp = min((dEP + pair) / max(dEQ, vec4(1e-5)), (dEQ + pair) / max(dEP, vec4(1e-5)));
+  vec4 limit = mix(vec4(XBRZ_DIAG), vec4(XBRZ_DIAG_AA), vec4(lessThanEqual(ramp, vec4(1.15))));
+  // shallow and steep lines (+16, +64) are never blocked
+  vec4 keep = max(vec4(lessThanEqual(pair * 255.0, limit)), vec4(greaterThanEqual(res, vec4(16.0))));
+  // a blocked corner is flagged (+128); the output pass keeps it only when it continues a cut line
+  res += 128.0 * (1.0 - keep) * cut;
 
   // stripe ends: E ends a 1-pixel horizontal line (left or right end) or vertical line (top or bottom end)
   bool eB = eq(E, B), eD = eq(E, D), eF = eq(E, F), eH = eq(E, H);
@@ -214,7 +210,6 @@ vec4 crispRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, ve
   }
   return res;
 }
-//#crisp}
 
 void main()
 {
@@ -384,9 +379,7 @@ void main()
     vec4 contrast = vec4(min(dED, dEB), min(dEB, dEF), min(dEF, dEH), min(dEH, dED)) * 255.0;
     res *= vec4(greaterThanEqual(contrast, vec4(XBRZ_MINC)));
   }
-//#crisp{
-  res = crispRules(res, coord, A, B, C, D, E, F, G, H, I, dEB, dED, dEF, dEH);
-//#crisp}
+  res = diagonalRules(res, coord, A, B, C, D, E, F, G, H, I, dEB, dED, dEF, dEH);
 
   FRAG_OUT = res / 255.0;
 }

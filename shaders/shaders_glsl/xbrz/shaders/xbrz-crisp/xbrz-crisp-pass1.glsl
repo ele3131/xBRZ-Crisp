@@ -1,8 +1,8 @@
 //#crisp{
 // xBRZ crisp: xBRZ freescale that only rounds corners between clearly different colors.
 //
-// The xBRZ part is xbrz-freescale-multipass. The crisp rules sit between //#crisp{ and //#crisp}
-// markers; tools/make-multipass.py removes them (and turns the //#plain lines on) to write that shader.
+// This is xbrz-freescale-multipass with other defaults: tools/make-multipass.py writes that shader,
+// dropping the lines between //#crisp{ and //#crisp} and turning the //#plain lines on.
 //
 // - Minimum contrast: a corner whose two colors differ by less than XBRZ_MINC (x/255, YCbCr
 //   distance) is left square, so low-contrast shading, dithering and textures (grass, foliage,
@@ -16,13 +16,18 @@
 // - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
 //   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
 //   so every stripe ends the same way.
-// XBRZ_MINC = 0 and XBRZ_DIAG = 0 turn the first two off.
+// XBRZ_MINC = 0 turns the first rule off, and XBRZ_DIAG = 0 the other two.
 //#crisp}
 //#plain // xBRZ freescale, multipass: xBRZ at any scale factor, in two passes.
 //#plain //
-//#plain // XBRZ_MINC leaves a corner square when its two colors differ by less than this (x/255, YCbCr
-//#plain // distance), so soft shading and textures keep their pixels. 0 (default) is plain xBRZ; the
-//#plain // xbrz-crisp preset uses 16.
+//#plain // Two optional rules, both off by default (plain xBRZ); the xbrz-crisp preset turns them on:
+//#plain // - XBRZ_MINC (crisp: 16) leaves a corner square when its two colors differ by less than this
+//#plain //   (x/255, YCbCr distance), so soft shading and textures keep their pixels.
+//#plain // - XBRZ_DIAG (crisp: 100) leaves a corner square when the two colors its cut would join differ
+//#plain //   by more than this, so a junction of three colors is not pulled into a fake diagonal (an idea
+//#plain //   from torcado's cleanEdge, MIT license). Antialiasing ramps use 92, shallow and steep lines are
+//#plain //   never blocked, a blocked corner is still cut when a neighbour on the same diagonal is cut,
+//#plain //   and where 1-pixel stripes end flush (gauges, health bars) the end corners stay square.
 //
 // The first pass makes every blend decision once per input pixel (blend type, line type, blend
 // color and the minimum contrast), so the second pass, which runs once per output pixel, only
@@ -175,7 +180,6 @@ void main()
   //               w|z|
   vec4 blendResult = mod(info, 4.0);
 
-//#crisp{
   // a corner flagged by the first pass (+128, XBRZ_DIAG) is still cut when the same corner of a
   // neighbour along the cut is cut and not flagged, so diagonal lines are drawn to the end
   if (max(max(info.x, info.y), max(info.z, info.w)) >= 128.0)
@@ -195,7 +199,6 @@ void main()
     vec4 chain = vec4(max(aA.x, aB.x), max(aC.y, aD.y), max(aA.z, aB.z), max(aC.w, aD.w));
     blendResult *= max(1.0 - blocked, chain);
   }
-//#crisp}
 
   // most output pixels have no corner to blend, and only need these two reads
   if (blendResult.x + blendResult.y + blendResult.z + blendResult.w <= 0.0)

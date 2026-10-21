@@ -42,7 +42,7 @@ def plain(text, name):
         text, n = re.subn(r'(#pragma parameter %s "[^"]*" )\S+' % k, r'\g<1>' + v, text)
         if n != 1: sys.exit('%s: no #pragma parameter %s' % (name, k))
         text = re.sub(r'(#define %s )[-\d.]+$' % k, r'\g<1>' + (v if '.' in v else v + '.0'), text, flags=re.M)
-    if re.search(r'//#|crispRules|XBRZ_DIAG|xbrz_crisp', text): sys.exit('%s: crisp code left in the plain shader' % name)
+    if re.search(r'//#|xbrz_crisp|xBRZ crisp', text): sys.exit('%s: crisp text left in the plain shader' % name)
     return text
 
 
