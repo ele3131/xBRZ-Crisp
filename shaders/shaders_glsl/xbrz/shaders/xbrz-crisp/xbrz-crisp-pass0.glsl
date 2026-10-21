@@ -50,7 +50,7 @@
 
 // Pass 0 of xbrz-crisp (OpenGL / GLES)
 #pragma parameter XBRZ_TOL "xBRZ: equal color tolerance (x/255)" 15 1 80 1
-#pragma parameter XBRZ_DOM "xBRZ: dominant direction threshold" 3.6 1 8 0.1
+#pragma parameter XBRZ_DOM "xBRZ: dominant direction threshold" 3.8 1 8 0.1
 #pragma parameter XBRZ_STEEP "xBRZ: steep/shallow line threshold" 3.2 1 6 0.1
 #pragma parameter XBRZ_LUMA "xBRZ: luminance weight" 1 0.5 3 0.1
 #pragma parameter XBRZ_MINC "xBRZ crisp: minimum contrast to round a corner (x/255)" 24 0 80 2
@@ -127,7 +127,7 @@ uniform COMPAT_PRECISION float XBRZ_MINC;
 uniform COMPAT_PRECISION float XBRZ_MINC_RAMP;
 #else
 #define XBRZ_TOL 15.0
-#define XBRZ_DOM 3.6
+#define XBRZ_DOM 3.8
 #define XBRZ_STEEP 3.2
 #define XBRZ_LUMA 1.0
 #define XBRZ_MINC 24.0
