@@ -6,6 +6,13 @@
    square, so low-contrast shading, dithering and textures (grass, foliage, stone) keep their
    pixel detail instead of melting into blobs, while outlines, text and sprites are smoothed
    exactly as in xBRZ. XBRZ_MINC = 0 gives plain xBRZ with the thresholds below.
+
+   A corner is also left square when the two colors on its diagonal (the colors the cut would
+   join) differ by more than XBRZ_DIAG, so a junction of three different colors is not pulled
+   into a fake diagonal (an idea from torcado's cleanEdge, MIT license). Antialiasing ramps, where
+   one of those colors sits between the pixel and the other one, use XBRZ_DIAG_AA instead,
+   shallow and steep lines are never blocked, and a blocked corner is still cut when a neighbour
+   on the same diagonal is cut, so lines are drawn to the end. XBRZ_DIAG = 0 turns this off.
    Defaults: equal color tolerance 15 and steep/shallow line threshold 3.2 (stock xBRZ: 30 and 2.2).
 
    Based on "xbrz-freescale-multipass" from libretro glsl-shaders / slang-shaders, with these
@@ -66,6 +73,8 @@ layout(std140, set = 0, binding = 0) uniform UBO
 	float XBRZ_LUMA;
 	float XBRZ_MINC;
 	float XBRZ_MINC_RAMP;
+	float XBRZ_DIAG;
+	float XBRZ_DIAG_AA;
 } global;
 
 #pragma parameter XBRZ_TOL "xBRZ: equal color tolerance (x/255)" 15 1 80 1
@@ -74,12 +83,16 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #pragma parameter XBRZ_LUMA "xBRZ: luminance weight" 1 0.5 3 0.1
 #pragma parameter XBRZ_MINC "xBRZ crisp: minimum contrast to round a corner (x/255)" 16 0 80 2
 #pragma parameter XBRZ_MINC_RAMP "xBRZ crisp: soft transition width (0 = hard cut)" 0 0 64 2
+#pragma parameter XBRZ_DIAG "xBRZ crisp: max color distance along a corner's diagonal (0 = off)" 108 0 160 4
+#pragma parameter XBRZ_DIAG_AA "xBRZ crisp: same limit for antialiasing ramps" 96 0 160 4
 #define XBRZ_TOL global.XBRZ_TOL
 #define XBRZ_DOM global.XBRZ_DOM
 #define XBRZ_STEEP global.XBRZ_STEEP
 #define XBRZ_LUMA global.XBRZ_LUMA
 #define XBRZ_MINC global.XBRZ_MINC
 #define XBRZ_MINC_RAMP global.XBRZ_MINC_RAMP
+#define XBRZ_DIAG global.XBRZ_DIAG
+#define XBRZ_DIAG_AA global.XBRZ_DIAG_AA
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -297,6 +310,20 @@ void main()
   vec4 second = vec4(dED <= dEB ? 0.0 : 1.0, dEB <= dEF ? 0.0 : 1.0, dEF <= dEH ? 0.0 : 1.0, dEH <= dED ? 0.0 : 1.0);
   vec4 contrast = vec4(min(dED, dEB), min(dEB, dEF), min(dEF, dEH), min(dEH, dED)) * 255.0;
   res += 8.0 * second;
+  if (XBRZ_DIAG > 0.0)
+  {
+    // the two colors on each corner's diagonal: top-left D-B, top-right B-F, bottom-right F-H, bottom-left H-D
+    vec4 pair = vec4(DistYCbCr(D, B), DistYCbCr(B, F), DistYCbCr(F, H), DistYCbCr(H, D));
+    vec4 dEP = vec4(dED, dEB, dEF, dEH);
+    vec4 dEQ = vec4(dEB, dEF, dEH, dED);
+    // a ramp: one diagonal color lies (almost) on the way from E to the other one
+    vec4 ramp = min((dEP + pair) / max(dEQ, vec4(1e-5)), (dEQ + pair) / max(dEP, vec4(1e-5)));
+    vec4 limit = mix(vec4(XBRZ_DIAG), vec4(XBRZ_DIAG_AA), vec4(lessThanEqual(ramp, vec4(1.15))));
+    // shallow and steep lines (+16, +64) are never blocked
+    vec4 keep = max(vec4(lessThanEqual(pair * 255.0, limit)), vec4(greaterThanEqual(res, vec4(16.0))));
+    // a blocked corner is flagged (+128); the output pass keeps it only when it continues a cut line
+    res += 128.0 * (1.0 - keep) * vec4(greaterThan(mod(res, 4.0), vec4(0.0)));
+  }
   if (XBRZ_MINC > 0.0 && XBRZ_MINC_RAMP < 0.5)
     res *= vec4(greaterThanEqual(contrast, vec4(XBRZ_MINC)));
 

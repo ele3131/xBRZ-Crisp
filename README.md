@@ -4,7 +4,8 @@
 
 <p align="center">
   An xBRZ shader for RetroArch that only rounds corners between clearly different colors.<br>
-  Outlines and text are smoothed as in xBRZ. Grass, foliage, stone and dithering keep the pixels the artist drew.
+  Outlines and text are smoothed as in xBRZ. Grass, foliage, stone and dithering keep the pixels the artist drew,<br>
+  and junctions of different colors in faces and small sprites are no longer pulled into fake diagonals.
 </p>
 
 <p align="center">
@@ -38,6 +39,10 @@ Pick integer scaling, xBRZ, MMPX Advanced or xBRZ Crisp (contrast 12 to 30) on e
   </tr>
 </table>
 
+Faces keep their expression. Since 1.4, a corner where three different colors meet is no longer cut into a fake diagonal, so Link's eyebrow stays straight instead of being pulled into his eye:
+
+<img src="comparisons/7-faces.png" alt="Link in The Minish Cap and a face in Final Fantasy Tactics Advance: original, xBRZ freescale, xBRZ Crisp 1.3 and 1.4" width="100%">
+
 Text and portraits keep their shape too, as in the spell menu of Harry Potter: Prisoner of Azkaban:
 
 <img src="comparisons/6-azkaban-menu.png" alt="Spell menu: original, xBRZ freescale, MMPX Advanced and xBRZ crisp" width="100%">
@@ -65,6 +70,8 @@ One preset, `xbrz-crisp`, with a minimum contrast of 16. Change `XBRZ_MINC` in Q
 |---|---|---|
 | `XBRZ_MINC` | 16 | Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off. |
 | `XBRZ_MINC_RAMP` | 0 | Width of a soft transition around the threshold. 0 is a hard cut. |
+| `XBRZ_DIAG` | 108 | Maximum color distance (x/255) between the two colors a cut would join. Above it, the corner stays square. 0 turns it off. |
+| `XBRZ_DIAG_AA` | 96 | The same limit for antialiasing ramps, where one of the two colors sits between the pixel and the other one. |
 | `XBRZ_TOL` | 15 | Equal color tolerance. Stock xBRZ uses 30. |
 | `XBRZ_STEEP` | 3.2 | Steep and shallow line threshold. Stock xBRZ uses 2.2, which turns 1-pixel steps into slopes. |
 | `XBRZ_DOM` | 3.8 | Dominant direction threshold. Stock xBRZ uses 3.6; 3.8 keeps small corners close to square instead of cutting them into long tips. |
@@ -74,7 +81,12 @@ One preset, `xbrz-crisp`, with a minimum contrast of 16. Change `XBRZ_MINC` in Q
 
 ## 🔬 How it works
 
-xBRZ decides corner by corner whether to cut a pixel's corner with a neighbor's color. xBRZ crisp keeps that decision and adds one check before drawing: if the pixel and the blend color are closer than `XBRZ_MINC` (YCbCr distance), the corner stays square. Edge detection is unchanged, so only the low-contrast blends are skipped.
+xBRZ decides corner by corner whether to cut a pixel's corner with a neighbor's color. xBRZ crisp keeps that decision and adds two checks before drawing:
+
+1. **Minimum contrast.** If the pixel and the blend color are closer than `XBRZ_MINC` (YCbCr distance), the corner stays square, so soft shading and textures keep their pixels.
+2. **Similar diagonal.** A cut joins the two neighbors on the corner's diagonal. If those two colors differ by more than `XBRZ_DIAG`, the corner is a junction of different colors, not a diagonal line, and it stays square. Antialiasing ramps use `XBRZ_DIAG_AA`. Corners that are part of a shallow or steep line are never blocked, and a blocked corner is still cut when the next corner along the same diagonal is cut, so lines are drawn to the end.
+
+Edge detection is unchanged, so shapes are found exactly as before and only these blends are skipped. The idea of only joining colors that match along the diagonal comes from [cleanEdge](https://github.com/libretro/slang-shaders/tree/master/edge-smoothing/cleanEdge) by torcado.
 
 <details>
 <summary>Port details and testing</summary>
@@ -96,6 +108,6 @@ Tested in RetroArch on Android (gl driver, Game Boy Advance at 6x). The slang ve
 
 ## ⚖️ License
 
-xBRZ is © Zenju and distributed under the GNU General Public License v3, as noted in the shader headers. Hyllian's xBR vertex code and texel mapping are under the MIT-style license included there.
+xBRZ is © Zenju and distributed under the GNU General Public License v3, as noted in the shader headers. Hyllian's xBR vertex code and texel mapping are under the MIT-style license included there. The similar diagonal check is inspired by torcado's cleanEdge (MIT license); no cleanEdge code is included.
 
 <sub>Developed with the help of Claude (Anthropic).</sub>
