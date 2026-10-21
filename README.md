@@ -4,7 +4,7 @@ An xBRZ shader for RetroArch that only rounds corners between clearly different 
 
 ## [▶ Open the interactive comparison](https://ele3131.github.io/xbrz-crisp/)
 
-Drag the line between xBRZ and xBRZ crisp on 10 Game Boy Advance scenes, compare minimum contrast 16, 24 and 32, zoom in up to 3×, and mark in red every spot crisp changes.
+Drag the line between xBRZ crisp and xBRZ, integer scaling or MMPX Advanced on 10 Game Boy Advance scenes, compare minimum contrast 12, 24 and 32, zoom in up to 3×, and mark in red every spot crisp changes.
 
 [![Animated comparison: xBRZ on the left, xBRZ crisp on the right](comparisons/preview-24.webp)](https://ele3131.github.io/xbrz-crisp/)
 
@@ -12,7 +12,7 @@ Drag the line between xBRZ and xBRZ crisp on 10 Game Boy Advance scenes, compare
 
 ![Golden Sun village, current xBRZ on the left and xBRZ crisp on the right](comparisons/split-gs_village.png)
 
-Text stays readable too. The spell name in the top-left corner of Harry Potter: Prisoner of Azkaban keeps its letter shapes with the steep threshold of 3.4 from version 1.3:
+Text stays readable too. The spell name in the top-left corner of Harry Potter: Prisoner of Azkaban keeps its letter shapes with the steep threshold of 3.2 from version 1.3:
 
 ![Harry Potter: Prisoner of Azkaban, spell name: original, xBRZ, crisp 1.2 and crisp 1.3](comparisons/6-azkaban-text.png)
 
@@ -24,7 +24,7 @@ There is one preset, `xbrz-crisp`, with a minimum contrast of 24, which keeps th
 
 | `XBRZ_MINC` | Look |
 |---|---|
-| 16 | Softer, closer to xBRZ. Textures stop melting, soft shadows and faces stay like xBRZ. |
+| 12 | Closest to xBRZ, with a light gain in detail. Only the softest shading and textures keep their pixels. |
 | 24 (default) | More texture detail in grass and foliage, closer to the original art. Some soft diagonals turn into steps. |
 | 32 | Sharpest. Pale skin and soft shadows can start to look blocky. |
 
@@ -43,7 +43,7 @@ The cost is the same as `xbrz-freescale-multipass` at any value.
 | `XBRZ_MINC` | 24 | Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off (the tolerance and steep thresholds below still apply). |
 | `XBRZ_MINC_RAMP` | 0 | Width of a soft transition around the threshold, so corners shrink gradually. 0 is a hard cut. |
 | `XBRZ_TOL` | 15 | Equal color tolerance. Stock xBRZ uses 30. |
-| `XBRZ_STEEP` | 3.4 | Steep and shallow line threshold. Stock xBRZ uses 2.2, which turns 1-pixel steps into slopes; 3.4 keeps letters and 1-pixel details closer to the original. |
+| `XBRZ_STEEP` | 3.2 | Steep and shallow line threshold. Stock xBRZ uses 2.2, which turns 1-pixel steps into slopes; 3.2 keeps letters and 1-pixel details closer to the original. |
 | `XBRZ_DOM` | 3.6 | Dominant direction threshold. |
 | `XBRZ_LUMA` | 1.0 | Weight of brightness against color in the comparisons. |
 
