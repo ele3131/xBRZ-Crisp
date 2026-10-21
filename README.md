@@ -23,7 +23,7 @@
 
 <a href="https://ele3131.github.io/xbrz-crisp/"><img src="comparisons/preview-16.png" alt="Animated comparison: xBRZ on the left, xBRZ crisp on the right" width="100%"></a>
 
-Pick integer scaling, xBRZ, MMPX Advanced or xBRZ Crisp (contrast 12, 16 or 24) on each side, drag the line across 10 Game Boy Advance scenes, zoom in up to 3×, and mark in red every spot where the two sides differ.
+Pick integer scaling, xBRZ, MMPX Advanced or xBRZ Crisp (contrast 12 to 30) on each side, drag the line across 10 Game Boy Advance scenes, zoom in up to 3×, and mark in red every spot where the two sides differ.
 
 ## 🌄 Gallery
 
