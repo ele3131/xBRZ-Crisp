@@ -87,7 +87,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #pragma parameter XBRZ_LUMA "xBRZ: luminance weight" 1 0.5 3 0.1
 #pragma parameter XBRZ_MINC "xBRZ crisp: minimum contrast to round a corner (x/255)" 16 0 80 2
 #pragma parameter XBRZ_MINC_RAMP "xBRZ crisp: soft transition width (0 = hard cut)" 0 0 64 2
-#pragma parameter XBRZ_DIAG "xBRZ crisp: max color distance along a corner's diagonal (0 = off)" 100 0 160 4
+#pragma parameter XBRZ_DIAG "xBRZ crisp: max color distance on the diagonal (0 = off)" 100 0 160 4
 #pragma parameter XBRZ_DIAG_AA "xBRZ crisp: same limit for antialiasing ramps" 92 0 160 4
 #define XBRZ_TOL global.XBRZ_TOL
 #define XBRZ_DOM global.XBRZ_DOM
