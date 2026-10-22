@@ -106,7 +106,7 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
   <header class="prose">
     <h1>xBRZ crisp</h1>
     <p class="lede">xBRZ smooths every corner it finds, so soft shading and textures melt into blobs. xBRZ crisp only rounds a corner when its two colors are clearly different. Outlines, text and sprites are smoothed as in xBRZ, and grass, foliage and stone keep the pixels the artists drew.</p>
-    <p class="muted">Drag the line to compare. All frames are Game Boy Advance screens at 6x, rendered with the RetroArch shader code. Integer scaling shows the original pixels. MMPX Advanced is the libretro scalenx shader at 2x, enlarged 3x, and ScaleFX is the libretro scalefx-9x preset at 9x, scaled down to 6x by area averaging.</p>
+    <p class="muted">Drag the line to compare. All frames are Game Boy Advance screens at 6x, rendered with the RetroArch shader code. Integer (integer scaling) shows the original pixels. MMPX Adv (MMPX Advanced) is the libretro scalenx shader at 2x, enlarged 3x, and ScaleFX is the libretro scalefx-9x preset at 9x, scaled down to 6x by area averaging.</p>
   </header>
 
   <section class="controls" aria-label="Comparison settings">
@@ -119,10 +119,10 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
     <div class="side" data-side="left">
       <h2>Left</h2>
       <div class="seg alg" role="group" aria-label="Left algorithm">
-        <button type="button" data-v="original">Integer scaling</button>
-        <button type="button" data-v="xbrz">xBRZ</button>
-        <button type="button" data-v="mmpx">MMPX Advanced</button>
+        <button type="button" data-v="original">Integer</button>
+        <button type="button" data-v="mmpx">MMPX Adv</button>
         <button type="button" data-v="scalefx">ScaleFX</button>
+        <button type="button" data-v="xbrz">xBRZ</button>
         <button type="button" data-v="crisp">xBRZ Crisp</button>
       </div>
       <div class="group minc"><span>Crisp contrast</span>
@@ -143,10 +143,10 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
     <div class="side" data-side="right">
       <h2>Right</h2>
       <div class="seg alg" role="group" aria-label="Right algorithm">
-        <button type="button" data-v="original">Integer scaling</button>
-        <button type="button" data-v="xbrz">xBRZ</button>
-        <button type="button" data-v="mmpx">MMPX Advanced</button>
+        <button type="button" data-v="original">Integer</button>
+        <button type="button" data-v="mmpx">MMPX Adv</button>
         <button type="button" data-v="scalefx">ScaleFX</button>
+        <button type="button" data-v="xbrz">xBRZ</button>
         <button type="button" data-v="crisp">xBRZ Crisp</button>
       </div>
       <div class="group minc"><span>Crisp contrast</span>
@@ -259,7 +259,7 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
     ["mc_kiosk", "The Minish Cap · temple"],
     ["hpa_house", "Harry Potter: Prisoner of Azkaban · house"]
   ];
-  var NAME = { original: "Integer scaling", xbrz: "xBRZ freescale", mmpx: "MMPX Advanced", scalefx: "ScaleFX", crisp: "xBRZ Crisp" };
+  var NAME = { original: "Integer", mmpx: "MMPX Adv", scalefx: "ScaleFX", xbrz: "xBRZ freescale", crisp: "xBRZ Crisp" };
   var state = { scene: "gs_village", left: { alg: "xbrz", minc: 16 }, right: { alg: "crisp", minc: 24 }, zoom: 1, pos: 0.5, marks: false };
 
   var $ = function (id) { return document.getElementById(id); };
