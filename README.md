@@ -30,12 +30,12 @@ Pick integer scaling, xBRZ, MMPX Advanced or xBRZ Crisp (contrast 12 to 30) on e
 
 <table>
   <tr>
-    <td width="50%"><a href="comparisons/1-golden-sun-16.png"><img src="comparisons/1-golden-sun-16.png" alt="Golden Sun"></a><p align="center"><b>Golden Sun</b></p></td>
-    <td width="50%"><a href="comparisons/2-minish-cap-16.png"><img src="comparisons/2-minish-cap-16.png" alt="The Minish Cap"></a><p align="center"><b>The Minish Cap</b></p></td>
+    <td width="50%"><a href="comparisons/1-golden-sun-24.png"><img src="comparisons/1-golden-sun-24.png" alt="Golden Sun"></a><p align="center"><b>Golden Sun</b></p></td>
+    <td width="50%"><a href="comparisons/2-minish-cap-24.png"><img src="comparisons/2-minish-cap-24.png" alt="The Minish Cap"></a><p align="center"><b>The Minish Cap</b></p></td>
   </tr>
   <tr>
-    <td width="50%"><a href="comparisons/5-golden-sun-battle-16.png"><img src="comparisons/5-golden-sun-battle-16.png" alt="Golden Sun battles"></a><p align="center"><b>Golden Sun battles</b></p></td>
-    <td width="50%"><a href="comparisons/4-castlevania-16.png"><img src="comparisons/4-castlevania-16.png" alt="Castlevania: Aria of Sorrow"></a><p align="center"><b>Castlevania: Aria of Sorrow</b></p></td>
+    <td width="50%"><a href="comparisons/5-golden-sun-battle-24.png"><img src="comparisons/5-golden-sun-battle-24.png" alt="Golden Sun battles"></a><p align="center"><b>Golden Sun battles</b></p></td>
+    <td width="50%"><a href="comparisons/4-castlevania-24.png"><img src="comparisons/4-castlevania-24.png" alt="Castlevania: Aria of Sorrow"></a><p align="center"><b>Castlevania: Aria of Sorrow</b></p></td>
   </tr>
 </table>
 
@@ -47,19 +47,21 @@ Text and portraits keep their shape too, as in the spell menu of Harry Potter: P
 
 <img src="comparisons/6-azkaban-menu.png" alt="Spell menu: original, xBRZ freescale, MMPX Advanced and xBRZ crisp" width="100%">
 
-<sub>More: [other games](comparisons/3-other-games-16.png)</sub>
+<sub>More: [other games](comparisons/3-other-games-24.png)</sub>
 
 ## 🎛️ Presets
 
-One preset, `xbrz-crisp`, with a minimum contrast of 16. Change `XBRZ_MINC` in Quick Menu › Shaders › Shader Parameters and save the preset to pick another look:
+One preset, `xbrz-crisp`, with a minimum contrast of 24. Change `XBRZ_MINC` in Quick Menu › Shaders › Shader Parameters and save the preset to pick another look:
 
 <img src="comparisons/design/presets-strip.png" alt="Golden Sun grass: original, xBRZ, crisp 12, 16 and 24" width="100%">
 
 | `XBRZ_MINC` | Look |
 |---|---|
-| **12** | Closest to xBRZ, with a light gain in detail. |
-| **16** (default) | Textures and soft shading keep their pixels, while outlines, faces and text are smoothed as in xBRZ. |
-| **24** | More texture detail in grass and foliage, closer to the original art. Some soft diagonals turn into steps. |
+| **12** | xBRZ with light improvements: only the softest shading and textures keep their pixels. |
+| **16** | Textures and soft shading keep their pixels, while outlines, faces and text are smoothed as in xBRZ. |
+| **24** (default) | Grass, foliage and textures keep most of their pixel detail, the closest to the original art, while outlines, faces and text are still smoothed. Some soft diagonals turn into steps. |
+
+24 is the default: up to 24, each step keeps more of the original pixels for little loss of smoothness, and past it the same gain costs two to three times more.
 
 ## 🛠️ Parameters
 
@@ -68,7 +70,7 @@ One preset, `xbrz-crisp`, with a minimum contrast of 16. Change `XBRZ_MINC` in Q
 
 | Parameter | Default | What it does |
 |---|---|---|
-| `XBRZ_MINC` | 16 | Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off. |
+| `XBRZ_MINC` | 24 | Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off. |
 | `XBRZ_DIAG` | 100 | Maximum color distance (x/255) between the two colors a cut would join. Above it, the corner stays square. 0 turns it off. |
 | `XBRZ_TOL` | 15 | Equal color tolerance. Stock xBRZ uses 30. |
 | `XBRZ_STEEP` | 3.2 | Steep and shallow line threshold. Stock xBRZ uses 2.2, which turns 1-pixel steps into slopes. |

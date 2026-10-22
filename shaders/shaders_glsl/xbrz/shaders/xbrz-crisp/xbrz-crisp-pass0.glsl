@@ -21,7 +21,7 @@
 //#plain // xBRZ freescale, multipass: xBRZ at any scale factor, in two passes.
 //#plain //
 //#plain // Two optional rules, both off by default (plain xBRZ); the xbrz-crisp preset turns them on:
-//#plain // - XBRZ_MINC (crisp: 16) leaves a corner square when its two colors differ by less than this
+//#plain // - XBRZ_MINC (crisp: 24) leaves a corner square when its two colors differ by less than this
 //#plain //   (x/255, YCbCr distance), so soft shading and textures keep their pixels.
 //#plain // - XBRZ_DIAG (crisp: 100) leaves a corner square when the two colors its cut would join differ
 //#plain //   by more than this, so a junction of three colors is not pulled into a fake diagonal (an idea
@@ -79,7 +79,7 @@
 #pragma parameter XBRZ_TOL "xBRZ: equal color tolerance (x/255)" 15 1 80 1
 #pragma parameter XBRZ_DOM "xBRZ: dominant direction threshold" 3.8 1 8 0.05
 #pragma parameter XBRZ_STEEP "xBRZ: steep/shallow line threshold" 3.2 1 6 0.1
-#pragma parameter XBRZ_MINC "xBRZ: minimum contrast to round a corner (x/255, 0 = off)" 16 0 80 2
+#pragma parameter XBRZ_MINC "xBRZ: minimum contrast to round a corner (x/255, 0 = off)" 24 0 80 2
 //#plain-default XBRZ_MINC 0
 #pragma parameter XBRZ_DIAG "xBRZ: max color distance on the diagonal (0 = off)" 100 0 160 4
 //#plain-default XBRZ_DIAG 0
@@ -156,7 +156,7 @@ uniform COMPAT_PRECISION float XBRZ_DIAG;
 #define XBRZ_TOL 15.0
 #define XBRZ_DOM 3.8
 #define XBRZ_STEEP 3.2
-#define XBRZ_MINC 16.0
+#define XBRZ_MINC 24.0
 #define XBRZ_DIAG 100.0
 #endif
 
