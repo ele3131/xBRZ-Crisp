@@ -3,9 +3,11 @@
 </p>
 
 <p align="center">
-  An xBRZ shader for RetroArch that only rounds corners between clearly different colors.<br>
-  Outlines and text are smoothed as in xBRZ. Grass, foliage, stone and dithering keep the pixels the artist drew,<br>
-  and junctions of different colors in faces and small sprites are no longer pulled into fake diagonals.
+  <b>The smoothness of xBRZ, with respect for every pixel the artist drew.</b><br><br>
+  ✨ Outlines and text come out smooth and sharp, just like xBRZ<br>
+  🌿 Grass, foliage, stone and dithering keep their original pixels<br>
+  🙂 Faces and small sprites keep their expression, with no fake diagonals<br>
+  🎮 Ready for RetroArch, in GLSL and slang
 </p>
 
 <p align="center">
