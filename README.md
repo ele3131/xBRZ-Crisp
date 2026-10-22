@@ -14,21 +14,23 @@
   <a href="https://ele3131.github.io/xbrz-crisp/"><img src="comparisons/design/button.svg" alt="Open the Interactive Comparison" width="420"></a>
 </p>
 
-<table>
+<div align="center">
+<table align="center" width="100%">
   <tr>
     <td align="center" width="33%">🎯<br><b>Only clear edges</b><br><sub>A corner is rounded only when its two colors really differ</sub></td>
     <td align="center" width="33%">🌿<br><b>Textures stay intact</b><br><sub>Soft shading no longer melts into blobs</sub></td>
     <td align="center" width="33%">⚡<br><b>Same cost</b><br><sub>Runs like xbrz-freescale-multipass</sub></td>
   </tr>
 </table>
+</div>
 
-## 🎬 Interactive Comparison
+<h2 align="center">🎬 Interactive Comparison</h2>
 
 <a href="https://ele3131.github.io/xbrz-crisp/"><img src="comparisons/preview-24.png" alt="Animated comparison in Golden Sun, Castlevania: Aria of Sorrow, Harry Potter: Prisoner of Azkaban and Tales of Phantasia: xBRZ (latest), then xBRZ Crisp 24" width="100%"></a>
 
 Pick integer scaling, MMPX Advanced, ScaleFX, xBRZ (latest) or xBRZ Crisp (contrast 12 to 30) on each side, drag the line across 10 Game Boy Advance scenes, zoom in up to 4×, hold a button to see the original pixels, and mark in red every spot where the two sides differ.
 
-## 🌄 Gallery
+<h2 align="center">🌄 Gallery</h2>
 
 <table>
   <tr>
@@ -51,7 +53,7 @@ Text and portraits keep their shape too, as in the spell menu of Harry Potter: P
 
 <sub>More: [other games](comparisons/3-other-games-24.png)</sub>
 
-## 🎛️ Presets
+<h2 align="center">🎛️ Presets</h2>
 
 One preset, `xbrz-crisp`, with a minimum contrast of 24. Change `XBRZ_MINC` in Quick Menu › Shaders › Shader Parameters and save the preset to pick another look:
 
@@ -65,7 +67,7 @@ One preset, `xbrz-crisp`, with a minimum contrast of 24. Change `XBRZ_MINC` in Q
 
 24 is the default: up to 24, each step keeps more of the original pixels for little loss of smoothness, and past it the same gain costs two to three times more.
 
-## 🛠️ Parameters
+<h2 align="center">🛠️ Parameters</h2>
 
 <details>
 <summary>Show all shader parameters</summary>
@@ -82,7 +84,7 @@ libretro's `xbrz-freescale-multipass` uses the same tolerance, steep and dominan
 
 </details>
 
-## 🔬 How it works
+<h2 align="center">🔬 How it works</h2>
 
 xBRZ decides corner by corner whether to cut a pixel's corner with a neighbor's color. xBRZ crisp keeps that decision and adds two checks before drawing:
 
@@ -102,7 +104,7 @@ Tested in RetroArch on Android (gl driver, Game Boy Advance at 6x). The slang ve
 
 </details>
 
-## 💾 Install
+<h2 align="center">💾 Install</h2>
 
 > [!TIP]
 > Get the latest zip from **[Releases](https://github.com/ele3131/xbrz-crisp/releases)**.
@@ -111,11 +113,11 @@ Tested in RetroArch on Android (gl driver, Game Boy Advance at 6x). The slang ve
 2. In a game, open Quick Menu › Shaders › Load and pick `edge-smoothing/xbrz/xbrz-crisp.slangp` (slang) or `xbrz/xbrz-crisp.glslp` (glsl).
 3. Save it with Quick Menu › Shaders › Save › Save Global Preset, or per game with Save Game Preset.
 
-## 🤝 Giving back to xBRZ
+<h2 align="center">🤝 Giving back to xBRZ</h2>
 
 Part of xBRZ Crisp is now in xBRZ itself. Starting with our first pull request on October 20, 2026, libretro's `xbrz-freescale-multipass` has taken in its port fixes, tuned thresholds and lighter output pass, plus the `xbrz-crisp` preset ([glsl #576](https://github.com/libretro/glsl-shaders/pull/576), [#577](https://github.com/libretro/glsl-shaders/pull/577), [slang #971](https://github.com/libretro/slang-shaders/pull/971), [#973](https://github.com/libretro/slang-shaders/pull/973)). The comparisons here use that improved version, labeled xBRZ (latest).
 
-## ⚖️ License
+<h2 align="center">⚖️ License</h2>
 
 xBRZ is © Zenju and distributed under the GNU General Public License v3, as noted in the shader headers. Hyllian's xBR vertex code and texel mapping are under the MIT-style license included there. The similar diagonal check is inspired by torcado's cleanEdge (MIT license); no cleanEdge code is included.
 
