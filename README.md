@@ -22,9 +22,12 @@
 
 ## 🎬 Interactive Comparison
 
-<a href="https://ele3131.github.io/xbrz-crisp/"><img src="comparisons/preview-16.png" alt="Animated comparison in Golden Sun, Castlevania: Aria of Sorrow, Harry Potter: Prisoner of Azkaban and Tales of Phantasia: xBRZ, then xBRZ Crisp 16, then xBRZ Crisp 24" width="100%"></a>
+> [!NOTE]
+> xBRZ Crisp also improved plain xBRZ. Its port fixes, new thresholds (tolerance 15, steep 3.2, dominant 3.8) and a faster output pass were merged into libretro's `xbrz-freescale-multipass` ([glsl-shaders #576](https://github.com/libretro/glsl-shaders/pull/576), [#577](https://github.com/libretro/glsl-shaders/pull/577), [slang-shaders #971](https://github.com/libretro/slang-shaders/pull/971), [#973](https://github.com/libretro/slang-shaders/pull/973)), and the `xbrz-crisp` preset ships there too. Every comparison here uses that latest xBRZ, so the gap is smaller than against the xBRZ of a few weeks ago.
 
-Pick integer scaling, xBRZ, MMPX Advanced or xBRZ Crisp (contrast 12 to 30) on each side, drag the line across 10 Game Boy Advance scenes, zoom in up to 3×, and mark in red every spot where the two sides differ.
+<a href="https://ele3131.github.io/xbrz-crisp/"><img src="comparisons/preview-16.png" alt="Animated comparison in Golden Sun, Castlevania: Aria of Sorrow, Harry Potter: Prisoner of Azkaban and Tales of Phantasia: xBRZ (latest), then xBRZ Crisp 16, then xBRZ Crisp 24" width="100%"></a>
+
+Pick integer scaling, MMPX Advanced, ScaleFX, xBRZ (latest) or xBRZ Crisp (contrast 12 to 30) on each side, drag the line across 10 Game Boy Advance scenes, zoom in up to 3×, and mark in red every spot where the two sides differ.
 
 ## 🌄 Gallery
 
@@ -41,11 +44,11 @@ Pick integer scaling, xBRZ, MMPX Advanced or xBRZ Crisp (contrast 12 to 30) on e
 
 Faces keep their expression. Since 1.4, a corner where three different colors meet is no longer cut into a fake diagonal, so Link's eyebrow stays straight instead of being pulled into his eye, and stacked stripes such as health bars end square:
 
-<img src="comparisons/7-faces.png" alt="Link in The Minish Cap, a face in Final Fantasy Tactics Advance and the health bar of Castlevania: Aria of Sorrow: original, xBRZ freescale and xBRZ Crisp" width="100%">
+<img src="comparisons/7-faces.png" alt="Link in The Minish Cap, a face in Final Fantasy Tactics Advance and the health bar of Castlevania: Aria of Sorrow: original, xBRZ (latest) and xBRZ Crisp" width="100%">
 
 Text and portraits keep their shape too, as in the spell menu of Harry Potter: Prisoner of Azkaban:
 
-<img src="comparisons/6-azkaban-menu.png" alt="Spell menu: original, xBRZ freescale, MMPX Advanced and xBRZ crisp" width="100%">
+<img src="comparisons/6-azkaban-menu.png" alt="Spell menu: original, xBRZ (latest), MMPX Advanced and xBRZ crisp" width="100%">
 
 <sub>More: [other games](comparisons/3-other-games-24.png)</sub>
 
@@ -53,7 +56,7 @@ Text and portraits keep their shape too, as in the spell menu of Harry Potter: P
 
 One preset, `xbrz-crisp`, with a minimum contrast of 24. Change `XBRZ_MINC` in Quick Menu › Shaders › Shader Parameters and save the preset to pick another look:
 
-<img src="comparisons/design/presets-strip.png" alt="Golden Sun grass: original, xBRZ, crisp 12, 16 and 24" width="100%">
+<img src="comparisons/design/presets-strip.png" alt="Golden Sun grass: original, xBRZ (latest), crisp 12, 16 and 24" width="100%">
 
 | `XBRZ_MINC` | Look |
 |---|---|
@@ -72,9 +75,11 @@ One preset, `xbrz-crisp`, with a minimum contrast of 24. Change `XBRZ_MINC` in Q
 |---|---|---|
 | `XBRZ_MINC` | 24 | Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off. |
 | `XBRZ_DIAG` | 100 | Maximum color distance (x/255) between the two colors a cut would join. Above it, the corner stays square. 0 turns it off. |
-| `XBRZ_TOL` | 15 | Equal color tolerance. Stock xBRZ uses 30. |
-| `XBRZ_STEEP` | 3.2 | Steep and shallow line threshold. Stock xBRZ uses 2.2, which turns 1-pixel steps into slopes. |
-| `XBRZ_DOM` | 3.8 | Dominant direction threshold. Stock xBRZ uses 3.6; 3.8 keeps small corners close to square instead of cutting them into long tips. |
+| `XBRZ_TOL` | 15 | Equal color tolerance. The reference C++ xBRZ uses 30. |
+| `XBRZ_STEEP` | 3.2 | Steep and shallow line threshold. The reference C++ xBRZ uses 2.2, which turns 1-pixel steps into slopes. |
+| `XBRZ_DOM` | 3.8 | Dominant direction threshold. The reference C++ xBRZ uses 3.6; 3.8 keeps small corners close to square instead of cutting them into long tips. |
+
+libretro's `xbrz-freescale-multipass` uses the same tolerance, steep and dominant values, with `XBRZ_MINC` and `XBRZ_DIAG` at 0.
 
 </details>
 
