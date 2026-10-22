@@ -82,12 +82,13 @@ libretro's `xbrz-freescale-multipass` uses the same tolerance, steep and dominan
 
 ## 🔬 How it works
 
-xBRZ decides corner by corner whether to cut a pixel's corner with a neighbor's color. xBRZ crisp keeps that decision and adds two checks before drawing:
+xBRZ decides corner by corner whether to cut a pixel's corner with a neighbor's color. xBRZ crisp keeps that decision and adds three checks before drawing:
 
 1. **Minimum contrast.** If the pixel and the blend color are closer than `XBRZ_MINC` (YCbCr distance), the corner stays square, so soft shading and textures keep their pixels.
 2. **Similar diagonal.** A cut joins the two neighbors on the corner's diagonal. If those two colors differ by more than `XBRZ_DIAG`, the corner is a junction of different colors, not a diagonal line, and it stays square. Antialiasing ramps, where one of the two colors sits between the pixel and the other one, use a limit of 92. Corners that are part of a shallow or steep line are never blocked, and a blocked corner is still cut when the next corner along the same diagonal is cut, so lines are drawn to the end. Where stacked 1-pixel stripes end flush, as in health bars, the end corners stay square when their diagonal colors differ by more than 64, so every stripe ends the same way.
+3. **Single dots.** A corner cut that would stretch a 1-pixel dot toward a neighbor that differs from it mostly in hue, like an olive dot on skin, stays square.
 
-Edge detection is unchanged, so shapes are found exactly as before and only these blends are skipped. The idea of only joining colors that match along the diagonal comes from [cleanEdge](https://github.com/libretro/slang-shaders/tree/master/edge-smoothing/cleanEdge) by torcado.
+Edge detection is the same as in xBRZ, except that the shallow and steep line tests weigh hue a little more than lightness (1.15x), so lines in shading that shifts hue, from orange to yellow for example, follow the artist's pixels. Shapes are otherwise found exactly as before and only these blends are skipped. The idea of only joining colors that match along the diagonal comes from [cleanEdge](https://github.com/libretro/slang-shaders/tree/master/edge-smoothing/cleanEdge) by torcado.
 
 <details>
 <summary>Port details and testing</summary>

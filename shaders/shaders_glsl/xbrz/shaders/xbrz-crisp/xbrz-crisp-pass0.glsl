@@ -16,7 +16,11 @@
 // - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
 //   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
 //   so every stripe ends the same way.
-// XBRZ_MINC = 0 turns the first rule off, and XBRZ_DIAG = 0 the other two.
+// - Single dots: a corner cut that would stretch a 1-pixel dot toward a color that differs from it
+//   mostly in hue (an olive dot on skin, say) stays square.
+// - Line shapes: the shallow and steep line tests weigh hue a little more than lightness (1.15x),
+//   so lines in hue-shifted shading follow the artist's pixels.
+// XBRZ_MINC = 0 turns the first rule off, and XBRZ_DIAG = 0 the others.
 //#crisp}
 //#plain // xBRZ freescale, multipass: xBRZ at any scale factor, in two passes.
 //#plain //
@@ -28,6 +32,8 @@
 //#plain //   from torcado's cleanEdge, MIT license). Antialiasing ramps use 92, shallow and steep lines are
 //#plain //   never blocked, a blocked corner is still cut when a neighbour on the same diagonal is cut,
 //#plain //   and where 1-pixel stripes end flush (gauges, health bars) the end corners stay square.
+//#plain //   It also keeps a 1-pixel dot from being stretched toward a color of a different hue, and the
+//#plain //   shallow and steep line tests weigh hue a little more than lightness (1.15x).
 //
 // The first pass makes every blend decision once per input pixel (blend type, line type, blend
 // color and the minimum contrast), so the second pass, which runs once per output pixel, only
@@ -194,6 +200,22 @@ bool IsPixEqual(vec3 pixA, vec3 pixB)
   return (DistYCbCr(pixA, pixB) < EQUAL_COLOR_TOLERANCE);
 }
 
+// the distance for the shallow and steep line tests: with the crisp rules on (XBRZ_DIAG > 0) hue
+// weighs 1.15x more than lightness, scaled so that as many neighbour pairs pass the thresholds
+float DistShape(vec3 pixA, vec3 pixB)
+{
+  const vec3 w = vec3(0.2627, 0.6780, 0.0593);
+  const float scaleB = 0.5 / (1.0 - 0.0593);
+  const float scaleR = 0.5 / (1.0 - 0.2627);
+  vec2 k = XBRZ_DIAG > 0.0 ? vec2(0.952, 1.095) : vec2(1.0);
+  vec3 diff = pixA - pixB;
+  float y = dot(diff.rgb, w);
+  float Y = k.x * y;
+  float Cb = k.y * scaleB * (diff.b - y);
+  float Cr = k.y * scaleR * (diff.r - y);
+  return sqrt((Y * Y) + (Cb * Cb) + (Cr * Cr));
+}
+
 #define eq(a,b)  (a == b)
 #define neq(a,b) (a != b)
 
@@ -201,6 +223,18 @@ bool IsPixEqual(vec3 pixA, vec3 pixB)
 #define XBRZ_DIAG_AA 92.0   // diagonal limit for antialiasing ramps
 #define XBRZ_TIP 64.0       // stripe ends stay square above this diagonal distance
 #define alike(a,b) (DistYCbCr(a, b) * 255.0 <= 20.0)
+
+// p and q differ more in hue than in lightness
+bool hueApart(vec3 p, vec3 q)
+{
+  vec3 diff = p - q;
+  float Y = dot(diff, vec3(0.2627, 0.6780, 0.0593));
+  float Cb = (0.5 / (1.0 - 0.0593)) * (diff.b - Y);
+  float Cr = (0.5 / (1.0 - 0.2627)) * (diff.r - Y);
+  return Cb * Cb + Cr * Cr > 1.44 * Y * Y;
+}
+// q is clearly another color than the dot p (more than 22, or 0.4x the dot's contrast with E), mostly in hue
+#define far(p,q,e) (DistYCbCr(p, q) * 255.0 > max(22.0, 0.40 * DistYCbCr(e, p) * 255.0) && hueApart(p, q))
 
 // res holds the xBRZ decisions of the four corners (blend type +4 line +8 second color +16 shallow +64 steep)
 vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 G, vec3 H, vec3 I,
@@ -244,6 +278,22 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
     vec4 tip = vec4(max(endL, endT), max(endR, endT), max(endR, endB), max(endL, endB));
     tip *= vec4(greaterThan(pair * 255.0, vec4(XBRZ_TIP)));
     res *= 1.0 - tip;
+  }
+
+  // single dots: a corner cut that would stretch a 1-pixel dot (its other side neighbours alike E, and
+  // no pixel of its color continuing the diagonal) toward a color of another hue stays square
+  if (dot(vec4(greaterThan(mod(res, 4.0), vec4(0.0))), vec4(1.0)) > 0.0)
+  {
+    bool dotD = alike(E, A) && alike(E, G) && alike(E, P(-2., 0.));
+    bool dotB = alike(E, A) && alike(E, C) && alike(E, P(0., -2.));
+    bool dotF = alike(E, C) && alike(E, I) && alike(E, P(2., 0.));
+    bool dotH = alike(E, G) && alike(E, I) && alike(E, P(0., 2.));
+    // per corner: one of the two diagonal colors is a dot that ends there and the other one is not
+    bool sx = (dotD && !alike(D, P(-2., 1.)) && !dotB && far(D, B, E)) || (dotB && !alike(B, P(1., -2.)) && !dotD && far(B, D, E));
+    bool sy = (dotB && !alike(B, P(-1., -2.)) && !dotF && far(B, F, E)) || (dotF && !alike(F, P(2., 1.)) && !dotB && far(F, B, E));
+    bool sz = (dotF && !alike(F, P(2., -1.)) && !dotH && far(F, H, E)) || (dotH && !alike(H, P(-1., 2.)) && !dotF && far(H, F, E));
+    bool sw = (dotH && !alike(H, P(1., 2.)) && !dotD && far(H, D, E)) || (dotD && !alike(D, P(-2., -1.)) && !dotH && far(D, H, E));
+    res *= 1.0 - vec4(sx, sy, sz, sw);
   }
   return res;
 }
@@ -339,8 +389,8 @@ void main()
      (IsPixEqual(G, H) && IsPixEqual(H, I) && IsPixEqual(I, F) && IsPixEqual(F, C) && !IsPixEqual(E, I)))))
   {
     res.z += 4.0;
-    float dist_F_G = DistYCbCr(F, G);
-    float dist_H_C = DistYCbCr(H, C);
+    float dist_F_G = DistShape(F, G);
+    float dist_H_C = DistShape(H, C);
     if((STEEP_E * dist_F_G <= dist_H_C) && neq(E,G) && neq(D,G))
       res.z += 16.0;
     if((STEEP_E * dist_H_C <= dist_F_G) && neq(E,C) && neq(B,C))
@@ -357,8 +407,8 @@ void main()
      (IsPixEqual(A, D) && IsPixEqual(D, G) && IsPixEqual(G, H) && IsPixEqual(H, I) && !IsPixEqual(E, G)))))
   {
     res.w += 4.0;
-    float dist_H_A = DistYCbCr(H, A);
-    float dist_D_I = DistYCbCr(D, I);
+    float dist_H_A = DistShape(H, A);
+    float dist_D_I = DistShape(D, I);
     if((STEEP_E * dist_H_A <= dist_D_I) && neq(E,A) && neq(B,A))
       res.w += 16.0;
     if((STEEP_E * dist_D_I <= dist_H_A) && neq(E,I) && neq(F,I))
@@ -375,8 +425,8 @@ void main()
      (IsPixEqual(I, F) && IsPixEqual(F, C) && IsPixEqual(C, B) && IsPixEqual(B, A) && !IsPixEqual(E, C)))))
   {
     res.y += 4.0;
-    float dist_B_I = DistYCbCr(B, I);
-    float dist_F_A = DistYCbCr(F, A);
+    float dist_B_I = DistShape(B, I);
+    float dist_F_A = DistShape(F, A);
     if((STEEP_E * dist_B_I <= dist_F_A) && neq(E,I) && neq(H,I))
       res.y += 16.0;
     if((STEEP_E * dist_F_A <= dist_B_I) && neq(E,A) && neq(D,A))
@@ -393,8 +443,8 @@ void main()
      (IsPixEqual(C, B) && IsPixEqual(B, A) && IsPixEqual(A, D) && IsPixEqual(D, G) && !IsPixEqual(E, A)))))
   {
     res.x += 4.0;
-    float dist_D_C = DistYCbCr(D, C);
-    float dist_B_G = DistYCbCr(B, G);
+    float dist_D_C = DistShape(D, C);
+    float dist_B_G = DistShape(B, G);
     if((STEEP_E * dist_D_C <= dist_B_G) && neq(E,C) && neq(F,C))
       res.x += 16.0;
     if((STEEP_E * dist_B_G <= dist_D_C) && neq(E,G) && neq(H,G))
