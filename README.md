@@ -22,9 +22,6 @@
 
 ## 🎬 Interactive Comparison
 
-> [!NOTE]
-> xBRZ Crisp also improved plain xBRZ. Its port fixes, new thresholds (tolerance 15, steep 3.2, dominant 3.8) and a faster output pass were merged into libretro's `xbrz-freescale-multipass` ([glsl-shaders #576](https://github.com/libretro/glsl-shaders/pull/576), [#577](https://github.com/libretro/glsl-shaders/pull/577), [slang-shaders #971](https://github.com/libretro/slang-shaders/pull/971), [#973](https://github.com/libretro/slang-shaders/pull/973)), and the `xbrz-crisp` preset ships there too. Every comparison here uses that latest xBRZ, so the gap is smaller than against the xBRZ of a few weeks ago.
-
 <a href="https://ele3131.github.io/xbrz-crisp/"><img src="comparisons/preview-16.png" alt="Animated comparison in Golden Sun, Castlevania: Aria of Sorrow, Harry Potter: Prisoner of Azkaban and Tales of Phantasia: xBRZ (latest), then xBRZ Crisp 16, then xBRZ Crisp 24" width="100%"></a>
 
 Pick integer scaling, MMPX Advanced, ScaleFX, xBRZ (latest) or xBRZ Crisp (contrast 12 to 30) on each side, drag the line across 10 Game Boy Advance scenes, zoom in up to 3×, and mark in red every spot where the two sides differ.
@@ -111,6 +108,10 @@ Tested in RetroArch on Android (gl driver, Game Boy Advance at 6x). The slang ve
 1. Copy the zip's contents into RetroArch's shader folder: `shaders_slang` for Vulkan, glcore, D3D and Metal, `shaders_glsl` for the gl driver.
 2. In a game, open Quick Menu › Shaders › Load and pick `edge-smoothing/xbrz/xbrz-crisp.slangp` (slang) or `xbrz/xbrz-crisp.glslp` (glsl).
 3. Save it with Quick Menu › Shaders › Save › Save Global Preset, or per game with Save Game Preset.
+
+## 🤝 Giving back to xBRZ
+
+Part of xBRZ Crisp is now in xBRZ itself. Since October 20, 2026, libretro's `xbrz-freescale-multipass` includes its port fixes, tuned thresholds and lighter output pass, plus the `xbrz-crisp` preset ([glsl #576](https://github.com/libretro/glsl-shaders/pull/576), [#577](https://github.com/libretro/glsl-shaders/pull/577), [slang #971](https://github.com/libretro/slang-shaders/pull/971), [#973](https://github.com/libretro/slang-shaders/pull/973)). The comparisons here use that improved version, labeled xBRZ (latest).
 
 ## ⚖️ License
 
