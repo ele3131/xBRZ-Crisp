@@ -89,6 +89,15 @@ select {
   background: rgba(10,12,16,.78); color: #fff; white-space: nowrap;
 }
 .tag.left { left: 10px; } .tag.right { right: 10px; }
+.peek {
+  position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); pointer-events: auto; touch-action: none;
+  padding: 9px 16px; border-radius: 999px; border: 1px solid rgba(255,255,255,.35); cursor: pointer;
+  background: rgba(10,12,16,.55); color: #fff; font: 600 .88rem/1.2 var(--font-body); white-space: nowrap;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; backdrop-filter: blur(4px);
+}
+.peek:hover { background: rgba(10,12,16,.72); }
+.peek[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.viewer.peeking .divider, .viewer.peeking .handle, .viewer.peeking .tag.right { display: none; }
 .hint { font-size: .85rem; color: var(--muted); }
 
 table { border-collapse: collapse; width: 100%; font-size: .95rem; }
@@ -97,7 +106,7 @@ th { font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color:
 td.num { font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
 .tablebox { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
 ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
-@media (max-width: 560px) { .tag { font-size: .72rem; } .frame { max-height: 70vh; } }
+@media (max-width: 560px) { .tag { font-size: .72rem; } .frame { max-height: 70vh; } .peek { padding: 6px 12px; font-size: .76rem; bottom: 8px; } }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
 </style>
 </head><body>
@@ -185,6 +194,7 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
       <div class="stage" id="stage">
         <img id="imgL" alt="">
         <img id="imgR" alt="">
+        <img id="imgO" alt="Integer" hidden>
         <canvas id="cvM" hidden></canvas>
       </div>
     </div>
@@ -193,9 +203,10 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
       <button class="handle" id="handle" type="button" aria-label="Comparison divider. Use the arrow keys to move it.">⇆</button>
       <span class="tag left" id="tagL"></span>
       <span class="tag right" id="tagR"></span>
+      <button class="peek" id="peek" type="button" aria-pressed="false" title="Hold to see the original pixels (or hold the O key)">Hold for Integer</button>
     </div>
   </div>
-  <p class="hint" id="info">Tip: from 2× to 4× the view scrolls; the line stays where you put it. Arrow keys move the line when it has focus. "Mark differences" outlines in red every spot where the two sides differ. xBRZ (latest) is the current libretro <code>xbrz-freescale-multipass</code>, which includes the port fixes and thresholds contributed by xBRZ Crisp since October 20, 2026 (tolerance 15, steep 3.2, dominant 3.8).</p>
+  <p class="hint" id="info">Tip: from 2× to 4× the view scrolls; the line stays where you put it. Arrow keys move the line when it has focus. "Mark differences" outlines in red every spot where the two sides differ. Hold "Hold for Integer" (or the O key) to see the original pixels over the whole picture. xBRZ (latest) is the current libretro <code>xbrz-freescale-multipass</code>, which includes the port fixes and thresholds contributed by xBRZ Crisp since October 20, 2026 (tolerance 15, steep 3.2, dominant 3.8).</p>
 
   <section class="prose">
     <h2>Presets</h2>
@@ -339,6 +350,7 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
     imgR.src = src(state.scene, key(state.right));
     imgL.alt = tagL.textContent = label(state.left);
     imgR.alt = tagR.textContent = label(state.right);
+    imgO.src = src(state.scene, "original");
     ["left", "right"].forEach(function (n) {
       setPressed(sides[n].querySelector(".alg"), state[n].alg);
       setPressed(sides[n].querySelector(".minc .seg"), state[n].minc);
@@ -399,6 +411,24 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
   });
 
   marks.addEventListener("change", function () { state.marks = marks.checked; drawMarks(); });
+
+  // hold the button (or the O key) to see integer scaling over the whole picture
+  var imgO = $("imgO"), peek = $("peek"), viewer = $("viewer"), peeking = false;
+  function setPeek(on) {
+    if (on === peeking) return;
+    peeking = on; imgO.hidden = !on; viewer.classList.toggle("peeking", on);
+    peek.setAttribute("aria-pressed", String(on));
+    tagL.textContent = on ? NAME.original : label(state.left);
+    if (state.marks) cv.hidden = on || cv.width === 0;
+  }
+  peek.addEventListener("pointerdown", function (e) { peek.setPointerCapture(e.pointerId); setPeek(true); e.preventDefault(); });
+  ["pointerup", "pointercancel", "lostpointercapture"].forEach(function (t) { peek.addEventListener(t, function () { setPeek(false); }); });
+  peek.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+  peek.addEventListener("keydown", function (e) { if (e.key === " " || e.key === "Enter") { setPeek(true); e.preventDefault(); } });
+  peek.addEventListener("keyup", function (e) { if (e.key === " " || e.key === "Enter") setPeek(false); });
+  document.addEventListener("keydown", function (e) { if ((e.key === "o" || e.key === "O") && !e.repeat && !/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) setPeek(true); });
+  document.addEventListener("keyup", function (e) { if (e.key === "o" || e.key === "O") setPeek(false); });
+  window.addEventListener("blur", function () { setPeek(false); });
   preload(state.scene);
   render();
 })();

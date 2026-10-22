@@ -24,7 +24,7 @@
 
 <a href="https://ele3131.github.io/xbrz-crisp/"><img src="comparisons/preview-24.png" alt="Animated comparison in Golden Sun, Castlevania: Aria of Sorrow, Harry Potter: Prisoner of Azkaban and Tales of Phantasia: xBRZ (latest), then xBRZ Crisp 24" width="100%"></a>
 
-Pick integer scaling, MMPX Advanced, ScaleFX, xBRZ (latest) or xBRZ Crisp (contrast 12 to 30) on each side, drag the line across 10 Game Boy Advance scenes, zoom in up to 4×, and mark in red every spot where the two sides differ.
+Pick integer scaling, MMPX Advanced, ScaleFX, xBRZ (latest) or xBRZ Crisp (contrast 12 to 30) on each side, drag the line across 10 Game Boy Advance scenes, zoom in up to 4×, hold a button to see the original pixels, and mark in red every spot where the two sides differ.
 
 ## 🌄 Gallery
 
