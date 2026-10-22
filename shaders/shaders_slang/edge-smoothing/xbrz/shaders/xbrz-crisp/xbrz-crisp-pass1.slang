@@ -11,9 +11,11 @@
 // - Diagonal: a corner is left square when the two colors on its diagonal (the colors the cut
 //   would join) differ by more than XBRZ_DIAG, so a junction of three different colors is not
 //   pulled into a fake diagonal (an idea from torcado's cleanEdge, MIT license). Antialiasing
-//   ramps, where one of those colors sits between the pixel and the other one, use 92 instead,
-//   shallow and steep lines are never blocked, and a blocked corner is still cut when a neighbour
-//   on the same diagonal is cut, so lines are drawn to the end.
+//   ramps, where one of those colors sits between the pixel and the other one, use 92 instead.
+//   Shallow and steep lines are not blocked, unless they would cut a pixel with a lighter color,
+//   so dark outlines, eyes and eyebrows keep their pixels. A blocked corner is still cut when a
+//   neighbour on the same diagonal is cut, so lines are drawn to the end, and at the tip of a
+//   1-pixel diagonal stripe, so the stripe runs on to the edge.
 // - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
 //   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
 //   so every stripe ends the same way.
@@ -29,8 +31,9 @@
 //#plain // - XBRZ_DIAG (crisp: 100) leaves a corner square when the two colors its cut would join differ
 //#plain //   by more than this, so a junction of three colors is not pulled into a fake diagonal (an idea
 //#plain //   from torcado's cleanEdge, MIT license). Antialiasing ramps use 92, shallow and steep lines are
-//#plain //   never blocked, a blocked corner is still cut when a neighbour on the same diagonal is cut,
-//#plain //   and where 1-pixel stripes end flush (gauges, health bars) the end corners stay square.
+//#plain //   only blocked when they would cut a pixel with a lighter color, a blocked corner is still cut
+//#plain //   when a neighbour on the same diagonal is cut or at the tip of a 1-pixel diagonal stripe, and
+//#plain //   where 1-pixel stripes end flush (gauges, health bars) the end corners stay square.
 //#plain //   The shallow and steep line tests also weigh hue a little more than lightness (1.2x).
 //
 // The first pass makes every blend decision once per input pixel (blend type, line type, blend
