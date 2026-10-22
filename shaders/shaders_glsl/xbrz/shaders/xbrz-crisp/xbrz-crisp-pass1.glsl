@@ -16,9 +16,7 @@
 // - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
 //   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
 //   so every stripe ends the same way.
-// - Single dots: a corner cut that would stretch a 1-pixel dot toward a color that differs from it
-//   mostly in hue (an olive dot on skin, say) stays square.
-// - Line shapes: the shallow and steep line tests weigh hue a little more than lightness (1.15x),
+// - Line shapes: the shallow and steep line tests weigh hue a little more than lightness (1.2x),
 //   so lines in hue-shifted shading follow the artist's pixels.
 // XBRZ_MINC = 0 turns the first rule off, and XBRZ_DIAG = 0 the others.
 //#crisp}
@@ -32,8 +30,7 @@
 //#plain //   from torcado's cleanEdge, MIT license). Antialiasing ramps use 92, shallow and steep lines are
 //#plain //   never blocked, a blocked corner is still cut when a neighbour on the same diagonal is cut,
 //#plain //   and where 1-pixel stripes end flush (gauges, health bars) the end corners stay square.
-//#plain //   It also keeps a 1-pixel dot from being stretched toward a color of a different hue, and the
-//#plain //   shallow and steep line tests weigh hue a little more than lightness (1.15x).
+//#plain //   The shallow and steep line tests also weigh hue a little more than lightness (1.2x).
 //
 // The first pass makes every blend decision once per input pixel (blend type, line type, blend
 // color and the minimum contrast), so the second pass, which runs once per output pixel, only
