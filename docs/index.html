@@ -89,14 +89,16 @@ select {
   background: rgba(10,12,16,.78); color: #fff; white-space: nowrap;
 }
 .tag.left { left: 10px; } .tag.right { right: 10px; }
+.stage img[hidden] { display: none; }
+.peekbar { display: flex; justify-content: center; margin-top: 8px; }
 .peek {
-  position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); pointer-events: auto; touch-action: none;
-  padding: 9px 16px; border-radius: 999px; border: 1px solid rgba(255,255,255,.35); cursor: pointer;
-  background: rgba(10,12,16,.55); color: #fff; font: 600 .88rem/1.2 var(--font-body); white-space: nowrap;
-  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; backdrop-filter: blur(4px);
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; cursor: pointer; touch-action: none;
+  border: 1px solid var(--line); background: var(--panel); color: var(--fg); font: 600 .8rem/1.2 var(--font-body); white-space: nowrap;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; transition: background .12s, color .12s;
 }
-.peek:hover { background: rgba(10,12,16,.72); }
-.peek[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.peek::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: currentColor; opacity: .55; }
+.peek:hover { border-color: var(--accent); }
+.peek[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .viewer.peeking .divider, .viewer.peeking .handle, .viewer.peeking .tag.right { display: none; }
 .hint { font-size: .85rem; color: var(--muted); }
 
@@ -106,7 +108,7 @@ th { font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color:
 td.num { font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
 .tablebox { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
 ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
-@media (max-width: 560px) { .tag { font-size: .72rem; } .frame { max-height: 70vh; } .peek { padding: 6px 12px; font-size: .76rem; bottom: 8px; } }
+@media (max-width: 560px) { .tag { font-size: .72rem; } .frame { max-height: 70vh; } }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
 </style>
 </head><body>
@@ -203,10 +205,10 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
       <button class="handle" id="handle" type="button" aria-label="Comparison divider. Use the arrow keys to move it.">⇆</button>
       <span class="tag left" id="tagL"></span>
       <span class="tag right" id="tagR"></span>
-      <button class="peek" id="peek" type="button" aria-pressed="false" title="Hold to see the original pixels (or hold the O key)">Hold for Integer</button>
     </div>
   </div>
-  <p class="hint" id="info">Tip: from 2× to 4× the view scrolls; the line stays where you put it. Arrow keys move the line when it has focus. "Mark differences" outlines in red every spot where the two sides differ. Hold "Hold for Integer" (or the O key) to see the original pixels over the whole picture. xBRZ (latest) is the current libretro <code>xbrz-freescale-multipass</code>, which includes the port fixes and thresholds contributed by xBRZ Crisp since October 20, 2026 (tolerance 15, steep 3.2, dominant 3.8).</p>
+  <div class="peekbar"><button class="peek" id="peek" type="button" aria-pressed="false" title="Hold to see the original pixels (or hold the O key)">Hold for Integer</button></div>
+  <p class="hint" id="info">Tip: from 2× to 4× the view scrolls; the line stays where you put it. Arrow keys move the line when it has focus. "Mark differences" outlines in red every spot where the two sides differ. Hold the button under the picture (or the O key) to see the original pixels. xBRZ (latest) is the current libretro <code>xbrz-freescale-multipass</code>, which includes the port fixes and thresholds contributed by xBRZ Crisp since October 20, 2026 (tolerance 15, steep 3.2, dominant 3.8).</p>
 
   <section class="prose">
     <h2>Presets</h2>
