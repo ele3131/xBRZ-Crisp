@@ -15,7 +15,10 @@
 //   Shallow and steep lines are not blocked, unless they would cut a pixel with a lighter color,
 //   so dark outlines, eyes and eyebrows keep their pixels. A blocked corner is still cut when a
 //   neighbour on the same diagonal is cut, so lines are drawn to the end, and at the tip of a
-//   1-pixel diagonal stripe, so the stripe runs on to the edge.
+//   1-pixel diagonal stripe, so the stripe runs on to the edge. Between two close inner tones the
+//   cut also runs up to an outline darker than both, which stays whole (not at the corner of a
+//   solid block or along a 1-pixel stripe), and a corner whose blend color runs straight on, like a
+//   frame or a horizontal line, stays square, so lines do not bend where they meet.
 // - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
 //   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
 //   so every stripe ends the same way.
@@ -32,8 +35,10 @@
 //#plain //   by more than this, so a junction of three colors is not pulled into a fake diagonal (an idea
 //#plain //   from torcado's cleanEdge, MIT license). Antialiasing ramps use 92, shallow and steep lines are
 //#plain //   only blocked when they would cut a pixel with a lighter color, a blocked corner is still cut
-//#plain //   when a neighbour on the same diagonal is cut or at the tip of a 1-pixel diagonal stripe, and
-//#plain //   where 1-pixel stripes end flush (gauges, health bars) the end corners stay square.
+//#plain //   when a neighbour on the same diagonal is cut or at the tip of a 1-pixel diagonal stripe, a cut
+//#plain //   between two close inner tones runs up to a darker outline, a corner whose blend color runs
+//#plain //   straight on stays square, and where 1-pixel stripes end flush (gauges, health bars) the end
+//#plain //   corners stay square.
 //#plain //   The shallow and steep line tests also weigh hue a little more than lightness (1.2x).
 //
 // The first pass makes every blend decision once per input pixel (blend type, line type, blend

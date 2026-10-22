@@ -15,7 +15,10 @@
 //   Shallow and steep lines are not blocked, unless they would cut a pixel with a lighter color,
 //   so dark outlines, eyes and eyebrows keep their pixels. A blocked corner is still cut when a
 //   neighbour on the same diagonal is cut, so lines are drawn to the end, and at the tip of a
-//   1-pixel diagonal stripe, so the stripe runs on to the edge.
+//   1-pixel diagonal stripe, so the stripe runs on to the edge. Between two close inner tones the
+//   cut also runs up to an outline darker than both, which stays whole (not at the corner of a
+//   solid block or along a 1-pixel stripe), and a corner whose blend color runs straight on, like a
+//   frame or a horizontal line, stays square, so lines do not bend where they meet.
 // - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
 //   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
 //   so every stripe ends the same way.
@@ -32,8 +35,10 @@
 //#plain //   by more than this, so a junction of three colors is not pulled into a fake diagonal (an idea
 //#plain //   from torcado's cleanEdge, MIT license). Antialiasing ramps use 92, shallow and steep lines are
 //#plain //   only blocked when they would cut a pixel with a lighter color, a blocked corner is still cut
-//#plain //   when a neighbour on the same diagonal is cut or at the tip of a 1-pixel diagonal stripe, and
-//#plain //   where 1-pixel stripes end flush (gauges, health bars) the end corners stay square.
+//#plain //   when a neighbour on the same diagonal is cut or at the tip of a 1-pixel diagonal stripe, a cut
+//#plain //   between two close inner tones runs up to a darker outline, a corner whose blend color runs
+//#plain //   straight on stays square, and where 1-pixel stripes end flush (gauges, health bars) the end
+//#plain //   corners stay square.
 //#plain //   The shallow and steep line tests also weigh hue a little more than lightness (1.2x).
 //
 // The first pass makes every blend decision once per input pixel (blend type, line type, blend
@@ -186,6 +191,7 @@ float DistShape(vec3 pixA, vec3 pixB)
 #define XBRZ_DIAG_AA 92.0   // diagonal limit for antialiasing ramps
 #define XBRZ_TIP 64.0       // stripe ends stay square above this diagonal distance
 #define XBRZ_STRIPE 64.0    // a diagonal stripe keeps a close color (within this) along its length
+#define XBRZ_OUTLINE 0.15   // an outline is darker (in luma) than both inner tones by this much
 #define alike(a,b) (DistYCbCr(a, b) * 255.0 <= 20.0)
 
 // res holds the xBRZ decisions of the four corners (blend type +4 line +8 second color +16 shallow +64 steep)
@@ -206,14 +212,18 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
   // a ramp: one diagonal color lies (almost) on the way from E to the other one
   vec4 ramp = min((dEP + pair) / max(dEQ, vec4(1e-5)), (dEQ + pair) / max(dEP, vec4(1e-5)));
   vec4 limit = mix(vec4(XBRZ_DIAG), vec4(XBRZ_DIAG_AA), vec4(lessThanEqual(ramp, vec4(1.15))));
-  // the blend color P of each corner (+8: the second of its two candidates)
+  // the blend color P of each corner (+8: the second of its two candidates) and the other one, Q
   vec4 sec = vec4(greaterThan(mod(floor(res / 8.0), 2.0), vec4(0.5)));
-  // shallow and steep lines (+16, +64) are not blocked, unless P is lighter than E: a darker pixel
-  // stays whole up to its edge
+  vec3 Px = sec.x > 0.5 ? B : D, Py = sec.y > 0.5 ? F : B, Pz = sec.z > 0.5 ? H : F, Pw = sec.w > 0.5 ? D : H;
+  vec3 Qx = sec.x > 0.5 ? D : B, Qy = sec.y > 0.5 ? B : F, Qz = sec.z > 0.5 ? F : H, Qw = sec.w > 0.5 ? H : D;
   const vec3 lw = vec3(0.2627, 0.6780, 0.0593);
-  vec4 lP = vec4(dot(sec.x > 0.5 ? B : D, lw), dot(sec.y > 0.5 ? F : B, lw), dot(sec.z > 0.5 ? H : F, lw), dot(sec.w > 0.5 ? D : H, lw));
-  vec4 line = vec4(greaterThanEqual(res, vec4(16.0))) * vec4(lessThanEqual(lP, vec4(dot(E, lw) + 4.0 / 255.0)));
-  vec4 keep = max(vec4(lessThanEqual(pair * 255.0, limit)), line);
+  float lE = dot(E, lw);
+  vec4 lP = vec4(dot(Px, lw), dot(Py, lw), dot(Pz, lw), dot(Pw, lw));
+  vec4 lQ = vec4(dot(Qx, lw), dot(Qy, lw), dot(Qz, lw), dot(Qw, lw));
+  // dark keeps its pixel: P is not lighter than E
+  vec4 notLighter = vec4(lessThanEqual(lP, vec4(lE + 4.0 / 255.0)));
+  // shallow and steep lines (+16, +64) are not blocked, unless P is lighter than E
+  vec4 keep = max(vec4(lessThanEqual(pair * 255.0, limit)), vec4(greaterThanEqual(res, vec4(16.0))) * notLighter);
   // diagonal stripe tips: P is a 1-pixel stripe that runs on along the cut (a close color two pixels
   // away from E) and E's color runs on along its other side, so the tip is drawn to the edge
   vec4 tipLine;
@@ -226,8 +236,27 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
   tipLine.w = sec.w > 0.5 ? float(alike(E, A) && min(DistYCbCr(D, P(-2.,0.)), DistYCbCr(D, P(-2.,-1.))) * 255.0 <= XBRZ_STRIPE)
                           : float(alike(E, I) && min(DistYCbCr(H, P(0.,2.)), DistYCbCr(H, P(1.,2.))) * 255.0 <= XBRZ_STRIPE);
   keep = max(keep, tipLine);
-  // a blocked corner is flagged (+128); the output pass keeps it only when it continues a cut line
+  // P runs straight on away from the corner (a horizontal or vertical line or frame)
+  vec4 straight = vec4(float(sec.x > 0.5 ? alike(B, C) : alike(D, G)), float(sec.y > 0.5 ? alike(F, I) : alike(B, A)),
+                       float(sec.z > 0.5 ? alike(H, G) : alike(F, C)), float(sec.w > 0.5 ? alike(D, A) : alike(H, I)));
+  // E's color goes on past E away from Q, so E is wider than a 1-pixel stripe along Q
+  vec4 wide = vec4(float(alike(E, sec.x > 0.5 ? F : H)), float(alike(E, sec.y > 0.5 ? H : D)),
+                   float(alike(E, sec.z > 0.5 ? D : B)), float(alike(E, sec.w > 0.5 ? B : F)));
+  // E is the corner of a solid block of its color (E's color goes on past E on both far sides and
+  // between them), so a dot of another color next to it does not round the block's corner
+  vec4 block = wide * vec4(float(alike(E, sec.x > 0.5 ? H : F) && alike(E, I)), float(alike(E, sec.y > 0.5 ? D : H) && alike(E, G)),
+                           float(alike(E, sec.z > 0.5 ? B : D) && alike(E, A)), float(alike(E, sec.w > 0.5 ? F : B) && alike(E, C)));
+  // inner line up to the outline: E and P are close tones (within XBRZ_DIAG) and Q is an outline darker
+  // than both, so the cut runs between the inner tones and the outline stays whole. A straight P is
+  // left straight, and the steps of a 1-pixel stripe along the outline (a gauge) stay square
+  vec4 dEPc = mix(dEP, dEQ, sec);
+  vec4 inner = vec4(lessThanEqual(dEPc * 255.0, vec4(XBRZ_DIAG))) * vec4(lessThan(lQ, min(lP, vec4(lE)) - XBRZ_OUTLINE))
+             * notLighter * (1.0 - straight) * wide * (1.0 - block);
+  keep = max(keep, inner);
+  // a blocked corner is flagged (+128); the output pass keeps it only when it continues a cut line.
+  // When P runs straight on, the corner is dropped instead, so a diagonal stops at a frame
   res += 128.0 * (1.0 - keep) * cut;
+  res *= 1.0 - (1.0 - keep) * straight * cut;
 
   // stripe ends: E ends a 1-pixel horizontal line (left or right end) or vertical line (top or bottom end)
   bool eB = eq(E, B), eD = eq(E, D), eF = eq(E, F), eH = eq(E, H);
