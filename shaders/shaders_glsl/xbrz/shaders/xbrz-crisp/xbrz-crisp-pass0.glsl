@@ -16,8 +16,11 @@
 //   neighbour on the same diagonal is cut, so lines are drawn to the end, and at the tip of a
 //   1-pixel diagonal stripe, so the stripe runs on to the edge. Between two close inner tones the
 //   cut also runs up to an outline darker than both, which stays whole (not at the corner of a
-//   solid block or along a 1-pixel stripe), and a corner whose blend color runs straight on, like a
-//   frame or a horizontal line, stays square, so lines do not bend where they meet.
+//   solid block, along a 1-pixel stripe or next to a corner the artist already rounded with an
+//   antialiasing pixel), and a corner whose blend color runs straight on, like a frame or a
+//   horizontal line, stays square, so lines do not bend where they meet. Where two dark strokes of
+//   different colors meet in an L around a 1-pixel light gap, like a pupil under an eyebrow, the
+//   corner stays square.
 // - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
 //   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
 //   so every stripe ends the same way.
@@ -36,8 +39,9 @@
 //#plain //   only blocked when they would cut a pixel with a lighter color, a blocked corner is still cut
 //#plain //   when a neighbour on the same diagonal is cut or at the tip of a 1-pixel diagonal stripe, a cut
 //#plain //   between two close inner tones runs up to a darker outline, a corner whose blend color runs
-//#plain //   straight on stays square, and where 1-pixel stripes end flush (gauges, health bars) the end
-//#plain //   corners stay square.
+//#plain //   straight on stays square, two dark strokes meeting in an L around a light gap (an eye) are
+//#plain //   not joined, and where 1-pixel stripes end flush (gauges, health bars) the end corners stay
+//#plain //   square.
 //#plain //   The shallow and steep line tests also weigh hue a little more than lightness (1.2x).
 //
 // The first pass makes every blend decision once per input pixel (blend type, line type, blend
@@ -231,6 +235,12 @@ float DistShape(vec3 pixA, vec3 pixB)
 #define XBRZ_OUTLINE 0.15   // an outline is darker (in luma) than both inner tones by this much
 #define alike(a,b) (DistYCbCr(a, b) * 255.0 <= 20.0)
 
+// P's stroke ends at its pixel o - side: no pixel of P's color right after it, straight on (o) or diagonally (o +- side)
+float strokeEnds(vec3 p, vec2 coord, vec2 o, vec2 side)
+{
+  return float(!alike(p, P(o.x, o.y)) && !alike(p, P(o.x + side.x, o.y + side.y)) && !alike(p, P(o.x - side.x, o.y - side.y)));
+}
+
 // res holds the xBRZ decisions of the four corners (blend type +4 line +8 second color +16 shallow +64 steep)
 vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 G, vec3 H, vec3 I,
                    float dEB, float dED, float dEF, float dEH)
@@ -286,14 +296,49 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
   // inner line up to the outline: E and P are close tones (within XBRZ_DIAG) and Q is an outline darker
   // than both, so the cut runs between the inner tones and the outline stays whole. A straight P is
   // left straight, and the steps of a 1-pixel stripe along the outline (a gauge) stay square
+  // the pixel two steps from E through P (R), the pixel on the far side of P from Q (S), and the pixel
+  // next to R on E's side (U)
+  vec3 Rx = sec.x > 0.5 ? P(0.,-2.) : P(-2.,0.), Ry = sec.y > 0.5 ? P(2.,0.) : P(0.,-2.);
+  vec3 Rz = sec.z > 0.5 ? P(0.,2.) : P(2.,0.), Rw = sec.w > 0.5 ? P(-2.,0.) : P(0.,2.);
+  vec3 Sx = sec.x > 0.5 ? C : G, Sy = sec.y > 0.5 ? I : A, Sz = sec.z > 0.5 ? G : C, Sw = sec.w > 0.5 ? A : I;
+  vec3 Ux = sec.x > 0.5 ? P(1.,-2.) : P(-2.,1.), Uy = sec.y > 0.5 ? P(2.,1.) : P(-1.,-2.);
+  vec3 Uz = sec.z > 0.5 ? P(-1.,2.) : P(2.,-1.), Uw = sec.w > 0.5 ? P(-2.,-1.) : P(1.,2.);
+  vec4 lR = vec4(dot(Rx, lw), dot(Ry, lw), dot(Rz, lw), dot(Rw, lw));
+  vec4 lU = vec4(dot(Ux, lw), dot(Uy, lw), dot(Uz, lw), dot(Uw, lw));
   vec4 dEPc = mix(dEP, dEQ, sec);
   vec4 inner = vec4(lessThanEqual(dEPc * 255.0, vec4(XBRZ_DIAG))) * vec4(lessThan(lQ, min(lP, vec4(lE)) - XBRZ_OUTLINE))
              * notLighter * (1.0 - straight) * wide * (1.0 - block);
+  // the artist's corner bevel: P is a single antialiasing pixel in a corner of the outline (E's color on
+  // its far side, the outline beyond it and turning back along E's side), so the corner is already
+  // rounded and the line does not round the pixel next to it again
+  vec4 bevel = vec4(float(alike(E, Sx)), float(alike(E, Sy)), float(alike(E, Sz)), float(alike(E, Sw)))
+             * vec4(lessThan(max(lR, lU), min(lP, vec4(lE)) - XBRZ_OUTLINE));
+  inner *= 1.0 - bevel;
   keep = max(keep, inner);
   // a blocked corner is flagged (+128); the output pass keeps it only when it continues a cut line.
   // When P runs straight on, the corner is dropped instead, so a diagonal stops at a frame
   res += 128.0 * (1.0 - keep) * cut;
   res *= 1.0 - (1.0 - keep) * straight * cut;
+  // two dark strokes of different colors meet in an L around a 1-pixel light gap E, like a pupil under
+  // an eyebrow: Q passes the corner, P is a short 1-pixel line that ends against it. The corner is
+  // dropped, so the two strokes are not joined into a diagonal
+  vec4 eye = vec4(float(!alike(Px, Qx) && alike(Qx, A) && !alike(Px, A) && !alike(Px, Rx) && !alike(E, sec.x > 0.5 ? H : F)),
+                  float(!alike(Py, Qy) && alike(Qy, C) && !alike(Py, C) && !alike(Py, Ry) && !alike(E, sec.y > 0.5 ? D : H)),
+                  float(!alike(Pz, Qz) && alike(Qz, I) && !alike(Pz, I) && !alike(Pz, Rz) && !alike(E, sec.z > 0.5 ? B : D)),
+                  float(!alike(Pw, Qw) && alike(Qw, G) && !alike(Pw, G) && !alike(Pw, Rw) && !alike(E, sec.w > 0.5 ? F : B)))
+          * straight * cut * vec4(lessThan(max(lP, lQ), vec4(lE - XBRZ_OUTLINE)));
+  // E is not part of a diagonal stripe along the cut
+  float stripeCG = float(min(DistYCbCr(E, C), DistYCbCr(E, G)) * 255.0 <= XBRZ_STRIPE);
+  float stripeAI = float(min(DistYCbCr(E, A), DistYCbCr(E, I)) * 255.0 <= XBRZ_STRIPE);
+  eye *= 1.0 - vec4(stripeCG, stripeAI, stripeCG, stripeAI);
+  if (dot(eye, vec4(1.0)) > 0.0)
+  {
+    eye *= vec4(sec.x > 0.5 ? strokeEnds(Px, coord, vec2(2.,-1.), vec2(0.,1.)) : strokeEnds(Px, coord, vec2(-1.,2.), vec2(1.,0.)),
+                sec.y > 0.5 ? strokeEnds(Py, coord, vec2(1.,2.), vec2(1.,0.)) : strokeEnds(Py, coord, vec2(-2.,-1.), vec2(0.,1.)),
+                sec.z > 0.5 ? strokeEnds(Pz, coord, vec2(-2.,1.), vec2(0.,1.)) : strokeEnds(Pz, coord, vec2(1.,-2.), vec2(1.,0.)),
+                sec.w > 0.5 ? strokeEnds(Pw, coord, vec2(-1.,-2.), vec2(1.,0.)) : strokeEnds(Pw, coord, vec2(2.,1.), vec2(0.,1.)));
+    res *= 1.0 - eye;
+  }
 
   // stripe ends: E ends a 1-pixel horizontal line (left or right end) or vertical line (top or bottom end)
   bool eB = eq(E, B), eD = eq(E, D), eF = eq(E, F), eH = eq(E, H);
