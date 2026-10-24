@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://ele3131.github.io/xbrz-crisp/"><img src="comparisons/design/button.svg" alt="Open the Interactive Comparison" width="420"></a>
+  <a href="https://ele3131.github.io/xBRZ-Crisp/"><img src="comparisons/design/button.svg" alt="Open the Interactive Comparison" width="420"></a>
 </p>
 
 <div align="center">
