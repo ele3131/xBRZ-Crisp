@@ -23,7 +23,8 @@
 //   different colors meet in an L around a 1-pixel light gap, like a pupil under an eyebrow, the
 //   corner stays square. A blocked corner comes back as in xBRZ where the pixel's color runs on as a
 //   45-degree diagonal along the cut up to a straight line, like hair or a fence post, unless that
-//   would bend a straight line or stretch a lone 1-pixel dot.
+//   would bend a straight line or stretch a lone 1-pixel dot. It also comes back where a 1-pixel
+//   stroke lighter than both colors runs on along the cut, like the white strokes of letters.
 // - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
 //   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
 //   so every stripe ends the same way.
@@ -395,6 +396,56 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
     // a restored corner whose P runs straight while Q does not, and Q runs on along the cut, blends Q
     vec4 swap = run * straight * (1.0 - straightQ0) * qRun;
     res += 8.0 * (1.0 - 2.0 * sec) * swap;
+  }
+
+  // thin light stroke: a blocked corner comes back as in xBRZ where E is a 1-pixel stroke lighter than both diagonal
+  // colors that runs on along the diagonal of the cut (E's color in C or G for the / corners, A or I for the \ ones,
+  // not on E's far side), like the white strokes of letters or a ring with gray antialiasing
+  {
+    // E's color, or a tone closer to E than the corner's two colors (an antialiasing step), goes on along the diagonal
+    vec4 dPQmin = min(mix(dEP, dEQ, sec), mix(dEQ, dEP, sec));
+    float eC = DistYCbCr(E, C), eG = DistYCbCr(E, G), eA = DistYCbCr(E, A), eI = DistYCbCr(E, I);
+    // a diagonal neighbour counts only when the stroke really bends there: the cross neighbour beside it on E's far side
+    // is not E's tone too (a peak on top of a straight line is not a diagonal stroke)
+    vec4 tE = 0.6 * dPQmin;
+    bvec4 aD = bvec4(alike(E, C), alike(E, G), alike(E, A), alike(E, I));
+    bvec4 nD = bvec4(aD.x || eC < tE.x, aD.y || eG < tE.x, aD.z || eA < tE.y, aD.w || eI < tE.y);
+    bvec4 nD2 = bvec4(aD.x || eC < tE.z, aD.y || eG < tE.z, aD.z || eA < tE.w, aD.w || eI < tE.w);
+    float fB = DistYCbCr(E, B), fD = DistYCbCr(E, D), fF = DistYCbCr(E, F), fH = DistYCbCr(E, H);
+    // x: C beside F, G beside H; y: A beside D, I beside H; z: C beside B, G beside D; w: A beside B, I beside F
+    vec4 sideA = vec4(float(aD.x && !(fF < tE.x)) + float(aD.y && !(fH < tE.x)), float(aD.z && !(fD < tE.y)) + float(aD.w && !(fH < tE.y)),
+                      float(aD.x && !(fB < tE.z)) + float(aD.y && !(fD < tE.z)), float(aD.z && !(fB < tE.w)) + float(aD.w && !(fF < tE.w)));
+    vec4 sideN = vec4(float(nD.x && !(fF < tE.x)) + float(nD.y && !(fH < tE.x)), float(nD.z && !(fD < tE.y)) + float(nD.w && !(fH < tE.y)),
+                      float(nD2.x && !(fB < tE.z)) + float(nD2.y && !(fD < tE.z)), float(nD2.z && !(fB < tE.w)) + float(nD2.w && !(fF < tE.w)));
+    sideA = min(sideA, vec4(1.0)); sideN = min(sideN, vec4(1.0));
+    vec4 farOff = vec4(float(!alike(E, I)), float(!alike(E, G)), float(!alike(E, A)), float(!alike(E, C)));
+    vec4 along = sideA * farOff;
+    along = max(along, sideA * vec4(lessThan(max(lP, lQ), vec4(0.45))));
+    along = max(along, sideN * farOff);
+    vec4 light = vec4(greaterThan(vec4(lE) - max(lP, lQ), vec4(0.15)));
+    vec4 back = along * light * cut * vec4(notEqual(res, res0));
+    // not where P and Q are lone pixels (no neighbour of their own color in a cross), like an eye
+    vec3 Pc[4]; Pc[0] = Px; Pc[1] = Py; Pc[2] = Pz; Pc[3] = Pw;
+    vec3 Qc[4]; Qc[0] = Qx; Qc[1] = Qy; Qc[2] = Qz; Qc[3] = Qw;
+    vec2 Po[4]; Po[0] = sec.x > 0.5 ? vec2(0., -1.) : vec2(-1., 0.); Po[1] = sec.y > 0.5 ? vec2(1., 0.) : vec2(0., -1.);
+    Po[2] = sec.z > 0.5 ? vec2(0., 1.) : vec2(1., 0.); Po[3] = sec.w > 0.5 ? vec2(-1., 0.) : vec2(0., 1.);
+    vec2 Qo[4]; Qo[0] = sec.x > 0.5 ? vec2(-1., 0.) : vec2(0., -1.); Qo[1] = sec.y > 0.5 ? vec2(0., -1.) : vec2(1., 0.);
+    Qo[2] = sec.z > 0.5 ? vec2(1., 0.) : vec2(0., 1.); Qo[3] = sec.w > 0.5 ? vec2(0., 1.) : vec2(-1., 0.);
+    vec2 n4[4]; n4[0] = vec2(1., 0.); n4[1] = vec2(-1., 0.); n4[2] = vec2(0., 1.); n4[3] = vec2(0., -1.);
+    for (int k = 0; k < 4; k++)
+    {
+      if (back[k] <= 0.0) continue;
+      float np = 0.0, nq = 0.0;
+      for (int j = 0; j < 4; j++)
+      {
+        vec2 u = Po[k] + n4[j], v = Qo[k] + n4[j];
+        if (u != vec2(0.0)) np += float(alike(Pc[k], P(u.x, u.y)));
+        if (v != vec2(0.0)) nq += float(alike(Qc[k], P(v.x, v.y)));
+      }
+      if (np < 0.5 && nq < 0.5) back[k] = 0.0;
+    }
+    res = mix(res, res0, back);
+    kept = max(kept, back);
   }
 
   // stripe ends: E ends a 1-pixel horizontal line (left or right end) or vertical line (top or bottom end)

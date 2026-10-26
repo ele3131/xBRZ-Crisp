@@ -97,7 +97,7 @@ xBRZ looks at each corner of each pixel and decides whether to round it. xBRZ Cr
 
 1. 🌿 **Soft shading is not a shape** (`XBRZ_MINC`). When the two colors of a corner are closer than the minimum contrast, they are shading or texture, not an edge, so the corner stays square.
 2. 🎨 **Different colors are not joined** (`XBRZ_DIAG`). Rounding a corner joins the two neighbors on its diagonal. When those are very different colors, the corner is a meeting point, not a line, so it stays square. Dark outlines, eyes and eyebrows keep their full shape.
-3. 📏 **Lines end the way they were drawn.** Straight lines do not bend where they meet, stacked stripes end square, and diagonal lines run on to their end or up to the outline. A 45-degree diagonal the artist drew, like a lock of hair, is rounded as in xBRZ.
+3. 📏 **Lines end the way they were drawn.** Straight lines do not bend where they meet, stacked stripes end square, and diagonal lines run on to their end or up to the outline. A 45-degree diagonal the artist drew, like a lock of hair, and thin light strokes, like the white strokes of letters, are rounded as in xBRZ.
 
 Edges are still found exactly as xBRZ finds them, so outlines and text are smoothed as before. The diagonal check is inspired by [cleanEdge](https://github.com/libretro/slang-shaders/tree/master/edge-smoothing/cleanEdge) by torcado. The [comparison page](https://ele3131.github.io/xBRZ-Crisp/#how) goes through every rule with more examples.
 

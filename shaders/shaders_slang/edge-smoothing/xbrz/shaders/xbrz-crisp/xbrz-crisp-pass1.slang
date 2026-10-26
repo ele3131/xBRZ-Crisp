@@ -23,7 +23,8 @@
 //   different colors meet in an L around a 1-pixel light gap, like a pupil under an eyebrow, the
 //   corner stays square. A blocked corner comes back as in xBRZ where the pixel's color runs on as a
 //   45-degree diagonal along the cut up to a straight line, like hair or a fence post, unless that
-//   would bend a straight line or stretch a lone 1-pixel dot.
+//   would bend a straight line or stretch a lone 1-pixel dot. It also comes back where a 1-pixel
+//   stroke lighter than both colors runs on along the cut, like the white strokes of letters.
 // - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
 //   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
 //   so every stripe ends the same way.
