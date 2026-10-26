@@ -95,7 +95,7 @@ xBRZ looks at each corner of each pixel and decides whether to round it. xBRZ Cr
 
 <img src="comparisons/8-how-it-works.png" alt="Stone in Tales of Phantasia, a face in Tales of Phantasia and a menu frame in Castlevania: Aria of Sorrow: original, xBRZ (latest) and xBRZ Crisp, with the differences circled in red" width="100%">
 
-1. 🌿 **Soft shading is not a shape** (`XBRZ_MINC`). When the two colors of a corner are closer than the minimum contrast, they are shading or texture, not an edge, so the corner stays square. A corner just below the limit is still rounded when the corners on both sides of it along the same diagonal are, so a diagonal edge has no tooth where its contrast dips.
+1. 🌿 **Soft shading is not a shape** (`XBRZ_MINC`). When the two colors of a corner are closer than the minimum contrast, they are shading or texture, not an edge, so the corner stays square. A corner just below the limit is still rounded when the corners on both sides of it along the same diagonal are, so a diagonal edge has no tooth where its contrast dips. Where a line crosses an antialiasing pixel on a strong edge, like the edge of a roof in Golden Sun, both halves of the pixel are cut as in xBRZ, so the pixel becomes part of the diagonal instead of a notch in it.
 2. 🎨 **Different colors are not joined** (`XBRZ_DIAG`). Rounding a corner joins the two neighbors on its diagonal. When those are very different colors, the corner is a meeting point, not a line, so it stays square. Dark outlines, eyes and eyebrows keep their full shape. Where the artist stepped an antialiasing pixel along a diagonal edge, like the shaded edge of a cape, the corner is rounded as in xBRZ. The same goes for the tip of a diagonal that ends on a straight edge, like a lock of Link's hair.
 3. 📏 **Lines end the way they were drawn.** Straight lines do not bend where they meet, stacked stripes end square (unless a line meets their end), and diagonal lines run on to their end or up to the outline. A 45-degree diagonal the artist drew, like a lock of hair, and thin light strokes, like the white strokes of letters, are rounded as in xBRZ.
 
@@ -108,7 +108,7 @@ Edges are still found exactly as xBRZ finds them, so outlines and text are smoot
 
 The shader is based on the libretro `xbrz-freescale-multipass` port. Blend color ties and the order of the four corners follow the reference C++ xBRZ, the GLSL version takes the output scale from the image size instead of the texture size, and the output pass reads the image from the pass before xBRZ, so it also works after other shaders in a preset (a color correction, for example).
 
-The code keeps the xBRZ part and the crisp rules apart: the crisp rules sit between `//#crisp{` and `//#crisp}` markers, and `tools/make-multipass.py` removes them to write plain `xbrz-freescale-multipass`.
+The code keeps the xBRZ part and the crisp rules apart: the crisp rules sit between `//#crisp{` and `//#crisp}` markers, and `tools/make-multipass.py` removes them to write plain `xbrz-freescale-multipass`. Each file starts with a numbered list of the crisp rules, and each rule has its own section with the same number in the code.
 
 Tested in RetroArch on Android (gl driver, Game Boy Advance at 6x). The slang version was compiled to SPIR-V with glslang and renders the same output as the GLSL version in an offline harness.
 
