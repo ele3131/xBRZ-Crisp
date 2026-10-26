@@ -648,9 +648,11 @@ void main()
   // minimum contrast: a corner whose two colors (the pixel and its closer blend candidate) differ by
   // less than XBRZ_MINC stays square
   vec4 weak = vec4(0.0);
+  vec4 res0 = res;
+  vec4 contrast = vec4(0.0);
   if (XBRZ_MINC > 0.0)
   {
-    vec4 contrast = vec4(min(dED, dEB), min(dEB, dEF), min(dEF, dEH), min(dEH, dED)) * 255.0;
+    contrast = vec4(min(dED, dEB), min(dEB, dEF), min(dEF, dEH), min(dEH, dED)) * 255.0;
     weak = vec4(greaterThanEqual(contrast, vec4(XBRZ_MINC - XBRZ_HYST))) * vec4(lessThan(contrast, vec4(XBRZ_MINC)));
     res *= max(vec4(greaterThanEqual(contrast, vec4(XBRZ_MINC))), weak);
   }
@@ -659,6 +661,25 @@ void main()
   // the same corner of both neighbours along the cut is rounded
   weak *= vec4(greaterThan(mod(res, 4.0), vec4(0.0)));
   res += weak * (3.0 - mod(res, 4.0));
+  // a line through an antialiasing pixel cuts both halves of it, as in xBRZ: when one corner is a rounded
+  // line and the opposite corner is a line that XBRZ_MINC squared or left weak, and E lies between their
+  // two blend colors on a strong edge, the opposite corner is rounded too
+  if (XBRZ_MINC > 0.0)
+  {
+    vec4 cut = vec4(greaterThan(mod(res, 4.0), vec4(0.0))) * vec4(lessThan(mod(res, 4.0), vec4(3.0))) * mod(floor(res / 4.0), 2.0);
+    vec4 sq = vec4(lessThan(contrast, vec4(XBRZ_MINC))) * vec4(greaterThan(mod(res0, 4.0), vec4(0.0))) * mod(floor(res0 / 4.0), 2.0)
+            * vec4(notEqual(mod(res, 4.0), vec4(1.0))) * vec4(notEqual(mod(res, 4.0), vec4(2.0)));
+    vec4 pair = sq * cut.zwxy;
+    if (dot(pair, vec4(1.0)) > 0.0)
+    {
+      vec4 sc = mod(floor(res0 / 8.0), 2.0);
+      vec3 Cx = sc.x > 0.5 ? B : D, Cy = sc.y > 0.5 ? F : B, Cz = sc.z > 0.5 ? H : F, Cw = sc.w > 0.5 ? D : H;
+      float dXZ = DistYCbCr(Cx, Cz), dYW = DistYCbCr(Cy, Cw);
+      float bxz = float(DistYCbCr(Cx, E) + DistYCbCr(E, Cz) <= 1.01 * dXZ && dXZ * 255.0 >= 40.0);
+      float byw = float(DistYCbCr(Cy, E) + DistYCbCr(E, Cw) <= 1.01 * dYW && dYW * 255.0 >= 40.0);
+      res = mix(res, res0, pair * vec4(bxz, byw, bxz, byw));
+    }
+  }
 
   FRAG_OUT = res / 255.0;
 }
