@@ -23,7 +23,8 @@
 //   corner stays square. A blocked corner comes back as in xBRZ where the pixel's color runs on as a
 //   45-degree diagonal along the cut up to a straight line, like hair or a fence post, unless that
 //   would bend a straight line or stretch a lone 1-pixel dot. It also comes back where a 1-pixel
-//   stroke lighter than both colors runs on along the cut, like the white strokes of letters.
+//   stroke lighter than both colors runs on along the cut, like the white strokes of letters, and where a
+//   single antialiasing pixel steps along a diagonal edge between two colors, like the shaded edge of a cape.
 // - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
 //   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
 //   so every stripe ends the same way.
@@ -367,7 +368,7 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
   // E's color runs on as a 45-degree diagonal parallel to the cut (C or G for the / corners, A or I for
   // the \ ones) up to a wall at one end, and the neighbour on that diagonal sits on the same 45-degree
   // step (or E's color runs 3 pixels along it), like hair or the corner of a fence post
-  vec4 kept = vec4(0.0);
+  vec4 kept = vec4(0.0), loneP = vec4(0.0), loneQ = vec4(0.0);
   if (any(notEqual(res, res0)))
   {
     float dCG = float(alike(E, C) || alike(E, G)), dAI = float(alike(E, A) || alike(E, I));
@@ -408,26 +409,14 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
     // runs straight nor along the cut
     vec4 run = vec4(wCG, wAI, wCG, wAI) * partner * (1.0 - straight * sQ) * (1.0 - straight * vec4(lessThan(lP, vec4(lE))) * (1.0 - bendQ))
              * (1.0 - endLine * straight * (1.0 - bendQ)) * (1.0 - straight * (1.0 - straightQ0) * (1.0 - qRun)) * cut;
-    // not where P and Q are both lone pixels (no neighbour of their own color in a cross), like an eye
-    vec3 Pc[4]; Pc[0] = Px; Pc[1] = Py; Pc[2] = Pz; Pc[3] = Pw;
-    vec3 Qc[4]; Qc[0] = Qx; Qc[1] = Qy; Qc[2] = Qz; Qc[3] = Qw;
-    vec2 Po[4]; Po[0] = sec.x > 0.5 ? vec2(0., -1.) : vec2(-1., 0.); Po[1] = sec.y > 0.5 ? vec2(1., 0.) : vec2(0., -1.);
-    Po[2] = sec.z > 0.5 ? vec2(0., 1.) : vec2(1., 0.); Po[3] = sec.w > 0.5 ? vec2(-1., 0.) : vec2(0., 1.);
-    vec2 Qo[4]; Qo[0] = sec.x > 0.5 ? vec2(-1., 0.) : vec2(0., -1.); Qo[1] = sec.y > 0.5 ? vec2(0., -1.) : vec2(1., 0.);
-    Qo[2] = sec.z > 0.5 ? vec2(1., 0.) : vec2(0., 1.); Qo[3] = sec.w > 0.5 ? vec2(0., 1.) : vec2(-1., 0.);
-    vec2 n4[4]; n4[0] = vec2(1., 0.); n4[1] = vec2(-1., 0.); n4[2] = vec2(0., 1.); n4[3] = vec2(0., -1.);
-    for (int k = 0; k < 4; k++)
-    {
-      if (run[k] <= 0.0) continue;
-      float np = 0.0, nq = 0.0;
-      for (int j = 0; j < 4; j++)
-      {
-        vec2 u = Po[k] + n4[j], v = Qo[k] + n4[j];
-        if (u != vec2(0.0)) np += float(alike(Pc[k], P(u.x, u.y)));
-        if (v != vec2(0.0)) nq += float(alike(Qc[k], P(v.x, v.y)));
-      }
-      if (np < 0.5 && nq < 0.5) run[k] = 0.0;
-    }
+    // not where P and Q are both lone pixels (no neighbour of their own color in a cross), like an eye.
+    // B, D, F and H are each lone when none of their other three cross neighbours has their color; the
+    // first and second blend candidates of the corners x y z w are D B F H and B F H D
+    vec4 lone = vec4(float(!alike(B, A) && !alike(B, C) && !alike(B, P(0., -2.))), float(!alike(D, A) && !alike(D, G) && !alike(D, P(-2., 0.))),
+                     float(!alike(F, C) && !alike(F, I) && !alike(F, P(2., 0.))), float(!alike(H, G) && !alike(H, I) && !alike(H, P(0., 2.))));
+    loneP = mix(lone.yxzw, lone.xzwy, sec);
+    loneQ = mix(lone.xzwy, lone.yxzw, sec);
+    run *= 1.0 - loneP * loneQ;
     res = mix(res, res0, run);
     kept = run;
     // a restored corner whose P runs straight while Q does not, and Q runs on along the cut, blends Q
@@ -438,6 +427,7 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
   // thin light stroke: a blocked corner comes back as in xBRZ where E is a 1-pixel stroke lighter than both diagonal
   // colors that runs on along the diagonal of the cut (E's color in C or G for the / corners, A or I for the \ ones,
   // not on E's far side), like the white strokes of letters or a ring with gray antialiasing
+  if (any(notEqual(res, res0)))
   {
     // E's color, or a tone closer to E than the corner's two colors (an antialiasing step), goes on along the diagonal
     vec4 dPQmin = min(mix(dEP, dEQ, sec), mix(dEQ, dEP, sec));
@@ -462,27 +452,35 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
     vec4 light = vec4(greaterThan(vec4(lE) - max(lP, lQ), vec4(0.15)));
     vec4 back = along * light * cut * vec4(notEqual(res, res0));
     // not where P and Q are lone pixels (no neighbour of their own color in a cross), like an eye
-    vec3 Pc[4]; Pc[0] = Px; Pc[1] = Py; Pc[2] = Pz; Pc[3] = Pw;
-    vec3 Qc[4]; Qc[0] = Qx; Qc[1] = Qy; Qc[2] = Qz; Qc[3] = Qw;
-    vec2 Po[4]; Po[0] = sec.x > 0.5 ? vec2(0., -1.) : vec2(-1., 0.); Po[1] = sec.y > 0.5 ? vec2(1., 0.) : vec2(0., -1.);
-    Po[2] = sec.z > 0.5 ? vec2(0., 1.) : vec2(1., 0.); Po[3] = sec.w > 0.5 ? vec2(-1., 0.) : vec2(0., 1.);
-    vec2 Qo[4]; Qo[0] = sec.x > 0.5 ? vec2(-1., 0.) : vec2(0., -1.); Qo[1] = sec.y > 0.5 ? vec2(0., -1.) : vec2(1., 0.);
-    Qo[2] = sec.z > 0.5 ? vec2(1., 0.) : vec2(0., 1.); Qo[3] = sec.w > 0.5 ? vec2(0., 1.) : vec2(-1., 0.);
-    vec2 n4[4]; n4[0] = vec2(1., 0.); n4[1] = vec2(-1., 0.); n4[2] = vec2(0., 1.); n4[3] = vec2(0., -1.);
-    for (int k = 0; k < 4; k++)
-    {
-      if (back[k] <= 0.0) continue;
-      float np = 0.0, nq = 0.0;
-      for (int j = 0; j < 4; j++)
-      {
-        vec2 u = Po[k] + n4[j], v = Qo[k] + n4[j];
-        if (u != vec2(0.0)) np += float(alike(Pc[k], P(u.x, u.y)));
-        if (v != vec2(0.0)) nq += float(alike(Qc[k], P(v.x, v.y)));
-      }
-      if (np < 0.5 && nq < 0.5) back[k] = 0.0;
-    }
+    back *= 1.0 - loneP * loneQ;
     res = mix(res, res0, back);
     kept = max(kept, back);
+  }
+
+  // antialiasing notch: a corner blocked on an antialiasing ramp comes back as in xBRZ where P is a single
+  // antialiasing pixel between E and Q (the ramp runs E, P, Q and the diagonal is within XBRZ_DIAG + 12), Q's
+  // tone wraps around P in the outer corner (A, C, I, G) and E's tone runs on along the cut (C or G for the
+  // / corners, A or I for the \ ones), like the shaded edges of a cape
+  if (any(notEqual(res, res0)))
+  {
+    vec4 dPc = mix(dEP, dEQ, sec), dQc = mix(dEQ, dEP, sec);
+    vec4 notch = vec4(lessThanEqual((dPc + pair) / max(dQc, vec4(1e-5)), vec4(1.15))) * vec4(lessThanEqual(pair * 255.0, vec4(XBRZ_DIAG + 12.0)))
+               * loneP * cut * vec4(notEqual(res, res0));
+    vec4 wrap = vec4(lessThan(vec4(DistYCbCr(A, Qx), DistYCbCr(C, Qy), DistYCbCr(I, Qz), DistYCbCr(G, Qw)), 0.6 * pair));
+    // E's tone in a diagonal neighbour X: closer to E than to P and Q by 0.6
+    float eA = DistYCbCr(E, A), eC = DistYCbCr(E, C), eG = DistYCbCr(E, G), eI = DistYCbCr(E, I);
+    vec4 onC = vec4(lessThan(vec4(eC), 0.6 * min(vec4(DistYCbCr(Px, C), DistYCbCr(Py, C), DistYCbCr(Pz, C), DistYCbCr(Pw, C)),
+                                                 vec4(DistYCbCr(Qx, C), DistYCbCr(Qy, C), DistYCbCr(Qz, C), DistYCbCr(Qw, C)))));
+    vec4 onG = vec4(lessThan(vec4(eG), 0.6 * min(vec4(DistYCbCr(Px, G), DistYCbCr(Py, G), DistYCbCr(Pz, G), DistYCbCr(Pw, G)),
+                                                 vec4(DistYCbCr(Qx, G), DistYCbCr(Qy, G), DistYCbCr(Qz, G), DistYCbCr(Qw, G)))));
+    vec4 onA = vec4(lessThan(vec4(eA), 0.6 * min(vec4(DistYCbCr(Px, A), DistYCbCr(Py, A), DistYCbCr(Pz, A), DistYCbCr(Pw, A)),
+                                                 vec4(DistYCbCr(Qx, A), DistYCbCr(Qy, A), DistYCbCr(Qz, A), DistYCbCr(Qw, A)))));
+    vec4 onI = vec4(lessThan(vec4(eI), 0.6 * min(vec4(DistYCbCr(Px, I), DistYCbCr(Py, I), DistYCbCr(Pz, I), DistYCbCr(Pw, I)),
+                                                 vec4(DistYCbCr(Qx, I), DistYCbCr(Qy, I), DistYCbCr(Qz, I), DistYCbCr(Qw, I)))));
+    vec4 along = vec4(max(onC.x, onG.x), max(onA.y, onI.y), max(onC.z, onG.z), max(onA.w, onI.w));
+    notch *= wrap * along;
+    res = mix(res, res0, notch);
+    kept = max(kept, notch);
   }
 
   // stripe ends: E ends a 1-pixel horizontal line (left or right end) or vertical line (top or bottom end)

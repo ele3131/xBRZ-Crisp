@@ -19,7 +19,7 @@
   <tr>
     <td align="center" width="33%">🎯<br><b>Only clear edges</b><br><sub>A corner is rounded only when its two colors really differ</sub></td>
     <td align="center" width="33%">🌿<br><b>Textures stay intact</b><br><sub>Soft shading no longer melts into blobs</sub></td>
-    <td align="center" width="33%">⚡<br><b>Same cost</b><br><sub>Runs like xbrz-freescale-multipass</sub></td>
+    <td align="center" width="33%">⚡<br><b>Close to xBRZ's cost</b><br><sub>The extra checks run once per game pixel, not per screen pixel</sub></td>
   </tr>
 </table>
 </div>
@@ -35,7 +35,7 @@ Pick integer scaling, MMPX Advanced, ScaleFX, xBRZ (latest) or xBRZ Crisp (contr
 <table>
   <tr>
     <td width="50%"><a href="comparisons/1-golden-sun-20.png"><img src="comparisons/1-golden-sun-20.png" alt="Golden Sun"></a><p align="center"><b>Golden Sun</b></p></td>
-    <td width="50%"><a href="comparisons/2-minish-cap-20.png"><img src="comparisons/2-minish-cap-20.png" alt="The Minish Cap"></a><p align="center"><b>The Minish Cap</b></p></td>
+    <td width="50%"><a href="comparisons/2-azkaban-20.png"><img src="comparisons/2-azkaban-20.png" alt="Harry Potter: Prisoner of Azkaban"></a><p align="center"><b>Harry Potter: Prisoner of Azkaban</b></p></td>
   </tr>
   <tr>
     <td width="50%"><a href="comparisons/5-golden-sun-battle-20.png"><img src="comparisons/5-golden-sun-battle-20.png" alt="Golden Sun battles"></a><p align="center"><b>Golden Sun battles</b></p></td>
@@ -57,11 +57,11 @@ Text and portraits keep their shape too, as in the spell menu of Harry Potter: P
 
 Three presets, from smoothest to closest to the original art. Load one, or change `XBRZ_MINC` in Quick Menu › Shaders › Shader Parameters:
 
-<img src="comparisons/design/presets-strip.png" alt="Golden Sun grass: original, xBRZ (latest), crisp 16, 20 and 24" width="100%">
+<img src="comparisons/design/presets-strip.png" alt="Golden Sun grass: original, xBRZ (latest), crisp 12, 20 and 24" width="100%">
 
 | Preset | `XBRZ_MINC` | Look |
 |---|---|---|
-| `xbrz-crisp-16` | 16 | The smoothest. Textures and soft shading keep their pixels, and everything else is smoothed as in xBRZ. |
+| `xbrz-crisp-12` | 12 | The closest to xBRZ. Only the softest shading and dithering keep their pixels, and everything else is smoothed as in xBRZ, still visibly sharper. |
 | **`xbrz-crisp`** (default) | **20** | The balance. Grass, foliage and stone keep most of their detail, while outlines, faces, text and most soft diagonals stay smooth. |
 | `xbrz-crisp-24` | 24 | The closest to the original art. Textures keep nearly all their pixels, and some soft diagonals turn into steps. |
 
@@ -96,7 +96,7 @@ xBRZ looks at each corner of each pixel and decides whether to round it. xBRZ Cr
 <img src="comparisons/8-how-it-works.png" alt="Stone in Tales of Phantasia, a face in Tales of Phantasia and a menu frame in Castlevania: Aria of Sorrow: original, xBRZ (latest) and xBRZ Crisp, with the differences circled in red" width="100%">
 
 1. 🌿 **Soft shading is not a shape** (`XBRZ_MINC`). When the two colors of a corner are closer than the minimum contrast, they are shading or texture, not an edge, so the corner stays square.
-2. 🎨 **Different colors are not joined** (`XBRZ_DIAG`). Rounding a corner joins the two neighbors on its diagonal. When those are very different colors, the corner is a meeting point, not a line, so it stays square. Dark outlines, eyes and eyebrows keep their full shape.
+2. 🎨 **Different colors are not joined** (`XBRZ_DIAG`). Rounding a corner joins the two neighbors on its diagonal. When those are very different colors, the corner is a meeting point, not a line, so it stays square. Dark outlines, eyes and eyebrows keep their full shape. Where the artist stepped an antialiasing pixel along a diagonal edge, like the shaded edge of a cape, the corner is rounded as in xBRZ.
 3. 📏 **Lines end the way they were drawn.** Straight lines do not bend where they meet, stacked stripes end square, and diagonal lines run on to their end or up to the outline. A 45-degree diagonal the artist drew, like a lock of hair, and thin light strokes, like the white strokes of letters, are rounded as in xBRZ.
 
 Edges are still found exactly as xBRZ finds them, so outlines and text are smoothed as before. The diagonal check is inspired by [cleanEdge](https://github.com/libretro/slang-shaders/tree/master/edge-smoothing/cleanEdge) by torcado. The [comparison page](https://ele3131.github.io/xBRZ-Crisp/#how) goes through every rule with more examples.
@@ -120,7 +120,7 @@ Tested in RetroArch on Android (gl driver, Game Boy Advance at 6x). The slang ve
 > Get the latest zip from **[Releases](https://github.com/ele3131/xbrz-crisp/releases)**.
 
 1. Copy the zip's contents into RetroArch's shader folder: `shaders_slang` for Vulkan, glcore, D3D and Metal, `shaders_glsl` for the gl driver.
-2. In a game, open Quick Menu › Shaders › Load and pick `edge-smoothing/xbrz/xbrz-crisp.slangp` (slang) or `xbrz/xbrz-crisp.glslp` (glsl). Use `xbrz-crisp-16` or `xbrz-crisp-24` for the other presets.
+2. In a game, open Quick Menu › Shaders › Load and pick `edge-smoothing/xbrz/xbrz-crisp.slangp` (slang) or `xbrz/xbrz-crisp.glslp` (glsl). Use `xbrz-crisp-12` or `xbrz-crisp-24` for the other presets.
 3. Save it with Quick Menu › Shaders › Save › Save Global Preset, or per game with Save Game Preset.
 
 <h2 align="center">🤝 Giving back to xBRZ</h2>
