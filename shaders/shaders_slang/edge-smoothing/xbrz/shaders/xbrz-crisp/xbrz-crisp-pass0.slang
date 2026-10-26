@@ -382,9 +382,6 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
     run *= 1.0 - loneP * loneQ;
     res = mix(res, res0, run);
     kept = run;
-    // a restored corner whose P runs straight while Q does not, and Q runs on along the cut, blends Q
-    vec4 swap = run * straight * (1.0 - straightQ0) * qRun;
-    res += 8.0 * (1.0 - 2.0 * sec) * swap;
   }
 
   // thin light stroke: a blocked corner comes back as in xBRZ where E is a 1-pixel stroke lighter than both diagonal
@@ -427,7 +424,7 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
   if (any(notEqual(res, res0)))
   {
     vec4 dPc = mix(dEP, dEQ, sec), dQc = mix(dEQ, dEP, sec);
-    vec4 notch = vec4(lessThanEqual((dPc + pair) / max(dQc, vec4(1e-5)), vec4(1.15))) * vec4(lessThanEqual(pair * 255.0, vec4(XBRZ_DIAG + 12.0)))
+    vec4 notch = vec4(lessThanEqual((dPc + pair) / max(dQc, vec4(1e-5)), vec4(1.15))) * vec4(lessThanEqual(pair * 255.0, vec4(XBRZ_DIAG + 45.0)))
                * loneP * cut * vec4(notEqual(res, res0));
     vec4 wrap = vec4(lessThan(vec4(DistYCbCr(A, Qx), DistYCbCr(C, Qy), DistYCbCr(I, Qz), DistYCbCr(G, Qw)), 0.6 * pair));
     // E's tone in a diagonal neighbour X: closer to E than to P and Q by 0.6
