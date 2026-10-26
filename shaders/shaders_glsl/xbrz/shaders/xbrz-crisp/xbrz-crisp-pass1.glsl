@@ -27,7 +27,8 @@
 //   single antialiasing pixel steps along a diagonal edge between two colors, like the shaded edge of a cape.
 //   A blocked corner is also cut where the neighbour across its edge already cuts the other end of
 //   that edge with a line in the pixel's color, so the two cuts make one diagonal
-//   that ends on a straight edge, like the tip of a lock of hair.
+//   that ends on a straight edge, like the tip of a lock of hair. The neighbour's line may also
+//   run toward the pixel diagonal to E when it has E's color, so a thin arm closes up to the next color.
 // - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
 //   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
 //   so every stripe ends the same way.
@@ -177,6 +178,16 @@ uniform COMPAT_PRECISION vec2 PassPrev2InputSize;
 #define P(x,y) COMPAT_TEXTURE(PassPrev2Texture, ocoord + ORIG_SIZE.zw * vec2(x, y)).rgb
 #define INFO(uv) COMPAT_TEXTURE(Texture, uv)
 
+float distYCbCr(vec3 pixA, vec3 pixB)
+{
+  const vec3 w = vec3(0.2627, 0.6780, 0.0593);
+  vec3 diff = pixA - pixB;
+  float Y = dot(diff, w);
+  float Cb = 0.5 / (1.0 - 0.0593) * (diff.b - Y);
+  float Cr = 0.5 / (1.0 - 0.2627) * (diff.r - Y);
+  return sqrt(Y * Y + Cb * Cb + Cr * Cr);
+}
+
 float get_left_ratio(vec2 center, vec2 origin, vec2 direction, vec2 scale)
 {
   vec2 P0 = center - origin;
@@ -234,8 +245,13 @@ void main()
     vec4 oD = floor(INFO(coord + vec2( 0.0, 1.0) * SRC_SIZE.zw) * 255.0 + 0.5);
     vec4 sec = mod(floor(info / 8.0), 2.0);
     vec4 nO = vec4(mix(oL.z, oU.z, sec.x), mix(oU.w, oR.w, sec.y), mix(oR.x, oD.x, sec.z), mix(oD.y, oL.y, sec.w));
+    // the neighbour may also blend the pixel diagonal to E on the far side when it has E's color
+    vec3 dX = sec.x > 0.5 ? P( 1.,-1.) : P(-1., 1.), dY = sec.y > 0.5 ? P( 1., 1.) : P(-1.,-1.);
+    vec3 dZ = sec.z > 0.5 ? P(-1., 1.) : P( 1.,-1.), dW = sec.w > 0.5 ? P(-1.,-1.) : P( 1., 1.);
+    vec4 sameE = vec4(float(distYCbCr(E, dX) * 255.0 <= 20.0), float(distYCbCr(E, dY) * 255.0 <= 20.0),
+                      float(distYCbCr(E, dZ) * 255.0 <= 20.0), float(distYCbCr(E, dW) * 255.0 <= 20.0));
     vec4 meet = vec4(greaterThan(mod(nO, 4.0), vec4(0.0))) * vec4(lessThan(nO, vec4(128.0))) * mod(floor(nO / 4.0), 2.0)
-              * (1.0 - abs(mod(floor(nO / 8.0), 2.0) - sec))
+              * max(1.0 - abs(mod(floor(nO / 8.0), 2.0) - sec), abs(mod(floor(nO / 8.0), 2.0) - sec) * sameE)
               * mod(floor(info / 4.0), 2.0);
     blendResult *= max(1.0 - blocked, max(chain, meet));
   }

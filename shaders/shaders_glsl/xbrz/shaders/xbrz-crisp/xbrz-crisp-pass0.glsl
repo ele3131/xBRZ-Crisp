@@ -27,7 +27,8 @@
 //   single antialiasing pixel steps along a diagonal edge between two colors, like the shaded edge of a cape.
 //   A blocked corner is also cut where the neighbour across its edge already cuts the other end of
 //   that edge with a line in the pixel's color, so the two cuts make one diagonal
-//   that ends on a straight edge, like the tip of a lock of hair.
+//   that ends on a straight edge, like the tip of a lock of hair. The neighbour's line may also
+//   run toward the pixel diagonal to E when it has E's color, so a thin arm closes up to the next color.
 // - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
 //   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
 //   so every stripe ends the same way.
