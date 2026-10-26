@@ -7,6 +7,8 @@
 // - Minimum contrast: a corner whose two colors differ by less than XBRZ_MINC (x/255, YCbCr
 //   distance) is left square, so low-contrast shading, dithering and textures (grass, foliage,
 //   stone) keep their pixel detail, while outlines, text and sprites are smoothed as in xBRZ.
+//   A corner up to 4 below the limit is still rounded when the same corner of both neighbours
+//   along its cut is rounded, so a diagonal edge has no tooth where its contrast dips.
 // - Diagonal: a corner is left square when the two colors on its diagonal (the colors the cut
 //   would join) differ by more than XBRZ_DIAG, so a junction of three different colors is not
 //   pulled into a fake diagonal (an idea from torcado's cleanEdge, MIT license). Antialiasing
@@ -31,7 +33,8 @@
 //   run toward the pixel diagonal to E when it has E's color, so a thin arm closes up to the next color.
 // - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
 //   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
-//   so every stripe ends the same way.
+//   so every stripe ends the same way. A stripe only 3 pixels long is left alone when the color
+//   past its end runs straight on, like a line meeting it.
 // - Line shapes: the shallow and steep line tests weigh hue a little more than lightness (1.2x),
 //   so lines in hue-shifted shading follow the artist's pixels. Where such a line between two
 //   different colors would run into the line of the neighbour across the same edge, it is drawn as
@@ -221,7 +224,9 @@ void main()
 
   // a corner flagged by the first pass (+128, XBRZ_DIAG) is still cut when the same corner of a
   // neighbour along the cut is cut and not flagged, so diagonal lines are drawn to the end
-  if (max(max(info.x, info.y), max(info.z, info.w)) >= 128.0)
+  // a weak corner (blend type 3, just below XBRZ_MINC) is only cut inside a cut diagonal
+  vec4 weak = vec4(equal(mod(info, 4.0), vec4(3.0)));
+  if (max(max(info.x, info.y), max(info.z, info.w)) >= 128.0 || dot(weak, vec4(1.0)) > 0.0)
   {
     vec4 blocked = floor(info / 128.0);
     info = mod(info, 128.0);
@@ -230,10 +235,10 @@ void main()
     vec4 nB = floor(INFO(coord + vec2(-1.0, 1.0) * SRC_SIZE.zw) * 255.0 + 0.5);
     vec4 nC = floor(INFO(coord + vec2( 1.0, 1.0) * SRC_SIZE.zw) * 255.0 + 0.5);
     vec4 nD = floor(INFO(coord + vec2(-1.0,-1.0) * SRC_SIZE.zw) * 255.0 + 0.5);
-    vec4 aA = vec4(greaterThan(mod(nA, 4.0), vec4(0.0))) * vec4(lessThan(nA, vec4(128.0)));
-    vec4 aB = vec4(greaterThan(mod(nB, 4.0), vec4(0.0))) * vec4(lessThan(nB, vec4(128.0)));
-    vec4 aC = vec4(greaterThan(mod(nC, 4.0), vec4(0.0))) * vec4(lessThan(nC, vec4(128.0)));
-    vec4 aD = vec4(greaterThan(mod(nD, 4.0), vec4(0.0))) * vec4(lessThan(nD, vec4(128.0)));
+    vec4 aA = vec4(greaterThan(mod(nA, 4.0), vec4(0.0))) * vec4(lessThan(mod(nA, 4.0), vec4(3.0))) * vec4(lessThan(nA, vec4(128.0)));
+    vec4 aB = vec4(greaterThan(mod(nB, 4.0), vec4(0.0))) * vec4(lessThan(mod(nB, 4.0), vec4(3.0))) * vec4(lessThan(nB, vec4(128.0)));
+    vec4 aC = vec4(greaterThan(mod(nC, 4.0), vec4(0.0))) * vec4(lessThan(mod(nC, 4.0), vec4(3.0))) * vec4(lessThan(nC, vec4(128.0)));
+    vec4 aD = vec4(greaterThan(mod(nD, 4.0), vec4(0.0))) * vec4(lessThan(mod(nD, 4.0), vec4(3.0))) * vec4(lessThan(nD, vec4(128.0)));
     // top-left and bottom-right are cut along "/", top-right and bottom-left along "\"
     vec4 chain = vec4(max(aA.x, aB.x), max(aC.y, aD.y), max(aA.z, aB.z), max(aC.w, aD.w));
     // a flagged line corner is also cut where its blend color's pixel has a line at the other end
@@ -254,6 +259,8 @@ void main()
               * max(1.0 - abs(mod(floor(nO / 8.0), 2.0) - sec), abs(mod(floor(nO / 8.0), 2.0) - sec) * sameE)
               * mod(floor(info / 4.0), 2.0);
     blendResult *= max(1.0 - blocked, max(chain, meet));
+    // a weak corner needs the same corner of both neighbours along the cut to be cut
+    blendResult *= mix(vec4(1.0), vec4(min(aA.x, aB.x), min(aC.y, aD.y), min(aA.z, aB.z), min(aC.w, aD.w)), weak);
   }
 
   // most output pixels have no corner to blend, and only need these two reads

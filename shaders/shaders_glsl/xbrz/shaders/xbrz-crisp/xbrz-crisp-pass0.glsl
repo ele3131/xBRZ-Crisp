@@ -7,6 +7,8 @@
 // - Minimum contrast: a corner whose two colors differ by less than XBRZ_MINC (x/255, YCbCr
 //   distance) is left square, so low-contrast shading, dithering and textures (grass, foliage,
 //   stone) keep their pixel detail, while outlines, text and sprites are smoothed as in xBRZ.
+//   A corner up to 4 below the limit is still rounded when the same corner of both neighbours
+//   along its cut is rounded, so a diagonal edge has no tooth where its contrast dips.
 // - Diagonal: a corner is left square when the two colors on its diagonal (the colors the cut
 //   would join) differ by more than XBRZ_DIAG, so a junction of three different colors is not
 //   pulled into a fake diagonal (an idea from torcado's cleanEdge, MIT license). Antialiasing
@@ -31,7 +33,8 @@
 //   run toward the pixel diagonal to E when it has E's color, so a thin arm closes up to the next color.
 // - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
 //   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
-//   so every stripe ends the same way.
+//   so every stripe ends the same way. A stripe only 3 pixels long is left alone when the color
+//   past its end runs straight on, like a line meeting it.
 // - Line shapes: the shallow and steep line tests weigh hue a little more than lightness (1.2x),
 //   so lines in hue-shifted shading follow the artist's pixels. Where such a line between two
 //   different colors would run into the line of the neighbour across the same edge, it is drawn as
@@ -247,6 +250,7 @@ float toneLine(vec3 a, vec3 b, vec3 c, vec3 d)
 
 // ---- diagonal rules (XBRZ_DIAG) ----
 #define XBRZ_DIAG_AA 92.0   // diagonal limit for antialiasing ramps
+#define XBRZ_HYST 4.0        // a corner this close below XBRZ_MINC is rounded inside a rounded diagonal
 #define XBRZ_TIP 64.0       // stripe ends stay square above this diagonal distance
 #define XBRZ_STRIPE 64.0    // a diagonal stripe keeps a close color (within this) along its length
 #define XBRZ_OUTLINE 0.15   // an outline is darker (in luma) than both inner tones by this much
@@ -504,11 +508,12 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
     bool nB = alike(E, B), nD = alike(E, D), nF = alike(E, F), nH = alike(E, H);
     // only inside a stack of parallel stripes: the rows (or columns) on both sides run along the line too
     // and they all end flush at the same column (or row), like the stripes of a gauge
-    // all three stripes run at least 3 pixels back from the end
-    float endL = (thinH && nF && !eD && alike(B, C) && alike(H, I) && !eq(B, A) && !eq(H, G) && alike(E, P(2., 0.)) && alike(C, P(2., -1.)) && alike(I, P(2., 1.))) ? 1.0 : 0.0;
-    float endR = (thinH && nD && !eF && alike(B, A) && alike(H, G) && !eq(B, C) && !eq(H, I) && alike(E, P(-2., 0.)) && alike(A, P(-2., -1.)) && alike(G, P(-2., 1.))) ? 1.0 : 0.0;
-    float endT = (thinV && nH && !eB && alike(D, G) && alike(F, I) && !eq(D, A) && !eq(F, C) && alike(E, P(0., 2.)) && alike(G, P(-1., 2.)) && alike(I, P(1., 2.))) ? 1.0 : 0.0;
-    float endB = (thinV && nB && !eH && alike(D, A) && alike(F, C) && !eq(D, G) && !eq(F, I) && alike(E, P(0., -2.)) && alike(A, P(-1., -2.)) && alike(C, P(1., -2.))) ? 1.0 : 0.0;
+    // all three stripes run at least 3 pixels back from the end, and E's 4 when the color past the
+    // end runs straight on (a line meeting a short stripe, not a gauge)
+    float endL = (thinH && nF && !eD && alike(B, C) && alike(H, I) && !eq(B, A) && !eq(H, G) && alike(E, P(2., 0.)) && (alike(E, P(3., 0.)) || !eq(D, P(-2., 0.))) && alike(C, P(2., -1.)) && alike(I, P(2., 1.))) ? 1.0 : 0.0;
+    float endR = (thinH && nD && !eF && alike(B, A) && alike(H, G) && !eq(B, C) && !eq(H, I) && alike(E, P(-2., 0.)) && (alike(E, P(-3., 0.)) || !eq(F, P(2., 0.))) && alike(A, P(-2., -1.)) && alike(G, P(-2., 1.))) ? 1.0 : 0.0;
+    float endT = (thinV && nH && !eB && alike(D, G) && alike(F, I) && !eq(D, A) && !eq(F, C) && alike(E, P(0., 2.)) && (alike(E, P(0., 3.)) || !eq(B, P(0., -2.))) && alike(G, P(-1., 2.)) && alike(I, P(1., 2.))) ? 1.0 : 0.0;
+    float endB = (thinV && nB && !eH && alike(D, A) && alike(F, C) && !eq(D, G) && !eq(F, I) && alike(E, P(0., -2.)) && (alike(E, P(0., -3.)) || !eq(H, P(0., 2.))) && alike(A, P(-1., -2.)) && alike(C, P(1., -2.))) ? 1.0 : 0.0;
     vec4 tip = vec4(max(endL, endT), max(endR, endT), max(endR, endB), max(endL, endB));
     tip *= vec4(greaterThan(pair * 255.0, vec4(XBRZ_TIP)));
     res *= 1.0 - tip * (1.0 - kept);
@@ -679,12 +684,18 @@ void main()
   res += 8.0 * second;
   // minimum contrast: a corner whose two colors (the pixel and its closer blend candidate) differ by
   // less than XBRZ_MINC stays square
+  vec4 weak = vec4(0.0);
   if (XBRZ_MINC > 0.0)
   {
     vec4 contrast = vec4(min(dED, dEB), min(dEB, dEF), min(dEF, dEH), min(dEH, dED)) * 255.0;
-    res *= vec4(greaterThanEqual(contrast, vec4(XBRZ_MINC)));
+    weak = vec4(greaterThanEqual(contrast, vec4(XBRZ_MINC - XBRZ_HYST))) * vec4(lessThan(contrast, vec4(XBRZ_MINC)));
+    res *= max(vec4(greaterThanEqual(contrast, vec4(XBRZ_MINC))), weak);
   }
   res = diagonalRules(res, coord, A, B, C, D, E, F, G, H, I, dEB, dED, dEF, dEH);
+  // a corner just below XBRZ_MINC is marked weak (blend type 3): the output pass rounds it only where
+  // the same corner of both neighbours along the cut is rounded
+  weak *= vec4(greaterThan(mod(res, 4.0), vec4(0.0)));
+  res += weak * (3.0 - mod(res, 4.0));
 
   FRAG_OUT = res / 255.0;
 }
