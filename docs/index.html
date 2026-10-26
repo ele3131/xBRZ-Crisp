@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>xBRZ crisp</title>
+<title>xBRZ Crisp</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=Archivo:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -106,6 +106,10 @@ table { border-collapse: collapse; width: 100%; font-size: .95rem; }
 th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
 td.num { font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+figure { margin: 4px 0 0; display: grid; gap: 6px; }
+figure img { display: block; width: 100%; height: auto; border-radius: 8px; image-rendering: pixelated; image-rendering: crisp-edges; }
+figcaption { font-size: .85rem; color: var(--muted); }
+h3 { font: 600 1.05rem/1.3 var(--font-body); margin: 14px 0 0; }
 .tablebox { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
 ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
 @media (max-width: 560px) { .tag { font-size: .72rem; } .frame { max-height: 70vh; } }
@@ -115,8 +119,9 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
 
 <div class="wrap">
   <header class="prose">
-    <h1>xBRZ crisp</h1>
-    <p class="lede">xBRZ smooths every corner it finds, so soft shading and textures melt into blobs. xBRZ crisp only rounds a corner when its two colors are clearly different. Outlines, text and sprites are smoothed as in xBRZ, and grass, foliage and stone keep the pixels the artists drew.</p>
+    <h1>xBRZ Crisp</h1>
+    <p class="lede">xBRZ smooths every corner it finds, so soft shading and textures melt into blobs. xBRZ Crisp only rounds a corner when its two colors are clearly different. Outlines, text and sprites are smoothed as in xBRZ, and grass, foliage and stone keep the pixels the artists drew.</p>
+    <p><a href="#how">See what Crisp adds on top of xBRZ</a></p>
     <p class="muted">Drag the line to compare. All frames are Game Boy Advance screens at 6x, rendered with the RetroArch shader code. Integer (integer scaling) shows the original pixels. MMPX Adv (MMPX Advanced) is the libretro scalenx shader at 2x, enlarged 3x, and ScaleFX is the libretro scalefx-9x preset at 9x, scaled down to 6x by area averaging. xBRZ (latest) is the current libretro <code>xbrz-freescale-multipass</code>, which already includes improvements that came from xBRZ Crisp.</p>
   </header>
 
@@ -142,9 +147,9 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
           <button type="button" data-v="14">14</button>
           <button type="button" data-v="16">16</button>
           <button type="button" data-v="18">18</button>
-          <button type="button" data-v="20">20</button>
+          <button type="button" data-v="20">20 (default)</button>
           <button type="button" data-v="22">22</button>
-          <button type="button" data-v="24">24 (default)</button>
+          <button type="button" data-v="24">24</button>
           <button type="button" data-v="26">26</button>
           <button type="button" data-v="28">28</button>
           <button type="button" data-v="30">30</button>
@@ -166,9 +171,9 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
           <button type="button" data-v="14">14</button>
           <button type="button" data-v="16">16</button>
           <button type="button" data-v="18">18</button>
-          <button type="button" data-v="20">20</button>
+          <button type="button" data-v="20">20 (default)</button>
           <button type="button" data-v="22">22</button>
-          <button type="button" data-v="24">24 (default)</button>
+          <button type="button" data-v="24">24</button>
           <button type="button" data-v="26">26</button>
           <button type="button" data-v="28">28</button>
           <button type="button" data-v="30">30</button>
@@ -212,15 +217,15 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
 
   <section class="prose">
     <h2>Presets</h2>
-    <p>There is one preset, <code>xbrz-crisp</code>, with a minimum contrast of 24, a balance between xBRZ smoothness and the original pixels. To change it, set <code>XBRZ_MINC</code> in Quick Menu › Shaders › Shader Parameters and save the preset. The cost is the same as <code>xbrz-freescale-multipass</code> at any value. Good steps:</p>
+    <p>There are three presets, from smoothest to closest to the original art. Load one, or set <code>XBRZ_MINC</code> in Quick Menu › Shaders › Shader Parameters and save the preset. The cost is the same as <code>xbrz-freescale-multipass</code> at any value.</p>
   </section>
   <div class="tablebox">
     <table>
-      <thead><tr><th>XBRZ_MINC</th><th>Look</th></tr></thead>
+      <thead><tr><th>Preset</th><th>XBRZ_MINC</th><th>Look</th></tr></thead>
       <tbody>
-        <tr><td class="num">12</td><td>xBRZ with light improvements: only the softest shading and textures keep their pixels.</td></tr>
-        <tr><td class="num">16</td><td>Textures and soft shading keep their pixels, while outlines, faces and text are smoothed as in xBRZ.</td></tr>
-        <tr><td class="num">24 (default)</td><td>Grass, foliage and textures keep most of their pixel detail, the closest to the original art, while outlines, faces and text are still smoothed. Some soft diagonals turn into steps.</td></tr>
+        <tr><td class="mono">xbrz-crisp-16</td><td class="num">16</td><td>The smoothest. Textures and soft shading keep their pixels, and everything else is smoothed as in xBRZ.</td></tr>
+        <tr><td class="mono">xbrz-crisp (default)</td><td class="num">20</td><td>The balance. Grass, foliage and stone keep most of their detail, while outlines, faces, text and most soft diagonals stay smooth.</td></tr>
+        <tr><td class="mono">xbrz-crisp-24</td><td class="num">24</td><td>The closest to the original art. Textures keep nearly all their pixels, and some soft diagonals turn into steps.</td></tr>
       </tbody>
     </table>
   </div>
@@ -233,7 +238,7 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
     <table>
       <thead><tr><th>Parameter</th><th>Default</th><th>What it does</th></tr></thead>
       <tbody>
-        <tr><td class="mono">XBRZ_MINC</td><td class="num">24</td><td>Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off (the tolerance and steep thresholds below still apply).</td></tr>
+        <tr><td class="mono">XBRZ_MINC</td><td class="num">20</td><td>Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off (the tolerance and steep thresholds below still apply).</td></tr>
         <tr><td class="mono">XBRZ_DIAG</td><td class="num">100</td><td>Maximum color distance (x/255) between the two colors a cut would join. Above it, the corner stays square. 0 turns it off.</td></tr>
         <tr><td class="mono">XBRZ_TOL</td><td class="num">15</td><td>Equal color tolerance. The reference C++ xBRZ uses 30.</td></tr>
         <tr><td class="mono">XBRZ_STEEP</td><td class="num">3.2</td><td>Steep and shallow line threshold. The reference C++ xBRZ uses 2.2, which turns 1-pixel steps into slopes; 3.2 keeps letters and 1-pixel details closer to the original.</td></tr>
@@ -242,21 +247,47 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
     </table>
   </div>
 
-  <section class="prose">
-    <h2>How it works</h2>
-    <p>xBRZ decides corner by corner whether to cut a pixel's corner with a neighbor's color. xBRZ crisp keeps that decision and adds one check before drawing: if the pixel and the blend color are closer than the minimum contrast (YCbCr distance), the corner stays square. Edge detection is unchanged, so shapes are found exactly as before, and only the low-contrast blends are skipped.</p>
-    <p>Since 1.4 there is a second check: a cut joins the two neighbors on the corner's diagonal, and if those two colors differ by more than <code>XBRZ_DIAG</code> (100), the corner is a junction of different colors and stays square. Antialiasing ramps, where one of the two colors sits between the pixel and the other one, use a limit of 92, corners on shallow or steep lines are not blocked unless the line would cut a pixel with a lighter color, and a blocked corner is still cut when the next corner along the same diagonal is cut, so lines are drawn to the end. Where stacked 1-pixel stripes end flush, as in health bars, the end corners stay square when their diagonal colors differ by more than 64, so every stripe ends the same way. The idea comes from <a href="https://github.com/libretro/slang-shaders/tree/master/edge-smoothing/cleanEdge">cleanEdge</a> by torcado.</p>
-    <p>Since 1.4.1 the shallow and steep line tests weigh hue a little more than lightness (1.2x), so lines in shading that shifts hue, from orange to yellow for example, follow the artist's pixels.</p>
-    <p>Since 1.5 dark keeps its pixel: a shallow or steep line no longer cuts a darker pixel with a lighter color across a junction of different colors, so dark outlines, eyes and eyebrows stay whole. And the tip of a 1-pixel diagonal stripe runs on to the edge, as in xBRZ, when the stripe's color carries on along the cut.</p>
-    <p>Since 1.6 lines run on up to an outline: between two close inner tones the cut continues to an outline darker than both, which stays whole, except at the corner of a solid block and along 1-pixel stripes. The cut skips a corner the artist already rounded with an antialiasing pixel too, as in the numbers of a HUD. A corner whose blend color runs straight on, like a window frame or a horizontal line, stays square, so lines do not bend where they meet, and where two dark strokes of different colors meet in an L around a 1-pixel light gap, like a pupil under an eyebrow, the corner stays square too.</p>
-    <p>The shader is based on the libretro <code>xbrz-freescale-multipass</code> port. A few details were aligned with the reference C++ xBRZ: blend color ties and the order of the four corners follow the original, the GLSL version takes the output scale from the image size instead of the texture size, and the output pass reads the image from the pass before xBRZ, so it also works after other shaders in a preset.</p>
+  <section class="prose" id="how">
+    <h2>What Crisp adds on top of xBRZ</h2>
+    <p>xBRZ scales pixel art by asking one question at every corner of every pixel: is this the corner of a shape? If the answer is yes, it cuts the corner with a neighbor's color, and a staircase of pixels becomes a smooth line. That works beautifully on outlines and text. Its weakness is that it says yes too often, so shading, textures and faces get shapes the artist never drew.</p>
+    <p>xBRZ Crisp keeps every answer xBRZ gives and adds a few vetoes. A vetoed corner simply stays square, the way the artist drew it. Nothing is blurred and no new colors are made.</p>
+
+    <h3>1. Soft shading is not a shape</h3>
+    <figure><img src="img/explain/contrast.png" alt="Golden Sun tree foliage: original, xBRZ (latest) and xBRZ Crisp" loading="lazy"><figcaption>Golden Sun, tree foliage.</figcaption></figure>
+    <p>In grass, leaves and stone, neighboring pixels differ by only a few shades. xBRZ reads each of those small steps as an edge and rounds it, so the texture melts into wavy blobs. Crisp measures how different the two colors of each corner are (a YCbCr distance out of 255) and leaves the corner square below <code>XBRZ_MINC</code>. Real edges, like outlines, are far above the limit and stay smooth.</p>
+    <figure><img src="img/explain/contrast-steps.png" alt="Golden Sun grass: original, xBRZ (latest), Crisp 16, 20 and 24" loading="lazy"><figcaption>Golden Sun, village grass at the three presets.</figcaption></figure>
+    <p>This limit is the one dial that sets the look: 16 stays closest to xBRZ, 24 keeps the most texture, and 20, the default, sits in between. Up to 20, each step keeps more of the original pixels for little loss of smoothness. Past it, smooth antialiased shapes start to lose more.</p>
+
+    <h3>2. Different colors are not joined</h3>
+    <figure><img src="img/explain/diagonal.png" alt="Link's eyebrow and eye in The Minish Cap: original, xBRZ (latest) and xBRZ Crisp" loading="lazy"><figcaption>The Minish Cap, Link's eyebrow and eye.</figcaption></figure>
+    <p>Cutting a corner joins its two diagonal neighbors into one line. That is right when they share a color, as along a sloped outline. When they are very different, like brown hair next to a blue eye, the corner is a meeting point of three colors, not a line, and xBRZ pulls one color into the other: Link's eyebrow sinks into his eye. Crisp only joins diagonal neighbors whose colors are within <code>XBRZ_DIAG</code> (100) of each other.</p>
+
+    <h3>3. Dark pixels keep their shape</h3>
+    <figure><img src="img/explain/dark.png" alt="A face in Final Fantasy Tactics Advance: original, xBRZ (latest) and xBRZ Crisp" loading="lazy"><figcaption>Final Fantasy Tactics Advance, eyes under a hood.</figcaption></figure>
+    <p>Eyes, pupils and outlines are often a single dark pixel wide, and that pixel is what we read as the shape. Where a sloped line would shave a dark pixel with a lighter color, at a meeting of different colors, Crisp keeps the dark pixel whole. The eyes stay the straight strokes the artist drew instead of being rounded into drops.</p>
+
+    <h3>4. Lines end the way they were drawn</h3>
+    <figure><img src="img/explain/stripes.png" alt="Health bar of Castlevania: Aria of Sorrow: original, xBRZ (latest) and xBRZ Crisp" loading="lazy"><figcaption>Castlevania: Aria of Sorrow, the health bar.</figcaption></figure>
+    <p>Health bars, frames and windows are built from straight 1-pixel lines. xBRZ rounds their ends and bends them where they meet another line. Crisp keeps a corner square when its blend color runs straight on, and stacked stripes that end together all end square, so the bar keeps its clean edge.</p>
+    <figure><img src="img/explain/outline.png" alt="A character in Final Fantasy Tactics Advance: original, xBRZ (latest) and xBRZ Crisp" loading="lazy"><figcaption>Final Fantasy Tactics Advance, a character seen from behind.</figcaption></figure>
+    <p>The vetoes never cut a line short. A blocked corner is still cut when the next corner along the same diagonal is cut, so diagonal lines are drawn to their end, and between two close inner tones the cut runs on up to the dark outline, which stays whole.</p>
+
+    <h3>5. The artist's antialiasing stays</h3>
+    <figure><img src="img/explain/antialias.png" alt="HUD numbers in The Minish Cap: original, xBRZ (latest) and xBRZ Crisp" loading="lazy"><figcaption>The Minish Cap, HUD numbers.</figcaption></figure>
+    <p>Many sprites already have hand-placed in-between pixels that soften a corner, like the gray pixels around these white numbers. When one of a corner's colors sits between the other two, Crisp treats it as the artist's antialiasing and uses a stricter limit (92), so xBRZ does not round the same corner a second time.</p>
+
+    <h3>What does not change</h3>
+    <figure><img src="img/explain/text.png" alt="Spell menu text in Harry Potter: Prisoner of Azkaban: original, xBRZ (latest) and xBRZ Crisp" loading="lazy"><figcaption>Harry Potter: Prisoner of Azkaban, spell menu.</figcaption></figure>
+    <p>Edges are found exactly as xBRZ finds them, so letters, outlines and large shapes come out as smooth as in xBRZ. The result reads like xBRZ from a distance, with clean round shapes. Up close, textures, faces and interface details look like the original art instead of being repainted.</p>
+    <p>The idea of only joining colors that match along the diagonal comes from <a href="https://github.com/libretro/slang-shaders/tree/master/edge-smoothing/cleanEdge">cleanEdge</a> by torcado. No cleanEdge code is included.</p>
+    <p class="muted">Port details: the shader is based on the libretro <code>xbrz-freescale-multipass</code> port. Blend color ties and the order of the four corners follow the reference C++ xBRZ, the GLSL version takes the output scale from the image size instead of the texture size, and the output pass reads the image from the pass before xBRZ, so it also works after other shaders in a preset.</p>
   </section>
 
   <section class="prose">
     <h2>Install</h2>
     <ol>
       <li>Copy the <code>xbrz</code> files into RetroArch's shader folder: <code>shaders_slang/edge-smoothing/xbrz/</code> for Vulkan, glcore, D3D and Metal, or <code>shaders_glsl/xbrz/</code> for the gl driver.</li>
-      <li>In a game, open Quick Menu › Shaders › Load and pick <code>xbrz-crisp</code>.</li>
+      <li>In a game, open Quick Menu › Shaders › Load and pick <code>xbrz-crisp</code>, or <code>xbrz-crisp-16</code> or <code>xbrz-crisp-24</code> for the other presets.</li>
       <li>Save it with Quick Menu › Shaders › Save › Save Global Preset, or per game with Save Game Preset.</li>
     </ol>
   </section>
@@ -277,7 +308,7 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
     ["hpa_house", "Harry Potter: Prisoner of Azkaban · house"]
   ];
   var NAME = { original: "Integer", mmpx: "MMPX Adv", scalefx: "ScaleFX", xbrz: "xBRZ (latest)", crisp: "xBRZ Crisp" };
-  var state = { scene: "gs_village", left: { alg: "xbrz", minc: 16 }, right: { alg: "crisp", minc: 24 }, zoom: 1, pos: 0.5, marks: false };
+  var state = { scene: "gs_village", left: { alg: "xbrz", minc: 16 }, right: { alg: "crisp", minc: 20 }, zoom: 1, pos: 0.5, marks: false };
 
   var $ = function (id) { return document.getElementById(id); };
   var sel = $("scene"), frame = $("frame"), stage = $("stage"), imgL = $("imgL"), imgR = $("imgR"), cv = $("cvM"), marks = $("marks"), info = $("info");
@@ -293,7 +324,7 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
   function src(scene, k) { return "img/" + scene + "-" + k + ".png"; }
 
   // preload the current scene's six images so switching sides is instant
-  function preload(scene) { ["original", "xbrz", "mmpx", "scalefx", "crisp12", "crisp16", "crisp24"].forEach(function (k) { var i = new Image(); i.src = src(scene, k); }); }
+  function preload(scene) { ["original", "xbrz", "mmpx", "scalefx", "crisp12", "crisp16", "crisp20", "crisp24"].forEach(function (k) { var i = new Image(); i.src = src(scene, k); }); }
 
   function setPressed(group, value) {
     Array.prototype.forEach.call(group.querySelectorAll("button"), function (b) { b.setAttribute("aria-pressed", String(b.dataset.v === String(value))); });

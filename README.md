@@ -26,7 +26,7 @@
 
 <h2 align="center">🎬 Interactive Comparison</h2>
 
-<a href="https://ele3131.github.io/xbrz-crisp/"><img src="comparisons/preview-24.png" alt="Animated comparison in Golden Sun, Castlevania: Aria of Sorrow, Harry Potter: Prisoner of Azkaban and Tales of Phantasia: xBRZ (latest), then xBRZ Crisp 24" width="100%"></a>
+<a href="https://ele3131.github.io/xbrz-crisp/"><img src="comparisons/preview-20.png" alt="Animated comparison in Golden Sun, Castlevania: Aria of Sorrow, Harry Potter: Prisoner of Azkaban and Tales of Phantasia: xBRZ (latest), then xBRZ Crisp 20" width="100%"></a>
 
 Pick integer scaling, MMPX Advanced, ScaleFX, xBRZ (latest) or xBRZ Crisp (contrast 12 to 30) on each side, drag the line across 10 Game Boy Advance scenes, zoom in up to 4×, hold a button to see the original pixels, and mark in red every spot where the two sides differ.
 
@@ -34,12 +34,12 @@ Pick integer scaling, MMPX Advanced, ScaleFX, xBRZ (latest) or xBRZ Crisp (contr
 
 <table>
   <tr>
-    <td width="50%"><a href="comparisons/1-golden-sun-24.png"><img src="comparisons/1-golden-sun-24.png" alt="Golden Sun"></a><p align="center"><b>Golden Sun</b></p></td>
-    <td width="50%"><a href="comparisons/2-minish-cap-24.png"><img src="comparisons/2-minish-cap-24.png" alt="The Minish Cap"></a><p align="center"><b>The Minish Cap</b></p></td>
+    <td width="50%"><a href="comparisons/1-golden-sun-20.png"><img src="comparisons/1-golden-sun-20.png" alt="Golden Sun"></a><p align="center"><b>Golden Sun</b></p></td>
+    <td width="50%"><a href="comparisons/2-minish-cap-20.png"><img src="comparisons/2-minish-cap-20.png" alt="The Minish Cap"></a><p align="center"><b>The Minish Cap</b></p></td>
   </tr>
   <tr>
-    <td width="50%"><a href="comparisons/5-golden-sun-battle-24.png"><img src="comparisons/5-golden-sun-battle-24.png" alt="Golden Sun battles"></a><p align="center"><b>Golden Sun battles</b></p></td>
-    <td width="50%"><a href="comparisons/4-castlevania-24.png"><img src="comparisons/4-castlevania-24.png" alt="Castlevania: Aria of Sorrow"></a><p align="center"><b>Castlevania: Aria of Sorrow</b></p></td>
+    <td width="50%"><a href="comparisons/5-golden-sun-battle-20.png"><img src="comparisons/5-golden-sun-battle-20.png" alt="Golden Sun battles"></a><p align="center"><b>Golden Sun battles</b></p></td>
+    <td width="50%"><a href="comparisons/4-castlevania-20.png"><img src="comparisons/4-castlevania-20.png" alt="Castlevania: Aria of Sorrow"></a><p align="center"><b>Castlevania: Aria of Sorrow</b></p></td>
   </tr>
 </table>
 
@@ -49,23 +49,23 @@ Faces keep their expression. Since 1.4, a corner where three different colors me
 
 Text and portraits keep their shape too, as in the spell menu of Harry Potter: Prisoner of Azkaban:
 
-<img src="comparisons/6-azkaban-menu.png" alt="Spell menu: original, xBRZ (latest), MMPX Advanced and xBRZ crisp" width="100%">
+<img src="comparisons/6-azkaban-menu.png" alt="Spell menu: original, xBRZ (latest), MMPX Advanced and xBRZ Crisp" width="100%">
 
-<sub>More: [other games](comparisons/3-other-games-24.png)</sub>
+<sub>More: [other games](comparisons/3-other-games-20.png)</sub>
 
 <h2 align="center">🎛️ Presets</h2>
 
-One preset, `xbrz-crisp`, with a minimum contrast of 24. Change `XBRZ_MINC` in Quick Menu › Shaders › Shader Parameters and save the preset to pick another look:
+Three presets, from smoothest to closest to the original art. Load one, or change `XBRZ_MINC` in Quick Menu › Shaders › Shader Parameters:
 
-<img src="comparisons/design/presets-strip.png" alt="Golden Sun grass: original, xBRZ (latest), crisp 12, 16 and 24" width="100%">
+<img src="comparisons/design/presets-strip.png" alt="Golden Sun grass: original, xBRZ (latest), crisp 16, 20 and 24" width="100%">
 
-| `XBRZ_MINC` | Look |
-|---|---|
-| **12** | xBRZ with light improvements: only the softest shading and textures keep their pixels. |
-| **16** | Textures and soft shading keep their pixels, while outlines, faces and text are smoothed as in xBRZ. |
-| **24** (default) | Grass, foliage and textures keep most of their pixel detail, the closest to the original art, while outlines, faces and text are still smoothed. Some soft diagonals turn into steps. |
+| Preset | `XBRZ_MINC` | Look |
+|---|---|---|
+| `xbrz-crisp-16` | 16 | The smoothest. Textures and soft shading keep their pixels, and everything else is smoothed as in xBRZ. |
+| **`xbrz-crisp`** (default) | **20** | The balance. Grass, foliage and stone keep most of their detail, while outlines, faces, text and most soft diagonals stay smooth. |
+| `xbrz-crisp-24` | 24 | The closest to the original art. Textures keep nearly all their pixels, and some soft diagonals turn into steps. |
 
-24 is the default: up to 24, each step keeps more of the original pixels for little loss of smoothness, and past it the same gain costs two to three times more.
+20 is the default because up to 20 each step keeps more of the original pixels for little loss of smoothness. Past it, smooth antialiased shapes start to lose more.
 
 <h2 align="center">🛠️ Parameters</h2>
 
@@ -74,7 +74,7 @@ One preset, `xbrz-crisp`, with a minimum contrast of 24. Change `XBRZ_MINC` in Q
 
 | Parameter | Default | What it does |
 |---|---|---|
-| `XBRZ_MINC` | 24 | Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off. |
+| `XBRZ_MINC` | 20 | Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off. |
 | `XBRZ_DIAG` | 100 | Maximum color distance (x/255) between the two colors a cut would join. Above it, the corner stays square. 0 turns it off. |
 | `XBRZ_TOL` | 15 | Equal color tolerance. The reference C++ xBRZ uses 30. |
 | `XBRZ_STEEP` | 3.2 | Steep and shallow line threshold. The reference C++ xBRZ uses 2.2, which turns 1-pixel steps into slopes. |
@@ -86,12 +86,22 @@ libretro's `xbrz-freescale-multipass` uses the same tolerance, steep and dominan
 
 <h2 align="center">🔬 How it works</h2>
 
-xBRZ decides corner by corner whether to cut a pixel's corner with a neighbor's color. xBRZ crisp keeps that decision and adds two checks before drawing:
+<details>
+<summary>Show how xBRZ Crisp differs from xBRZ</summary>
 
-1. **Minimum contrast.** If the pixel and the blend color are closer than `XBRZ_MINC` (YCbCr distance), the corner stays square, so soft shading and textures keep their pixels.
-2. **Similar diagonal.** A cut joins the two neighbors on the corner's diagonal. If those two colors differ by more than `XBRZ_DIAG`, the corner is a junction of different colors, not a diagonal line, and it stays square. Antialiasing ramps, where one of the two colors sits between the pixel and the other one, use a limit of 92. Corners that are part of a shallow or steep line are not blocked, unless the line would cut a pixel with a lighter color: dark outlines, eyes and eyebrows keep their whole pixel, since the eye reads dark lines as the shape. A blocked corner is still cut when the next corner along the same diagonal is cut, so lines are drawn to the end, and at the tip of a 1-pixel diagonal stripe, so the stripe runs on to the edge. Between two close inner tones, the cut also runs up to an outline darker than both, so the line reaches the outline and the outline stays whole; this is skipped at the corner of a solid block, along 1-pixel stripes and next to a corner the artist already rounded with an antialiasing pixel, as in the numbers of a HUD. A corner whose blend color runs straight on, like a frame or a horizontal line, stays square, so lines do not bend where they meet. Where two dark strokes of different colors meet in an L around a 1-pixel light gap, like a pupil under an eyebrow, the corner stays square, so the two are not joined into a diagonal. Where stacked 1-pixel stripes end flush, as in health bars, the end corners stay square when their diagonal colors differ by more than 64, so every stripe ends the same way.
+<br>
 
-Edge detection is the same as in xBRZ, except that the shallow and steep line tests weigh hue a little more than lightness (1.2x), so lines in shading that shifts hue, from orange to yellow for example, follow the artist's pixels. Shapes are otherwise found exactly as before and only these blends are skipped. The idea of only joining colors that match along the diagonal comes from [cleanEdge](https://github.com/libretro/slang-shaders/tree/master/edge-smoothing/cleanEdge) by torcado.
+xBRZ looks at each corner of each pixel and decides whether to round it. xBRZ Crisp keeps every one of those decisions and only says no when rounding would invent a shape the artist never drew. In that case the corner stays square.
+
+<img src="comparisons/8-how-it-works.png" alt="Golden Sun grass, Link's eyebrow in The Minish Cap and the health bar of Castlevania: Aria of Sorrow: original, xBRZ (latest) and xBRZ Crisp" width="100%">
+
+1. 🌿 **Soft shading is not a shape** (`XBRZ_MINC`). When the two colors of a corner are closer than the minimum contrast, they are shading or texture, not an edge, so the corner stays square.
+2. 🎨 **Different colors are not joined** (`XBRZ_DIAG`). Rounding a corner joins the two neighbors on its diagonal. When those are very different colors, the corner is a meeting point, not a line, so it stays square. Dark outlines, eyes and eyebrows keep their full shape.
+3. 📏 **Lines end the way they were drawn.** Straight lines do not bend where they meet, stacked stripes end square, and diagonal lines run on to their end or up to the outline.
+
+Edges are still found exactly as xBRZ finds them, so outlines and text are smoothed as before. The diagonal check is inspired by [cleanEdge](https://github.com/libretro/slang-shaders/tree/master/edge-smoothing/cleanEdge) by torcado. The [comparison page](https://ele3131.github.io/xBRZ-Crisp/#how) goes through every rule with more examples.
+
+</details>
 
 <details>
 <summary>Port details and testing</summary>
@@ -110,7 +120,7 @@ Tested in RetroArch on Android (gl driver, Game Boy Advance at 6x). The slang ve
 > Get the latest zip from **[Releases](https://github.com/ele3131/xbrz-crisp/releases)**.
 
 1. Copy the zip's contents into RetroArch's shader folder: `shaders_slang` for Vulkan, glcore, D3D and Metal, `shaders_glsl` for the gl driver.
-2. In a game, open Quick Menu › Shaders › Load and pick `edge-smoothing/xbrz/xbrz-crisp.slangp` (slang) or `xbrz/xbrz-crisp.glslp` (glsl).
+2. In a game, open Quick Menu › Shaders › Load and pick `edge-smoothing/xbrz/xbrz-crisp.slangp` (slang) or `xbrz/xbrz-crisp.glslp` (glsl). Use `xbrz-crisp-16` or `xbrz-crisp-24` for the other presets.
 3. Save it with Quick Menu › Shaders › Save › Save Global Preset, or per game with Save Game Preset.
 
 <h2 align="center">🤝 Giving back to xBRZ</h2>
