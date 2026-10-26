@@ -21,7 +21,9 @@
 //   antialiasing pixel), and a corner whose blend color runs straight on, like a frame or a
 //   horizontal line, stays square, so lines do not bend where they meet. Where two dark strokes of
 //   different colors meet in an L around a 1-pixel light gap, like a pupil under an eyebrow, the
-//   corner stays square.
+//   corner stays square. A blocked corner comes back as in xBRZ where the pixel's color runs on as a
+//   45-degree diagonal along the cut up to a straight line, like hair or a fence post, unless that
+//   would bend a straight line or stretch a lone 1-pixel dot.
 // - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
 //   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
 //   so every stripe ends the same way.

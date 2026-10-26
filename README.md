@@ -91,13 +91,13 @@ libretro's `xbrz-freescale-multipass` uses the same tolerance, steep and dominan
 
 <br>
 
-xBRZ looks at each corner of each pixel and decides whether to round it. xBRZ Crisp keeps every one of those decisions and only says no when rounding would invent a shape the artist never drew. In that case the corner stays square.
+xBRZ looks at each corner of each pixel and decides whether to round it. xBRZ Crisp keeps every one of those decisions and only says no when rounding would invent a shape the artist never drew. In that case the corner stays square. The red circles mark where the two differ.
 
-<img src="comparisons/8-how-it-works.png" alt="Golden Sun grass, Link's eyebrow in The Minish Cap and the health bar of Castlevania: Aria of Sorrow: original, xBRZ (latest) and xBRZ Crisp" width="100%">
+<img src="comparisons/8-how-it-works.png" alt="Stone in Tales of Phantasia, a face in Tales of Phantasia and a menu frame in Castlevania: Aria of Sorrow: original, xBRZ (latest) and xBRZ Crisp, with the differences circled in red" width="100%">
 
 1. 🌿 **Soft shading is not a shape** (`XBRZ_MINC`). When the two colors of a corner are closer than the minimum contrast, they are shading or texture, not an edge, so the corner stays square.
 2. 🎨 **Different colors are not joined** (`XBRZ_DIAG`). Rounding a corner joins the two neighbors on its diagonal. When those are very different colors, the corner is a meeting point, not a line, so it stays square. Dark outlines, eyes and eyebrows keep their full shape.
-3. 📏 **Lines end the way they were drawn.** Straight lines do not bend where they meet, stacked stripes end square, and diagonal lines run on to their end or up to the outline.
+3. 📏 **Lines end the way they were drawn.** Straight lines do not bend where they meet, stacked stripes end square, and diagonal lines run on to their end or up to the outline. A 45-degree diagonal the artist drew, like a lock of hair, is rounded as in xBRZ.
 
 Edges are still found exactly as xBRZ finds them, so outlines and text are smoothed as before. The diagonal check is inspired by [cleanEdge](https://github.com/libretro/slang-shaders/tree/master/edge-smoothing/cleanEdge) by torcado. The [comparison page](https://ele3131.github.io/xBRZ-Crisp/#how) goes through every rule with more examples.
 
