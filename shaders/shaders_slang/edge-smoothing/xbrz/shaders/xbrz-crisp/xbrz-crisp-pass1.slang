@@ -27,7 +27,7 @@
 //   stroke lighter than both colors runs on along the cut, like the white strokes of letters, and where a
 //   single antialiasing pixel steps along a diagonal edge between two colors, like the shaded edge of a cape.
 //   A blocked corner is also cut where the neighbour across its edge already cuts the other end of
-//   that edge with a shallow or steep line in the pixel's color, so the two cuts make one diagonal
+//   that edge with a line in the pixel's color, so the two cuts make one diagonal
 //   that ends on a straight edge, like the tip of a lock of hair.
 // - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
 //   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
@@ -194,8 +194,8 @@ void main()
     vec4 aD = vec4(greaterThan(mod(nD, 4.0), vec4(0.0))) * vec4(lessThan(nD, vec4(128.0)));
     // top-left and bottom-right are cut along "/", top-right and bottom-left along "\"
     vec4 chain = vec4(max(aA.x, aB.x), max(aC.y, aD.y), max(aA.z, aB.z), max(aC.w, aD.w));
-    // a flagged line corner is also cut where its blend color's pixel has a shallow or steep line
-    // at the other end of their shared edge that blends E's color: the two cuts are one diagonal
+    // a flagged line corner is also cut where its blend color's pixel has a line at the other end
+    // of their shared edge that blends E's color: the two cuts are one diagonal
     // running into a straight edge, like the end of a lock of hair
     vec4 oL = floor(INFO(coord + vec2(-1.0, 0.0) * ORIG_SIZE.zw) * 255.0 + 0.5);
     vec4 oR = floor(INFO(coord + vec2( 1.0, 0.0) * ORIG_SIZE.zw) * 255.0 + 0.5);
@@ -204,7 +204,7 @@ void main()
     vec4 sec = mod(floor(info / 8.0), 2.0);
     vec4 nO = vec4(mix(oL.z, oU.z, sec.x), mix(oU.w, oR.w, sec.y), mix(oR.x, oD.x, sec.z), mix(oD.y, oL.y, sec.w));
     vec4 meet = vec4(greaterThan(mod(nO, 4.0), vec4(0.0))) * vec4(lessThan(nO, vec4(128.0))) * mod(floor(nO / 4.0), 2.0)
-              * (1.0 - abs(mod(floor(nO / 8.0), 2.0) - sec)) * min(mod(floor(nO / 16.0), 2.0) + mod(floor(nO / 64.0), 2.0), 1.0)
+              * (1.0 - abs(mod(floor(nO / 8.0), 2.0) - sec))
               * mod(floor(info / 4.0), 2.0);
     blendResult *= max(1.0 - blocked, max(chain, meet));
   }

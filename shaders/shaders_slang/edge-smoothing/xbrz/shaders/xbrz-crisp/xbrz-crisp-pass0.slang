@@ -27,7 +27,7 @@
 //   stroke lighter than both colors runs on along the cut, like the white strokes of letters, and where a
 //   single antialiasing pixel steps along a diagonal edge between two colors, like the shaded edge of a cape.
 //   A blocked corner is also cut where the neighbour across its edge already cuts the other end of
-//   that edge with a shallow or steep line in the pixel's color, so the two cuts make one diagonal
+//   that edge with a line in the pixel's color, so the two cuts make one diagonal
 //   that ends on a straight edge, like the tip of a lock of hair.
 // - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
 //   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
