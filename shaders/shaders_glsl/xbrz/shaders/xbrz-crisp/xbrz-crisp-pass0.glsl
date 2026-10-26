@@ -25,11 +25,16 @@
 //   would bend a straight line or stretch a lone 1-pixel dot. It also comes back where a 1-pixel
 //   stroke lighter than both colors runs on along the cut, like the white strokes of letters, and where a
 //   single antialiasing pixel steps along a diagonal edge between two colors, like the shaded edge of a cape.
+//   A blocked corner is also cut where the neighbour across its edge already cuts the other end of
+//   that edge with a shallow or steep line in the pixel's color, so the two cuts make one diagonal
+//   that ends on a straight edge, like the tip of a lock of hair.
 // - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
 //   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
 //   so every stripe ends the same way.
 // - Line shapes: the shallow and steep line tests weigh hue a little more than lightness (1.2x),
-//   so lines in hue-shifted shading follow the artist's pixels.
+//   so lines in hue-shifted shading follow the artist's pixels. Where such a line between two
+//   different colors would run into the line of the neighbour across the same edge, it is drawn as
+//   in xBRZ.
 // XBRZ_MINC = 0 turns the first rule off, and XBRZ_DIAG = 0 the others.
 //#crisp}
 //#plain // xBRZ freescale, multipass: xBRZ at any scale factor, in two passes.
@@ -227,6 +232,13 @@ float DistShape(vec3 pixA, vec3 pixB)
   float Cb = k.y * scaleB * (diff.b - y);
   float Cr = k.y * scaleR * (diff.r - y);
   return sqrt((Y * Y) + (Cb * Cb) + (Cr * Cr));
+}
+
+// a shallow or steep line found only because hue weighs more (DistShape) between two different
+// colors is flagged +32, so the second pass can drop it where it runs into the neighbour's line
+float toneLine(vec3 a, vec3 b, vec3 c, vec3 d)
+{
+  return float(!IsPixEqual(a, b) && STEEP_E * DistYCbCr(a, b) > DistYCbCr(c, d));
 }
 
 #define eq(a,b)  (a == b)
@@ -597,9 +609,9 @@ void main()
     float dist_F_G = DistShape(F, G);
     float dist_H_C = DistShape(H, C);
     if((STEEP_E * dist_F_G <= dist_H_C) && neq(E,G) && neq(D,G))
-      res.z += 16.0;
+      res.z += 16.0 + 32.0 * toneLine(F, G, H, C);
     if((STEEP_E * dist_H_C <= dist_F_G) && neq(E,C) && neq(B,C))
-      res.z += 64.0;
+      res.z += 64.0 + 32.0 * toneLine(H, C, F, G);
   }
 
   // Pixel Tap Mapping: -|-|-|-|-
@@ -615,9 +627,9 @@ void main()
     float dist_H_A = DistShape(H, A);
     float dist_D_I = DistShape(D, I);
     if((STEEP_E * dist_H_A <= dist_D_I) && neq(E,A) && neq(B,A))
-      res.w += 16.0;
+      res.w += 16.0 + 32.0 * toneLine(H, A, D, I);
     if((STEEP_E * dist_D_I <= dist_H_A) && neq(E,I) && neq(F,I))
-      res.w += 64.0;
+      res.w += 64.0 + 32.0 * toneLine(D, I, H, A);
   }
 
   // Pixel Tap Mapping: -|-|x|x|-
@@ -633,9 +645,9 @@ void main()
     float dist_B_I = DistShape(B, I);
     float dist_F_A = DistShape(F, A);
     if((STEEP_E * dist_B_I <= dist_F_A) && neq(E,I) && neq(H,I))
-      res.y += 16.0;
+      res.y += 16.0 + 32.0 * toneLine(B, I, F, A);
     if((STEEP_E * dist_F_A <= dist_B_I) && neq(E,A) && neq(D,A))
-      res.y += 64.0;
+      res.y += 64.0 + 32.0 * toneLine(F, A, B, I);
   }
 
   // Pixel Tap Mapping: -|x|x|-|-
@@ -651,9 +663,9 @@ void main()
     float dist_D_C = DistShape(D, C);
     float dist_B_G = DistShape(B, G);
     if((STEEP_E * dist_D_C <= dist_B_G) && neq(E,C) && neq(F,C))
-      res.x += 16.0;
+      res.x += 16.0 + 32.0 * toneLine(D, C, B, G);
     if((STEEP_E * dist_B_G <= dist_D_C) && neq(E,G) && neq(H,G))
-      res.x += 64.0;
+      res.x += 64.0 + 32.0 * toneLine(B, G, D, C);
   }
 
   // Decisions for the output pass, made once per input pixel instead of once per output pixel:

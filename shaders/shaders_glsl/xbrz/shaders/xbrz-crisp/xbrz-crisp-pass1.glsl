@@ -25,11 +25,16 @@
 //   would bend a straight line or stretch a lone 1-pixel dot. It also comes back where a 1-pixel
 //   stroke lighter than both colors runs on along the cut, like the white strokes of letters, and where a
 //   single antialiasing pixel steps along a diagonal edge between two colors, like the shaded edge of a cape.
+//   A blocked corner is also cut where the neighbour across its edge already cuts the other end of
+//   that edge with a shallow or steep line in the pixel's color, so the two cuts make one diagonal
+//   that ends on a straight edge, like the tip of a lock of hair.
 // - Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars
 //   of a gauge, the end corners stay square when their diagonal colors differ by more than 64,
 //   so every stripe ends the same way.
 // - Line shapes: the shallow and steep line tests weigh hue a little more than lightness (1.2x),
-//   so lines in hue-shifted shading follow the artist's pixels.
+//   so lines in hue-shifted shading follow the artist's pixels. Where such a line between two
+//   different colors would run into the line of the neighbour across the same edge, it is drawn as
+//   in xBRZ.
 // XBRZ_MINC = 0 turns the first rule off, and XBRZ_DIAG = 0 the others.
 //#crisp}
 //#plain // xBRZ freescale, multipass: xBRZ at any scale factor, in two passes.
@@ -220,7 +225,19 @@ void main()
     vec4 aD = vec4(greaterThan(mod(nD, 4.0), vec4(0.0))) * vec4(lessThan(nD, vec4(128.0)));
     // top-left and bottom-right are cut along "/", top-right and bottom-left along "\"
     vec4 chain = vec4(max(aA.x, aB.x), max(aC.y, aD.y), max(aA.z, aB.z), max(aC.w, aD.w));
-    blendResult *= max(1.0 - blocked, chain);
+    // a flagged line corner is also cut where its blend color's pixel has a shallow or steep line
+    // at the other end of their shared edge that blends E's color: the two cuts are one diagonal
+    // running into a straight edge, like the end of a lock of hair
+    vec4 oL = floor(INFO(coord + vec2(-1.0, 0.0) * SRC_SIZE.zw) * 255.0 + 0.5);
+    vec4 oR = floor(INFO(coord + vec2( 1.0, 0.0) * SRC_SIZE.zw) * 255.0 + 0.5);
+    vec4 oU = floor(INFO(coord + vec2( 0.0,-1.0) * SRC_SIZE.zw) * 255.0 + 0.5);
+    vec4 oD = floor(INFO(coord + vec2( 0.0, 1.0) * SRC_SIZE.zw) * 255.0 + 0.5);
+    vec4 sec = mod(floor(info / 8.0), 2.0);
+    vec4 nO = vec4(mix(oL.z, oU.z, sec.x), mix(oU.w, oR.w, sec.y), mix(oR.x, oD.x, sec.z), mix(oD.y, oL.y, sec.w));
+    vec4 meet = vec4(greaterThan(mod(nO, 4.0), vec4(0.0))) * vec4(lessThan(nO, vec4(128.0))) * mod(floor(nO / 4.0), 2.0)
+              * (1.0 - abs(mod(floor(nO / 8.0), 2.0) - sec)) * min(mod(floor(nO / 16.0), 2.0) + mod(floor(nO / 64.0), 2.0), 1.0)
+              * mod(floor(info / 4.0), 2.0);
+    blendResult *= max(1.0 - blocked, max(chain, meet));
   }
 
   // most output pixels have no corner to blend, and only need these two reads
@@ -232,8 +249,30 @@ void main()
 
   vec4 doLineBlend = mod(floor(info / 4.0), 2.0);
   vec4 secondPix = mod(floor(info / 8.0), 2.0);
-  vec4 haveShallowLine = floor(mod(info / 16.0, 4.0));
-  vec4 haveSteepLine = floor(mod(info / 64.0, 4.0));
+  vec4 haveShallowLine = mod(floor(info / 16.0), 2.0);
+  vec4 haveSteepLine = mod(floor(info / 64.0), 2.0);
+
+  // a line flagged +32 by the first pass (found only by hue, between two different colors) is drawn
+  // as a plain line where the neighbour across its edge draws a line the same way: the two lines
+  // would run into each other, one bending around the other's end
+  vec4 tone = mod(floor(info / 32.0), 2.0);
+  if (tone.x + tone.y + tone.z + tone.w > 0.0)
+  {
+    vec4 nL = floor(INFO(coord + vec2(-1.0, 0.0) * SRC_SIZE.zw) * 255.0 + 0.5);
+    vec4 nR = floor(INFO(coord + vec2( 1.0, 0.0) * SRC_SIZE.zw) * 255.0 + 0.5);
+    vec4 nU = floor(INFO(coord + vec2( 0.0,-1.0) * SRC_SIZE.zw) * 255.0 + 0.5);
+    vec4 nD = floor(INFO(coord + vec2( 0.0, 1.0) * SRC_SIZE.zw) * 255.0 + 0.5);
+    // a neighbour corner draws a line when it blends, is not flagged (+128) and has the line bit (+4)
+    vec4 drawL = vec4(lessThan(nL, vec4(128.0))) * mod(floor(nL / 4.0), 2.0), drawR = vec4(lessThan(nR, vec4(128.0))) * mod(floor(nR / 4.0), 2.0);
+    vec4 drawU = vec4(lessThan(nU, vec4(128.0))) * mod(floor(nU / 4.0), 2.0), drawD = vec4(lessThan(nD, vec4(128.0))) * mod(floor(nD / 4.0), 2.0);
+    // steep lines meet the left/right neighbour, shallow ones the upper/lower one
+    vec4 steepN = vec4(drawL.z * mod(floor(nL.z / 64.0), 2.0), drawR.w * mod(floor(nR.w / 64.0), 2.0),
+                       drawR.x * mod(floor(nR.x / 64.0), 2.0), drawL.y * mod(floor(nL.y / 64.0), 2.0));
+    vec4 shallowN = vec4(drawU.z * mod(floor(nU.z / 16.0), 2.0), drawU.w * mod(floor(nU.w / 16.0), 2.0),
+                         drawD.x * mod(floor(nD.x / 16.0), 2.0), drawD.y * mod(floor(nD.y / 16.0), 2.0));
+    haveSteepLine *= 1.0 - tone * steepN;
+    haveShallowLine *= 1.0 - tone * shallowN;
+  }
 
   // Corners are applied in the same order as the original xBRZ (0, 90, 180, 270 degrees). The first
   // pass picked each blend colour ("dist(e,f) <= dist(e,h) ? f : h").
