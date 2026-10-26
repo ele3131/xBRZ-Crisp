@@ -28,7 +28,7 @@
 
 <a href="https://ele3131.github.io/xbrz-crisp/"><img src="comparisons/preview-20.png" alt="Animated comparison in Golden Sun, Castlevania: Aria of Sorrow, Harry Potter: Prisoner of Azkaban and Tales of Phantasia: xBRZ (latest), then xBRZ Crisp 20" width="720"></a>
 
-Pick integer scaling, MMPX Advanced, ScaleFX, xBRZ (latest) or xBRZ Crisp (contrast 12 to 30) on each side, drag the line across 10 Game Boy Advance scenes, zoom in up to 4×, hold a button to see the original pixels, and mark in red every spot where the two sides differ.
+Pick integer scaling, MMPX Advanced, ScaleFX, xBRZ (latest) or xBRZ Crisp (contrast 10 to 30) on each side, drag the line across 10 Game Boy Advance scenes, zoom in up to 4×, hold a button to see the original pixels, and mark in red every spot where the two sides differ.
 
 <h2 align="center">🌄 Gallery</h2>
 
@@ -57,13 +57,13 @@ Text and portraits keep their shape too, as in the spell menu of Harry Potter: P
 
 Three presets, from smoothest to closest to the original art. Load one, or change `XBRZ_MINC` in Quick Menu › Shaders › Shader Parameters:
 
-<img src="comparisons/design/presets-strip.png" alt="Golden Sun grass: original, xBRZ (latest), crisp 12, 20 and 24" width="100%">
+<img src="comparisons/design/presets-strip.png" alt="Golden Sun grass: original, xBRZ (latest), crisp 10, 20 and 30" width="100%">
 
 | Preset | `XBRZ_MINC` | Look |
 |---|---|---|
-| `xbrz-crisp-12` | 12 | The closest to xBRZ. Only the softest shading and dithering keep their pixels, and everything else is smoothed as in xBRZ, still visibly sharper. |
+| `xbrz-crisp-10` | 10 | The closest to xBRZ. Only the softest shading and dithering keep their pixels, and everything else, including soft edges like the steps of a roof, is smoothed as in xBRZ, still visibly sharper. |
 | **`xbrz-crisp`** (default) | **20** | The balance. Grass, foliage and stone keep most of their detail, while outlines, faces, text and most soft diagonals stay smooth. |
-| `xbrz-crisp-24` | 24 | The closest to the original art. Textures keep nearly all their pixels, and some soft diagonals turn into steps. |
+| `xbrz-crisp-30` | 30 | The closest to the original art. Textures keep nearly all their pixels, and more soft diagonals turn into steps. |
 
 20 is the default because up to 20 each step keeps more of the original pixels for little loss of smoothness. Past it, smooth antialiased shapes start to lose more.
 
@@ -120,7 +120,7 @@ Tested in RetroArch on Android (gl driver, Game Boy Advance at 6x). The slang ve
 > Get the latest zip from **[Releases](https://github.com/ele3131/xbrz-crisp/releases)**.
 
 1. Copy the zip's contents into RetroArch's shader folder: `shaders_slang` for Vulkan, glcore, D3D and Metal, `shaders_glsl` for the gl driver.
-2. In a game, open Quick Menu › Shaders › Load and pick `edge-smoothing/xbrz/xbrz-crisp.slangp` (slang) or `xbrz/xbrz-crisp.glslp` (glsl). Use `xbrz-crisp-12` or `xbrz-crisp-24` for the other presets.
+2. In a game, open Quick Menu › Shaders › Load and pick `edge-smoothing/xbrz/xbrz-crisp.slangp` (slang) or `xbrz/xbrz-crisp.glslp` (glsl). Use `xbrz-crisp-10` or `xbrz-crisp-30` for the other presets.
 3. Save it with Quick Menu › Shaders › Save › Save Global Preset, or per game with Save Game Preset.
 
 <h2 align="center">🤝 Giving back to xBRZ</h2>

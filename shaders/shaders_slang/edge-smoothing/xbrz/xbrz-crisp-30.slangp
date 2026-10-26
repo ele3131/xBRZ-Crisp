@@ -17,4 +17,4 @@ scale_type2 = viewport
 scale2 = 1.0
 
 parameters = "XBRZ_MINC"
-XBRZ_MINC = "12.000000"
+XBRZ_MINC = "30.000000"
