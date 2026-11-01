@@ -50,8 +50,9 @@
 //    corner is cut too, as in xBRZ, so the pixel becomes a thin strip of the diagonal instead of a
 //    notch in it.
 // 9. Line shapes: the shallow and steep line tests weigh hue a little more than lightness (1.2x), so
-//    lines in hue-shifted shading follow the artist's pixels. It only adds lines: a line xBRZ finds is
-//    kept. Where a line found only this way between two different colors would run into the line of
+//    lines in hue-shifted shading follow the artist's pixels. A line xBRZ finds is kept too, unless it
+//    would bring back a corner blocked by rule 2 or the line's color runs on along a 45-degree
+//    diagonal in the same color. Where a line found only this way between two different colors would run into the line of
 //    the neighbour across the same edge, it is drawn as in xBRZ.
 // XBRZ_MINC = 0 turns rules 1 and 8 off, and XBRZ_DIAG = 0 the others.
 //#crisp}
@@ -282,6 +283,14 @@ float DistShape(vec3 pixA, vec3 pixB)
   float Cb = k.y * scaleB * (diff.b - y);
   float Cr = k.y * scaleR * (diff.r - y);
   return sqrt((Y * Y) + (Cb * Cb) + (Cr * Cr));
+}
+
+// a line xBRZ finds that the hue-weighted test does not is kept too, except where it would bring
+// back a corner blocked by the diagonal limit (rule 2), or where the line's color runs on along a
+// 45-degree diagonal in the same color while the line test pairs it with a different one (alt45)
+bool plainLine(vec3 a, vec3 b, vec3 c, vec3 d, float pairD, bool alt45)
+{
+  return STEEP_E * DistYCbCr(a, b) <= DistYCbCr(c, d) && pairD * 255.0 <= XBRZ_DIAG && !alt45;
 }
 
 // a shallow or steep line found only because hue weighs more (DistShape) between two different
@@ -720,9 +729,9 @@ void main()
     res.z += 4.0;
     float dist_F_G = DistShape(F, G);
     float dist_H_C = DistShape(H, C);
-    if((STEEP_E * dist_F_G <= dist_H_C || STEEP_E * DistYCbCr(F, G) <= DistYCbCr(H, C)) && neq(E,G) && neq(D,G))
+    if((STEEP_E * dist_F_G <= dist_H_C || plainLine(F, G, H, C, DistYCbCr(F, H), eq(P(-1.,2.), H) && !eq(G, H))) && neq(E,G) && neq(D,G))
       res.z += 16.0 + 32.0 * toneLine(F, G, H, C);
-    if((STEEP_E * dist_H_C <= dist_F_G || STEEP_E * DistYCbCr(H, C) <= DistYCbCr(F, G)) && neq(E,C) && neq(B,C))
+    if((STEEP_E * dist_H_C <= dist_F_G || plainLine(H, C, F, G, DistYCbCr(F, H), eq(P(2.,-1.), F) && !eq(C, F))) && neq(E,C) && neq(B,C))
       res.z += 64.0 + 32.0 * toneLine(H, C, F, G);
   }
 
@@ -738,9 +747,9 @@ void main()
     res.w += 4.0;
     float dist_H_A = DistShape(H, A);
     float dist_D_I = DistShape(D, I);
-    if((STEEP_E * dist_H_A <= dist_D_I || STEEP_E * DistYCbCr(H, A) <= DistYCbCr(D, I)) && neq(E,A) && neq(B,A))
+    if((STEEP_E * dist_H_A <= dist_D_I || plainLine(H, A, D, I, DistYCbCr(H, D), eq(P(-2.,-1.), D) && !eq(A, D))) && neq(E,A) && neq(B,A))
       res.w += 16.0 + 32.0 * toneLine(H, A, D, I);
-    if((STEEP_E * dist_D_I <= dist_H_A || STEEP_E * DistYCbCr(D, I) <= DistYCbCr(H, A)) && neq(E,I) && neq(F,I))
+    if((STEEP_E * dist_D_I <= dist_H_A || plainLine(D, I, H, A, DistYCbCr(H, D), eq(P(1.,2.), H) && !eq(I, H))) && neq(E,I) && neq(F,I))
       res.w += 64.0 + 32.0 * toneLine(D, I, H, A);
   }
 
@@ -756,9 +765,9 @@ void main()
     res.y += 4.0;
     float dist_B_I = DistShape(B, I);
     float dist_F_A = DistShape(F, A);
-    if((STEEP_E * dist_B_I <= dist_F_A || STEEP_E * DistYCbCr(B, I) <= DistYCbCr(F, A)) && neq(E,I) && neq(H,I))
+    if((STEEP_E * dist_B_I <= dist_F_A || plainLine(B, I, F, A, DistYCbCr(B, F), eq(P(2.,1.), F) && !eq(I, F))) && neq(E,I) && neq(H,I))
       res.y += 16.0 + 32.0 * toneLine(B, I, F, A);
-    if((STEEP_E * dist_F_A <= dist_B_I || STEEP_E * DistYCbCr(F, A) <= DistYCbCr(B, I)) && neq(E,A) && neq(D,A))
+    if((STEEP_E * dist_F_A <= dist_B_I || plainLine(F, A, B, I, DistYCbCr(B, F), eq(P(-1.,-2.), B) && !eq(A, B))) && neq(E,A) && neq(D,A))
       res.y += 64.0 + 32.0 * toneLine(F, A, B, I);
   }
 
@@ -774,9 +783,9 @@ void main()
     res.x += 4.0;
     float dist_D_C = DistShape(D, C);
     float dist_B_G = DistShape(B, G);
-    if((STEEP_E * dist_D_C <= dist_B_G || STEEP_E * DistYCbCr(D, C) <= DistYCbCr(B, G)) && neq(E,C) && neq(F,C))
+    if((STEEP_E * dist_D_C <= dist_B_G || plainLine(D, C, B, G, DistYCbCr(D, B), eq(P(1.,-2.), B) && !eq(C, B))) && neq(E,C) && neq(F,C))
       res.x += 16.0 + 32.0 * toneLine(D, C, B, G);
-    if((STEEP_E * dist_B_G <= dist_D_C || STEEP_E * DistYCbCr(B, G) <= DistYCbCr(D, C)) && neq(E,G) && neq(H,G))
+    if((STEEP_E * dist_B_G <= dist_D_C || plainLine(B, G, D, C, DistYCbCr(D, B), eq(P(-2.,1.), D) && !eq(G, D))) && neq(E,G) && neq(H,G))
       res.x += 64.0 + 32.0 * toneLine(B, G, D, C);
   }
 
