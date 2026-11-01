@@ -42,17 +42,18 @@
 //    along the cut, like the white strokes of letters.
 // 6. Antialiasing notch: and where a single antialiasing pixel steps along a diagonal edge between
 //    two colors, like the shaded edge of a cape.
-// 7. Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars of
-//    a gauge, the end corners stay square when their diagonal colors differ by more than 64, so every
-//    stripe ends the same way. A stripe only 3 pixels long is left alone when the color past its end
+// 7. Stripe ends: where a stack of 1- or 2-pixel stripes of different colors ends flush, like the
+//    bars of a gauge or a striped wall, the end corners stay square when their diagonal colors differ
+//    by more than 36, so every stripe ends the same way. A stripe only 3 pixels long is left alone when the color past its end
 //    runs straight on, like a line meeting it.
 // 8. Line through an antialiasing pixel: when a line cuts one corner of a pixel whose color lies
 //    between the line's two colors on a strong edge, and rule 1 left the opposite corner square, that
 //    corner is cut too, as in xBRZ, so the pixel becomes a thin strip of the diagonal instead of a
 //    notch in it.
 // 9. Line shapes: the shallow and steep line tests weigh hue a little more than lightness (1.2x), so
-//    lines in hue-shifted shading follow the artist's pixels. Where such a line between two different
-//    colors would run into the line of the neighbour across the same edge, it is drawn as in xBRZ.
+//    lines in hue-shifted shading follow the artist's pixels. It only adds lines: a line xBRZ finds is
+//    kept. Where a line found only this way between two different colors would run into the line of
+//    the neighbour across the same edge, it is drawn as in xBRZ.
 // XBRZ_MINC = 0 turns rules 1 and 8 off, and XBRZ_DIAG = 0 the others.
 //#crisp}
 //#plain // xBRZ freescale, multipass: xBRZ at any scale factor, in two passes.
@@ -201,7 +202,7 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 #define XBRZ_RAMP 1.15      // 2, 6. a ramp: (d(E,P) + d(P,Q)) / d(E,Q) up to this
 #define XBRZ_STRIPE 64.0    // 2, 3. a diagonal stripe keeps a close color (within this) along its length
 #define XBRZ_OUTLINE 0.15   // 2, 3. an outline is darker (in luma) than both inner tones by this much
-#define XBRZ_TIP 64.0       // 7. stripe ends stay square above this diagonal distance
+#define XBRZ_TIP 36.0       // 7. stripe ends stay square above this diagonal distance
 #define XBRZ_AA_LINE 1.01   // 8. E lies between the colors: d(P1,E) + d(E,P2) up to this times d(P1,P2)
 #define XBRZ_AA_EDGE 40.0   // 8. the two colors differ by at least this
 #define alike(a,b) (DistYCbCr(a, b) * 255.0 <= 20.0)
@@ -230,7 +231,7 @@ bool IsPixEqual(vec3 pixA, vec3 pixB)
 // ============================================================================================
 // 9. Line shapes
 // ============================================================================================
-// the distance for the shallow and steep line tests: with the crisp rules on (XBRZ_DIAG > 0) hue
+// the extra distance for the shallow and steep line tests (a line passes with it or with xBRZ's): with the crisp rules on (XBRZ_DIAG > 0) hue
 // weighs 1.2x more than lightness, scaled so that as many neighbour pairs pass the thresholds
 float DistShape(vec3 pixA, vec3 pixB)
 {
@@ -535,8 +536,11 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
   // E ends a 1-pixel horizontal line (left or right end) or vertical line (top or bottom end); a corner
   // brought back by rules 4 to 6 is left as it is
   bool eB = eq(E, B), eD = eq(E, D), eF = eq(E, F), eH = eq(E, H);
-  // the stripes on both sides differ from each other too, so outlines (same color on both sides) are left alone
-  bool thinH = !eB && !eH && !eq(B, H), thinV = !eD && !eF && !eq(D, F);
+  // the stripes on both sides differ from each other too, so outlines (same color on both sides) are left alone;
+  // E's stripe may also be 2 pixels wide (E's color on one side and not 2 pixels away)
+  vec3 fB = eB ? P(0., -2.) : P(0., 2.), fD = eD ? P(-2., 0.) : P(2., 0.);
+  bool thinH = !eq(B, H) && ((!eB && !eH) || (eB != eH && !eq(fB, E)));
+  bool thinV = !eq(D, F) && ((!eD && !eF) || (eD != eF && !eq(fD, E)));
   if (thinH || thinV)
   {
     // the stripes only need to keep a similar color (within 20/255) along their length, so a background
@@ -679,9 +683,9 @@ void main()
     res.z += 4.0;
     float dist_F_G = DistShape(F, G);
     float dist_H_C = DistShape(H, C);
-    if((STEEP_E * dist_F_G <= dist_H_C) && neq(E,G) && neq(D,G))
+    if((STEEP_E * dist_F_G <= dist_H_C || STEEP_E * DistYCbCr(F, G) <= DistYCbCr(H, C)) && neq(E,G) && neq(D,G))
       res.z += 16.0 + 32.0 * toneLine(F, G, H, C);
-    if((STEEP_E * dist_H_C <= dist_F_G) && neq(E,C) && neq(B,C))
+    if((STEEP_E * dist_H_C <= dist_F_G || STEEP_E * DistYCbCr(H, C) <= DistYCbCr(F, G)) && neq(E,C) && neq(B,C))
       res.z += 64.0 + 32.0 * toneLine(H, C, F, G);
   }
 
@@ -697,9 +701,9 @@ void main()
     res.w += 4.0;
     float dist_H_A = DistShape(H, A);
     float dist_D_I = DistShape(D, I);
-    if((STEEP_E * dist_H_A <= dist_D_I) && neq(E,A) && neq(B,A))
+    if((STEEP_E * dist_H_A <= dist_D_I || STEEP_E * DistYCbCr(H, A) <= DistYCbCr(D, I)) && neq(E,A) && neq(B,A))
       res.w += 16.0 + 32.0 * toneLine(H, A, D, I);
-    if((STEEP_E * dist_D_I <= dist_H_A) && neq(E,I) && neq(F,I))
+    if((STEEP_E * dist_D_I <= dist_H_A || STEEP_E * DistYCbCr(D, I) <= DistYCbCr(H, A)) && neq(E,I) && neq(F,I))
       res.w += 64.0 + 32.0 * toneLine(D, I, H, A);
   }
 
@@ -715,9 +719,9 @@ void main()
     res.y += 4.0;
     float dist_B_I = DistShape(B, I);
     float dist_F_A = DistShape(F, A);
-    if((STEEP_E * dist_B_I <= dist_F_A) && neq(E,I) && neq(H,I))
+    if((STEEP_E * dist_B_I <= dist_F_A || STEEP_E * DistYCbCr(B, I) <= DistYCbCr(F, A)) && neq(E,I) && neq(H,I))
       res.y += 16.0 + 32.0 * toneLine(B, I, F, A);
-    if((STEEP_E * dist_F_A <= dist_B_I) && neq(E,A) && neq(D,A))
+    if((STEEP_E * dist_F_A <= dist_B_I || STEEP_E * DistYCbCr(F, A) <= DistYCbCr(B, I)) && neq(E,A) && neq(D,A))
       res.y += 64.0 + 32.0 * toneLine(F, A, B, I);
   }
 
@@ -733,9 +737,9 @@ void main()
     res.x += 4.0;
     float dist_D_C = DistShape(D, C);
     float dist_B_G = DistShape(B, G);
-    if((STEEP_E * dist_D_C <= dist_B_G) && neq(E,C) && neq(F,C))
+    if((STEEP_E * dist_D_C <= dist_B_G || STEEP_E * DistYCbCr(D, C) <= DistYCbCr(B, G)) && neq(E,C) && neq(F,C))
       res.x += 16.0 + 32.0 * toneLine(D, C, B, G);
-    if((STEEP_E * dist_B_G <= dist_D_C) && neq(E,G) && neq(H,G))
+    if((STEEP_E * dist_B_G <= dist_D_C || STEEP_E * DistYCbCr(B, G) <= DistYCbCr(D, C)) && neq(E,G) && neq(H,G))
       res.x += 64.0 + 32.0 * toneLine(B, G, D, C);
   }
 
