@@ -54,8 +54,12 @@
 // 9. Line shapes: the shallow and steep line tests weigh hue a little more than lightness (1.2x), so
 //    lines in hue-shifted shading follow the artist's pixels. A line xBRZ finds is kept too, unless it
 //    would bring back a corner blocked by rule 2 or the line's color runs on along a 45-degree
-//    diagonal in the same color. Where a line found only this way between two different colors would run into the line of
-//    the neighbour across the same edge, it is drawn as in xBRZ.
+//    diagonal in the same color. Where a line found only by the hue weighting, between two
+//    different colors, would run into the line of the neighbour across the same edge, it is drawn
+//    as in xBRZ.
+// 10. Pixel closed between outlines: a pixel closed in a straight row between two pixels of a
+//     near-black outline that also wraps the corner, like the brown brow between the black lines of
+//     Link's eye, is not pulled toward E by a line through the outline; that corner stays square.
 // XBRZ_MINC = 0 turns rules 1 and 8 off, and XBRZ_DIAG = 0 the others.
 //#crisp}
 //#plain // xBRZ freescale, multipass: xBRZ at any scale factor, in two passes.
@@ -73,6 +77,7 @@
 //#plain //   not joined, and where 1-pixel stripes end flush (gauges, health bars) the end corners stay
 //#plain //   square.
 //#plain //   The shallow and steep line tests also weigh hue a little more than lightness (1.2x).
+//#plain //   A pixel closed in a row between two near-black outline pixels is not pulled out of it.
 //
 // The first pass makes every blend decision once per input pixel (blend type, line type, blend
 // color and the minimum contrast), so the second pass, which runs once per output pixel, only
@@ -233,8 +238,9 @@ bool IsPixEqual(vec3 pixA, vec3 pixB)
 // ============================================================================================
 // 9. Line shapes
 // ============================================================================================
-// the extra distance for the shallow and steep line tests (a line passes with it or with xBRZ's): with the crisp rules on (XBRZ_DIAG > 0) hue
-// weighs 1.2x more than lightness, scaled so that as many neighbour pairs pass the thresholds
+// the extra distance for the shallow and steep line tests (a line passes with it or with xBRZ's):
+// with the crisp rules on (XBRZ_DIAG > 0) hue weighs 1.2x more than lightness, scaled so that as
+// many neighbour pairs pass the thresholds
 float DistShape(vec3 pixA, vec3 pixB)
 {
   const vec3 w = vec3(0.2627, 0.6780, 0.0593);
@@ -597,6 +603,33 @@ vec4 lineThroughAA(vec4 res, vec4 xbrz, vec4 contrast, vec3 B, vec3 D, vec3 E, v
   return mix(res, xbrz, pair * vec4(bxz, byw, bxz, byw));
 }
 
+// ============================================================================================
+// 10. Pixel closed between outlines
+// ============================================================================================
+// the blend color P is a pixel closed in a straight row (or column) between two pixels of a dark
+// outline color Q, and Q also takes the corner's other neighbour, in an L around P: a line test that
+// reads Q on both sides of P as one line would pull P toward E, so the corner stays square
+vec4 closedPixel(vec4 res, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 G, vec3 H, vec3 I)
+{
+  if (XBRZ_DIAG <= 0.0)
+    return res;
+  vec4 sc = FLAG(res, 8.0);
+  // Q is A, C, I, G for the corners x, y, z, w
+  bool sx = sc.x > 0.5 ? (alike(C, A) && alike(D, A) && !alike(B, A) && !alike(E, A)) : (alike(G, A) && alike(B, A) && !alike(D, A) && !alike(E, A));
+  bool sy = sc.y > 0.5 ? (alike(I, C) && alike(B, C) && !alike(F, C) && !alike(E, C)) : (alike(A, C) && alike(F, C) && !alike(B, C) && !alike(E, C));
+  bool sz = sc.z > 0.5 ? (alike(G, I) && alike(F, I) && !alike(H, I) && !alike(E, I)) : (alike(C, I) && alike(H, I) && !alike(F, I) && !alike(E, I));
+  bool sw = sc.w > 0.5 ? (alike(A, G) && alike(H, G) && !alike(D, G) && !alike(E, G)) : (alike(I, G) && alike(D, G) && !alike(H, G) && !alike(E, G));
+  // Q is an outline close to black, darker than both E and P
+  vec3 Px = sc.x > 0.5 ? B : D, Py = sc.y > 0.5 ? F : B, Pz = sc.z > 0.5 ? H : F, Pw = sc.w > 0.5 ? D : H;
+  vec4 lQ = vec4(dot(A, lumaW), dot(C, lumaW), dot(I, lumaW), dot(G, lumaW));
+  vec4 lP = vec4(dot(Px, lumaW), dot(Py, lumaW), dot(Pz, lumaW), dot(Pw, lumaW));
+  vec4 dark = vec4(lessThan(lQ + 0.1, lP)) * vec4(lessThan(lQ + 0.1, vec4(dot(E, lumaW)))) * vec4(lessThan(lQ, vec4(0.15)));
+  // only where xBRZ found a shallow or steep line
+  vec4 line = min(FLAG(res, 16.0) + FLAG(res, 64.0), 1.0);
+  vec4 closed = vec4(sx, sy, sz, sw) * vec4(greaterThan(BLEND(res), vec4(0.0))) * dark * line;
+  return res * (1.0 - closed);
+}
+
 void main()
 {
   //---------------------------------------
@@ -772,6 +805,7 @@ void main()
   res = diagonalRules(res, coord, A, B, C, D, E, F, G, H, I, dEB, dED, dEF, dEH);  // 2 to 7
   res = weakCorners(res, weak);                                                 // 1, weak corners
   res = lineThroughAA(res, xbrz, contrast, B, D, E, F, H);                      // 8
+  res = closedPixel(res, A, B, C, D, E, F, G, H, I);                            // 10
 
   FRAG_OUT = res / 255.0;
 }
