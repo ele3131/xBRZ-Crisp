@@ -44,7 +44,8 @@
 //    two colors, like the shaded edge of a cape.
 // 7. Stripe ends: where a stack of 1- or 2-pixel stripes of different colors ends flush, like the
 //    bars of a gauge or a striped wall, the end corners stay square when their diagonal colors differ
-//    by more than 36, so every stripe ends the same way. A stripe only 3 pixels long is left alone when the color past its end
+//    by more than 36, so every stripe ends the same way. A line that turns diagonal at its end is
+//    not a stripe end. A stripe only 3 pixels long is left alone when the color past its end
 //    runs straight on, like a line meeting it.
 // 8. Line through an antialiasing pixel: when a line cuts one corner of a pixel whose color lies
 //    between the line's two colors on a strong edge, and rule 1 left the opposite corner square, that
@@ -558,11 +559,12 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
     // only inside a stack of parallel stripes: the rows (or columns) on both sides run along the line too
     // and they all end flush at the same column (or row), like the stripes of a gauge
     // all three stripes run at least 3 pixels back from the end, and E's 4 when the color past the
-    // end runs straight on (a line meeting a short stripe, not a gauge)
-    float endL = (thinH && nF && !eD && alike(B, C) && alike(H, I) && !eq(B, A) && !eq(H, G) && alike(E, P(2., 0.)) && (alike(E, P(3., 0.)) || !eq(D, P(-2., 0.))) && alike(C, P(2., -1.)) && alike(I, P(2., 1.))) ? 1.0 : 0.0;
-    float endR = (thinH && nD && !eF && alike(B, A) && alike(H, G) && !eq(B, C) && !eq(H, I) && alike(E, P(-2., 0.)) && (alike(E, P(-3., 0.)) || !eq(F, P(2., 0.))) && alike(A, P(-2., -1.)) && alike(G, P(-2., 1.))) ? 1.0 : 0.0;
-    float endT = (thinV && nH && !eB && alike(D, G) && alike(F, I) && !eq(D, A) && !eq(F, C) && alike(E, P(0., 2.)) && (alike(E, P(0., 3.)) || !eq(B, P(0., -2.))) && alike(G, P(-1., 2.)) && alike(I, P(1., 2.))) ? 1.0 : 0.0;
-    float endB = (thinV && nB && !eH && alike(D, A) && alike(F, C) && !eq(D, G) && !eq(F, I) && alike(E, P(0., -2.)) && (alike(E, P(0., -3.)) || !eq(H, P(0., 2.))) && alike(A, P(-1., -2.)) && alike(C, P(1., -2.))) ? 1.0 : 0.0;
+    // end runs straight on (a line meeting a short stripe, not a gauge); E is not an end when its
+    // color runs on along a diagonal past the end (a line turning diagonal, like the bottom of a 3)
+    float endL = (thinH && nF && !eD && !(alike(E, A) && alike(E, P(-2., -2.)) && !alike(E, D) && !alike(E, B)) && !(alike(E, G) && alike(E, P(-2., 2.)) && !alike(E, D) && !alike(E, H)) && !(alike(E, A) && alike(B, D)) && !(alike(E, G) && alike(H, D)) && alike(B, C) && alike(H, I) && !eq(B, A) && !eq(H, G) && alike(E, P(2., 0.)) && (alike(E, P(3., 0.)) || !eq(D, P(-2., 0.))) && alike(C, P(2., -1.)) && alike(I, P(2., 1.))) ? 1.0 : 0.0;
+    float endR = (thinH && nD && !eF && !(alike(E, C) && alike(E, P(2., -2.)) && !alike(E, F) && !alike(E, B)) && !(alike(E, I) && alike(E, P(2., 2.)) && !alike(E, F) && !alike(E, H)) && !(alike(E, C) && alike(B, F)) && !(alike(E, I) && alike(H, F)) && alike(B, A) && alike(H, G) && !eq(B, C) && !eq(H, I) && alike(E, P(-2., 0.)) && (alike(E, P(-3., 0.)) || !eq(F, P(2., 0.))) && alike(A, P(-2., -1.)) && alike(G, P(-2., 1.))) ? 1.0 : 0.0;
+    float endT = (thinV && nH && !eB && !(alike(E, A) && alike(E, P(-2., -2.)) && !alike(E, B) && !alike(E, D)) && !(alike(E, C) && alike(E, P(2., -2.)) && !alike(E, B) && !alike(E, F)) && !(alike(E, A) && alike(D, B)) && !(alike(E, C) && alike(F, B)) && alike(D, G) && alike(F, I) && !eq(D, A) && !eq(F, C) && alike(E, P(0., 2.)) && (alike(E, P(0., 3.)) || !eq(B, P(0., -2.))) && alike(G, P(-1., 2.)) && alike(I, P(1., 2.))) ? 1.0 : 0.0;
+    float endB = (thinV && nB && !eH && !(alike(E, G) && alike(E, P(-2., 2.)) && !alike(E, H) && !alike(E, D)) && !(alike(E, I) && alike(E, P(2., 2.)) && !alike(E, H) && !alike(E, F)) && !(alike(E, G) && alike(D, H)) && !(alike(E, I) && alike(F, H)) && alike(D, A) && alike(F, C) && !eq(D, G) && !eq(F, I) && alike(E, P(0., -2.)) && (alike(E, P(0., -3.)) || !eq(H, P(0., 2.))) && alike(A, P(-1., -2.)) && alike(C, P(1., -2.))) ? 1.0 : 0.0;
     vec4 tip = vec4(max(endL, endT), max(endR, endT), max(endR, endB), max(endL, endB));
     tip *= vec4(greaterThan(pair * 255.0, vec4(XBRZ_TIP)));
     res *= 1.0 - tip * (1.0 - kept);
