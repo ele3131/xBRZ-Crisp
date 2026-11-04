@@ -45,7 +45,9 @@
 //    bars of a gauge or a striped wall, the end corners stay square when their diagonal colors differ
 //    by more than 36, so every stripe ends the same way. A line that turns diagonal at its end is
 //    not a stripe end. A stripe only 3 pixels long is left alone when the color past its end
-//    runs straight on, like a line meeting it.
+//    runs straight on, like a line meeting it. Nor is a pixel whose side neighbour is a close tone of
+//    it, where the end corner is a line between two outline colors darker than it, like a dark outline
+//    turning diagonal over a forehead.
 // 8. Line through an antialiasing pixel: when a line cuts one corner of a pixel whose color lies
 //    between the line's two colors on a strong edge, and rule 1 left the opposite corner square, that
 //    corner is cut too, as in xBRZ, so the pixel becomes a thin strip of the diagonal instead of a
@@ -55,7 +57,9 @@
 //    would bring back a corner blocked by rule 2 or the line's color runs on along a 45-degree
 //    diagonal in the same color. Where a line found only by the hue weighting, between two
 //    different colors, would run into the line of the neighbour across the same edge, it is drawn
-//    as in xBRZ.
+//    as in xBRZ. A line found only by the hue weighting is not drawn where the pixel at its far end is
+//    closer to the pixel's own color than to the line's, so a diagonal of that color is not cut short
+//    (Goku's brow in Buu's Fury).
 // 10. Pixel closed between outlines: a pixel closed in a straight row between two pixels of a
 //     near-black outline that also wraps the corner, like the brown brow between the black lines of
 //     Link's eye, is not pulled toward E by a line through the outline; that corner stays square.
@@ -305,6 +309,13 @@ bool plainLine(vec3 a, vec3 b, vec3 c, vec3 d, float pairD, bool alt45)
 float toneLine(vec3 a, vec3 b, vec3 c, vec3 d)
 {
   return float(!IsPixEqual(a, b) && STEEP_E * DistYCbCr(a, b) > DistYCbCr(c, d));
+}
+
+// a line found only because hue weighs more (+32) is dropped where the pixel at its far end is closer
+// to E than to the line's color: that pixel belongs to E's side, so the line would cut into E's run
+bool farTone(vec3 a, vec3 b, vec3 c, vec3 d, vec3 E)
+{
+  return !(toneLine(a, b, c, d) > 0.5 && DistYCbCr(E, b) < DistYCbCr(a, b));
 }
 
 // ============================================================================================
@@ -610,6 +621,13 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
     float endB = (thinV && nB && !eH && !(alike(E, G) && alike(E, P(-2., 2.)) && !alike(E, H) && !alike(E, D)) && !(alike(E, I) && alike(E, P(2., 2.)) && !alike(E, H) && !alike(E, F)) && !(alike(E, G) && alike(D, H)) && !(alike(E, I) && alike(F, H)) && alike(D, A) && alike(F, C) && !eq(D, G) && !eq(F, I) && alike(E, P(0., -2.)) && (alike(E, P(0., -3.)) || !eq(H, P(0., 2.))) && alike(A, P(-1., -2.)) && alike(C, P(1., -2.))) ? 1.0 : 0.0;
     vec4 tip = vec4(max(endL, endT), max(endR, endT), max(endR, endB), max(endL, endB));
     tip *= vec4(greaterThan(pair * 255.0, vec4(XBRZ_TIP)));
+    // E's stripe is not a stripe of its own where a side stripe is a close tone of it (an inner tone of a shaded
+    // area): there a corner that xBRZ cuts with a line between two outline colors darker than E is not a stripe
+    // end, so the outline goes on as a diagonal (the forehead under Gohan's hair in Buu's Fury)
+    float aH = float((nB && !eB) || (nH && !eH)), aV = float((nD && !eD) || (nF && !eF));
+    vec4 soft = vec4(max(endL * aH, endT * aV), max(endR * aH, endT * aV), max(endR * aH, endB * aV), max(endL * aH, endB * aV));
+    soft *= vec4(lessThan(max(lP, lQ), vec4(lE - XBRZ_OUTLINE)));
+    tip *= 1.0 - soft * min(FLAG(res, 16.0) + FLAG(res, 64.0), vec4(1.0));
     res *= 1.0 - tip * (1.0 - kept);
   }
   return res;
@@ -764,9 +782,9 @@ void main()
     res.z += 4.0;
     float dist_F_G = DistShape(F, G);
     float dist_H_C = DistShape(H, C);
-    if((STEEP_E * dist_F_G <= dist_H_C || plainLine(F, G, H, C, DistYCbCr(F, H), eq(P(-1.,2.), H) && !eq(G, H))) && neq(E,G) && neq(D,G))
+    if((((STEEP_E * dist_F_G <= dist_H_C) && farTone(F, G, H, C, E)) || plainLine(F, G, H, C, DistYCbCr(F, H), eq(P(-1.,2.), H) && !eq(G, H))) && neq(E,G) && neq(D,G))
       res.z += 16.0 + 32.0 * toneLine(F, G, H, C);
-    if((STEEP_E * dist_H_C <= dist_F_G || plainLine(H, C, F, G, DistYCbCr(F, H), eq(P(2.,-1.), F) && !eq(C, F))) && neq(E,C) && neq(B,C))
+    if((((STEEP_E * dist_H_C <= dist_F_G) && farTone(H, C, F, G, E)) || plainLine(H, C, F, G, DistYCbCr(F, H), eq(P(2.,-1.), F) && !eq(C, F))) && neq(E,C) && neq(B,C))
       res.z += 64.0 + 32.0 * toneLine(H, C, F, G);
   }
 
@@ -782,9 +800,9 @@ void main()
     res.w += 4.0;
     float dist_H_A = DistShape(H, A);
     float dist_D_I = DistShape(D, I);
-    if((STEEP_E * dist_H_A <= dist_D_I || plainLine(H, A, D, I, DistYCbCr(H, D), eq(P(-2.,-1.), D) && !eq(A, D))) && neq(E,A) && neq(B,A))
+    if((((STEEP_E * dist_H_A <= dist_D_I) && farTone(H, A, D, I, E)) || plainLine(H, A, D, I, DistYCbCr(H, D), eq(P(-2.,-1.), D) && !eq(A, D))) && neq(E,A) && neq(B,A))
       res.w += 16.0 + 32.0 * toneLine(H, A, D, I);
-    if((STEEP_E * dist_D_I <= dist_H_A || plainLine(D, I, H, A, DistYCbCr(H, D), eq(P(1.,2.), H) && !eq(I, H))) && neq(E,I) && neq(F,I))
+    if((((STEEP_E * dist_D_I <= dist_H_A) && farTone(D, I, H, A, E)) || plainLine(D, I, H, A, DistYCbCr(H, D), eq(P(1.,2.), H) && !eq(I, H))) && neq(E,I) && neq(F,I))
       res.w += 64.0 + 32.0 * toneLine(D, I, H, A);
   }
 
@@ -800,9 +818,9 @@ void main()
     res.y += 4.0;
     float dist_B_I = DistShape(B, I);
     float dist_F_A = DistShape(F, A);
-    if((STEEP_E * dist_B_I <= dist_F_A || plainLine(B, I, F, A, DistYCbCr(B, F), eq(P(2.,1.), F) && !eq(I, F))) && neq(E,I) && neq(H,I))
+    if((((STEEP_E * dist_B_I <= dist_F_A) && farTone(B, I, F, A, E)) || plainLine(B, I, F, A, DistYCbCr(B, F), eq(P(2.,1.), F) && !eq(I, F))) && neq(E,I) && neq(H,I))
       res.y += 16.0 + 32.0 * toneLine(B, I, F, A);
-    if((STEEP_E * dist_F_A <= dist_B_I || plainLine(F, A, B, I, DistYCbCr(B, F), eq(P(-1.,-2.), B) && !eq(A, B))) && neq(E,A) && neq(D,A))
+    if((((STEEP_E * dist_F_A <= dist_B_I) && farTone(F, A, B, I, E)) || plainLine(F, A, B, I, DistYCbCr(B, F), eq(P(-1.,-2.), B) && !eq(A, B))) && neq(E,A) && neq(D,A))
       res.y += 64.0 + 32.0 * toneLine(F, A, B, I);
   }
 
@@ -818,9 +836,9 @@ void main()
     res.x += 4.0;
     float dist_D_C = DistShape(D, C);
     float dist_B_G = DistShape(B, G);
-    if((STEEP_E * dist_D_C <= dist_B_G || plainLine(D, C, B, G, DistYCbCr(D, B), eq(P(1.,-2.), B) && !eq(C, B))) && neq(E,C) && neq(F,C))
+    if((((STEEP_E * dist_D_C <= dist_B_G) && farTone(D, C, B, G, E)) || plainLine(D, C, B, G, DistYCbCr(D, B), eq(P(1.,-2.), B) && !eq(C, B))) && neq(E,C) && neq(F,C))
       res.x += 16.0 + 32.0 * toneLine(D, C, B, G);
-    if((STEEP_E * dist_B_G <= dist_D_C || plainLine(B, G, D, C, DistYCbCr(D, B), eq(P(-2.,1.), D) && !eq(G, D))) && neq(E,G) && neq(H,G))
+    if((((STEEP_E * dist_B_G <= dist_D_C) && farTone(B, G, D, C, E)) || plainLine(B, G, D, C, DistYCbCr(D, B), eq(P(-2.,1.), D) && !eq(G, D))) && neq(E,G) && neq(H,G))
       res.x += 64.0 + 32.0 * toneLine(B, G, D, C);
   }
 
