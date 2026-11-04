@@ -41,17 +41,29 @@
 //    along the cut, like the white strokes of letters.
 // 6. Antialiasing notch: and where a single antialiasing pixel steps along a diagonal edge between
 //    two colors, like the shaded edge of a cape.
-// 7. Stripe ends: where a stack of 1-pixel stripes of different colors ends flush, like the bars of
-//    a gauge, the end corners stay square when their diagonal colors differ by more than 64, so every
-//    stripe ends the same way. A stripe only 3 pixels long is left alone when the color past its end
-//    runs straight on, like a line meeting it.
+// 7. Stripe ends: where a stack of 1- or 2-pixel stripes of different colors ends flush, like the
+//    bars of a gauge or a striped wall, the end corners stay square when their diagonal colors differ
+//    by more than 36, so every stripe ends the same way. A line that turns diagonal at its end is
+//    not a stripe end. A stripe only 3 pixels long is left alone when the color past its end
+//    runs straight on, like a line meeting it. Nor is a pixel whose side neighbour is a close tone of
+//    it, where the end corner is a line between two outline colors darker than it, like a dark outline
+//    turning diagonal over a forehead.
 // 8. Line through an antialiasing pixel: when a line cuts one corner of a pixel whose color lies
 //    between the line's two colors on a strong edge, and rule 1 left the opposite corner square, that
 //    corner is cut too, as in xBRZ, so the pixel becomes a thin strip of the diagonal instead of a
 //    notch in it.
 // 9. Line shapes: the shallow and steep line tests weigh hue a little more than lightness (1.2x), so
-//    lines in hue-shifted shading follow the artist's pixels. Where such a line between two different
-//    colors would run into the line of the neighbour across the same edge, it is drawn as in xBRZ.
+//    lines in hue-shifted shading follow the artist's pixels. A line xBRZ finds is kept too, unless it
+//    would bring back a corner blocked by rule 2 or the line's color runs on along a 45-degree
+//    diagonal in the same color. Where a line found only by the hue weighting, between two
+//    different colors, would run into the line of the neighbour across the same edge, it is drawn
+//    as in xBRZ. A line found only by the hue weighting is not drawn where the pixel at its far end is
+//    closer to the pixel's own color than to the line's, so a diagonal of that color is not cut short
+//    (Goku's brow in Buu's Fury), nor where its two colors clearly differ and the line's color runs on
+//    along a 45-degree diagonal in the same color (the tip of Goku's nose).
+// 10. Pixel closed between outlines: a pixel closed in a straight row between two pixels of a
+//     near-black outline that also wraps the corner, like the brown brow between the black lines of
+//     Link's eye, is not pulled toward E by a line through the outline; that corner stays square.
 // XBRZ_MINC = 0 turns rules 1 and 8 off, and XBRZ_DIAG = 0 the others.
 //#crisp}
 //#plain // xBRZ freescale, multipass: xBRZ at any scale factor, in two passes.

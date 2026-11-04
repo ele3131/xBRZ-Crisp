@@ -60,7 +60,8 @@
 //    different colors, would run into the line of the neighbour across the same edge, it is drawn
 //    as in xBRZ. A line found only by the hue weighting is not drawn where the pixel at its far end is
 //    closer to the pixel's own color than to the line's, so a diagonal of that color is not cut short
-//    (Goku's brow in Buu's Fury).
+//    (Goku's brow in Buu's Fury), nor where its two colors clearly differ and the line's color runs on
+//    along a 45-degree diagonal in the same color (the tip of Goku's nose).
 // 10. Pixel closed between outlines: a pixel closed in a straight row between two pixels of a
 //     near-black outline that also wraps the corner, like the brown brow between the black lines of
 //     Link's eye, is not pulled toward E by a line through the outline; that corner stays square.
@@ -275,10 +276,13 @@ float toneLine(vec3 a, vec3 b, vec3 c, vec3 d)
 }
 
 // a line found only because hue weighs more (+32) is dropped where the pixel at its far end is closer
-// to E than to the line's color: that pixel belongs to E's side, so the line would cut into E's run
-bool farTone(vec3 a, vec3 b, vec3 c, vec3 d, vec3 E)
+// to E than to the line's color: that pixel belongs to E's side, so the line would cut into E's run.
+// It is also dropped where its two colors clearly differ (more than 36) and the line's color runs on
+// along a 45-degree diagonal in the same color (alt45, as for plainLine): the line would bend that
+// diagonal toward another stroke (the tip of Goku's nose in Buu's Fury)
+bool farTone(vec3 a, vec3 b, vec3 c, vec3 d, vec3 E, bool alt45)
 {
-  return !(toneLine(a, b, c, d) > 0.5 && DistYCbCr(E, b) < DistYCbCr(a, b));
+  return !(toneLine(a, b, c, d) > 0.5 && (DistYCbCr(E, b) < DistYCbCr(a, b) || (alt45 && DistYCbCr(a, b) * 255.0 > 36.0)));
 }
 
 // ============================================================================================
@@ -745,9 +749,9 @@ void main()
     res.z += 4.0;
     float dist_F_G = DistShape(F, G);
     float dist_H_C = DistShape(H, C);
-    if((((STEEP_E * dist_F_G <= dist_H_C) && farTone(F, G, H, C, E)) || plainLine(F, G, H, C, DistYCbCr(F, H), eq(P(-1.,2.), H) && !eq(G, H))) && neq(E,G) && neq(D,G))
+    if((((STEEP_E * dist_F_G <= dist_H_C) && farTone(F, G, H, C, E, eq(P(-1.,2.), H) && !eq(G, H))) || plainLine(F, G, H, C, DistYCbCr(F, H), eq(P(-1.,2.), H) && !eq(G, H))) && neq(E,G) && neq(D,G))
       res.z += 16.0 + 32.0 * toneLine(F, G, H, C);
-    if((((STEEP_E * dist_H_C <= dist_F_G) && farTone(H, C, F, G, E)) || plainLine(H, C, F, G, DistYCbCr(F, H), eq(P(2.,-1.), F) && !eq(C, F))) && neq(E,C) && neq(B,C))
+    if((((STEEP_E * dist_H_C <= dist_F_G) && farTone(H, C, F, G, E, eq(P(2.,-1.), F) && !eq(C, F))) || plainLine(H, C, F, G, DistYCbCr(F, H), eq(P(2.,-1.), F) && !eq(C, F))) && neq(E,C) && neq(B,C))
       res.z += 64.0 + 32.0 * toneLine(H, C, F, G);
   }
 
@@ -763,9 +767,9 @@ void main()
     res.w += 4.0;
     float dist_H_A = DistShape(H, A);
     float dist_D_I = DistShape(D, I);
-    if((((STEEP_E * dist_H_A <= dist_D_I) && farTone(H, A, D, I, E)) || plainLine(H, A, D, I, DistYCbCr(H, D), eq(P(-2.,-1.), D) && !eq(A, D))) && neq(E,A) && neq(B,A))
+    if((((STEEP_E * dist_H_A <= dist_D_I) && farTone(H, A, D, I, E, eq(P(-2.,-1.), D) && !eq(A, D))) || plainLine(H, A, D, I, DistYCbCr(H, D), eq(P(-2.,-1.), D) && !eq(A, D))) && neq(E,A) && neq(B,A))
       res.w += 16.0 + 32.0 * toneLine(H, A, D, I);
-    if((((STEEP_E * dist_D_I <= dist_H_A) && farTone(D, I, H, A, E)) || plainLine(D, I, H, A, DistYCbCr(H, D), eq(P(1.,2.), H) && !eq(I, H))) && neq(E,I) && neq(F,I))
+    if((((STEEP_E * dist_D_I <= dist_H_A) && farTone(D, I, H, A, E, eq(P(1.,2.), H) && !eq(I, H))) || plainLine(D, I, H, A, DistYCbCr(H, D), eq(P(1.,2.), H) && !eq(I, H))) && neq(E,I) && neq(F,I))
       res.w += 64.0 + 32.0 * toneLine(D, I, H, A);
   }
 
@@ -781,9 +785,9 @@ void main()
     res.y += 4.0;
     float dist_B_I = DistShape(B, I);
     float dist_F_A = DistShape(F, A);
-    if((((STEEP_E * dist_B_I <= dist_F_A) && farTone(B, I, F, A, E)) || plainLine(B, I, F, A, DistYCbCr(B, F), eq(P(2.,1.), F) && !eq(I, F))) && neq(E,I) && neq(H,I))
+    if((((STEEP_E * dist_B_I <= dist_F_A) && farTone(B, I, F, A, E, eq(P(2.,1.), F) && !eq(I, F))) || plainLine(B, I, F, A, DistYCbCr(B, F), eq(P(2.,1.), F) && !eq(I, F))) && neq(E,I) && neq(H,I))
       res.y += 16.0 + 32.0 * toneLine(B, I, F, A);
-    if((((STEEP_E * dist_F_A <= dist_B_I) && farTone(F, A, B, I, E)) || plainLine(F, A, B, I, DistYCbCr(B, F), eq(P(-1.,-2.), B) && !eq(A, B))) && neq(E,A) && neq(D,A))
+    if((((STEEP_E * dist_F_A <= dist_B_I) && farTone(F, A, B, I, E, eq(P(-1.,-2.), B) && !eq(A, B))) || plainLine(F, A, B, I, DistYCbCr(B, F), eq(P(-1.,-2.), B) && !eq(A, B))) && neq(E,A) && neq(D,A))
       res.y += 64.0 + 32.0 * toneLine(F, A, B, I);
   }
 
@@ -799,9 +803,9 @@ void main()
     res.x += 4.0;
     float dist_D_C = DistShape(D, C);
     float dist_B_G = DistShape(B, G);
-    if((((STEEP_E * dist_D_C <= dist_B_G) && farTone(D, C, B, G, E)) || plainLine(D, C, B, G, DistYCbCr(D, B), eq(P(1.,-2.), B) && !eq(C, B))) && neq(E,C) && neq(F,C))
+    if((((STEEP_E * dist_D_C <= dist_B_G) && farTone(D, C, B, G, E, eq(P(1.,-2.), B) && !eq(C, B))) || plainLine(D, C, B, G, DistYCbCr(D, B), eq(P(1.,-2.), B) && !eq(C, B))) && neq(E,C) && neq(F,C))
       res.x += 16.0 + 32.0 * toneLine(D, C, B, G);
-    if((((STEEP_E * dist_B_G <= dist_D_C) && farTone(B, G, D, C, E)) || plainLine(B, G, D, C, DistYCbCr(D, B), eq(P(-2.,1.), D) && !eq(G, D))) && neq(E,G) && neq(H,G))
+    if((((STEEP_E * dist_B_G <= dist_D_C) && farTone(B, G, D, C, E, eq(P(-2.,1.), D) && !eq(G, D))) || plainLine(B, G, D, C, DistYCbCr(D, B), eq(P(-2.,1.), D) && !eq(G, D))) && neq(E,G) && neq(H,G))
       res.x += 64.0 + 32.0 * toneLine(B, G, D, C);
   }
 
