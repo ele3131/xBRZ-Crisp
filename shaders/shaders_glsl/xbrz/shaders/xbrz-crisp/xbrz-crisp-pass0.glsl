@@ -74,6 +74,8 @@
 //     color and the shadow's corners next to the notch stay square, so the shadow's outline closes.
 //     The shape is read in a 7x7 window (an arm 3 pixels long with background outside it, a solid
 //     2x2 lobe, an object bigger than 1 pixel), so serifs, letters and textures are left alone.
+//     The floor around the notch may have any color or texture (grass, tiles): it only has to be
+//     lighter than the shadow and differ from both the shadow and the object.
 // 13. Tiles between walls: in a row of 1-pixel tiles (4 or more, in a repeating pattern) that runs
 //     between two straight walls, like the squares of a gauge, a blocked corner between two tiles
 //     stays square, so no diagonal is chained through the row.
@@ -851,6 +853,11 @@ vec4 diagonalStripes(vec2 coord, vec3 B, vec3 D, vec3 E, vec3 F, vec3 H, float d
 // the shadow on O's other side. The shape is read from a bigger window: the arm runs straight 3
 // pixels with background outside it and the object over it, and beyond K the shadow is a solid 2x2
 // lobe (a blob, not a 1-pixel stroke like a serif)
+bool floorPx(vec3 X, vec3 S, vec3 O, float lS)
+{
+  return dot(X, lumaW) > lS + 0.15 && !alike(X, S) && !alike(X, O);
+}
+
 float shadowClose(vec2 coord, vec3 E, vec2 s, vec2 o)
 {
   vec3 S = P(s.x, s.y);
@@ -861,9 +868,11 @@ float shadowClose(vec2 coord, vec3 E, vec2 s, vec2 o)
   if (!(lS < XBRZ_SHADOW && dot(K, lumaW) < XBRZ_SHADOW && dot(E, lumaW) > XBRZ_SHADOW + 0.15 && alike(S, K) && !alike(O, S) && !alike(O, E) && !alike(E, S)
         && lS + 0.15 < dot(E, lumaW) && lS + 0.15 < dot(O, lumaW)))
     return 0.0;
-  bool bg = alike(E, P(-s.x, -s.y)) && alike(E, P(-o.x, -o.y));
+  // the floor around the notch is any pixel lighter than the shadow that is neither the shadow nor the
+  // object, so a textured floor (grass, tiles) counts the same as a flat one
+  bool bg = floorPx(P(-s.x, -s.y), S, O, lS) && floorPx(P(-o.x, -o.y), S, O, lS);
   bool arm = alike(S, P(2. * s.x, 2. * s.y)) && alike(S, P(3. * s.x, 3. * s.y))
-          && alike(E, P(s.x - o.x, s.y - o.y)) && alike(E, P(2. * s.x - o.x, 2. * s.y - o.y))
+          && floorPx(P(s.x - o.x, s.y - o.y), S, O, lS) && floorPx(P(2. * s.x - o.x, 2. * s.y - o.y), S, O, lS)
           && !alike(S, P(s.x + o.x, s.y + o.y));
   bool lobe = alike(S, P(k.x + o.x, k.y + o.y)) && alike(S, P(k.x + o.x - s.x, k.y + o.y - s.y))
            && alike(S, P(k.x + 2. * o.x, k.y + 2. * o.y)) && alike(S, P(k.x + 2. * o.x - s.x, k.y + 2. * o.y - s.y));

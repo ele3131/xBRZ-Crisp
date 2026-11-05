@@ -74,6 +74,8 @@
 //     color and the shadow's corners next to the notch stay square, so the shadow's outline closes.
 //     The shape is read in a 7x7 window (an arm 3 pixels long with background outside it, a solid
 //     2x2 lobe, an object bigger than 1 pixel), so serifs, letters and textures are left alone.
+//     The floor around the notch may have any color or texture (grass, tiles): it only has to be
+//     lighter than the shadow and differ from both the shadow and the object.
 // 13. Tiles between walls: in a row of 1-pixel tiles (4 or more, in a repeating pattern) that runs
 //     between two straight walls, like the squares of a gauge, a blocked corner between two tiles
 //     stays square, so no diagonal is chained through the row.
