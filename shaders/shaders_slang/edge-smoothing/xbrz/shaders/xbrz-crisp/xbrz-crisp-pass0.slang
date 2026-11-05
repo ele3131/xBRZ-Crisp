@@ -2,11 +2,20 @@
 //#crisp{
 // xBRZ crisp: xBRZ freescale that only rounds corners between clearly different colors.
 //
-// This is xbrz-freescale-multipass with other defaults: tools/make-multipass.py writes that shader,
-// dropping the lines between //#crisp{ and //#crisp} and turning the //#plain lines on.
+// This is xbrz-freescale-multipass with a minimum contrast (rule 1) of 20: tools/make-multipass.py
+// writes that shader, dropping the lines between //#crisp{ and //#crisp} and turning the //#plain
+// lines on.
+//#crisp}
+//#plain // xBRZ freescale, multipass: xBRZ at any scale factor, in three passes.
+//#plain //
+//#plain // Rules 2 and 4 to 7 below keep xBRZ from cutting corners into shapes the artist did not draw
+//#plain // (fake diagonals at junctions of three colors, bent frames, rounded ends of stripes). They are
+//#plain // on by default; XBRZ_DIAG = 0 turns them off, for the reference xBRZ shapes. Rules 1, 3 and 8 to
+//#plain // 13 are the crisp look and run with XBRZ_MINC above 0; the xbrz-crisp preset sets it to 20, so
+//#plain // low-contrast shading and textures keep their pixels.
 //
 // xBRZ decides, for each corner of each pixel, whether to cut it and how (a corner piece, a 45-degree
-// line, or a shallow or steep line). The crisp rules then change some of those decisions. Each rule
+// line, or a shallow or steep line). The rules below then change some of those decisions. Each rule
 // has a section of the same number and name in the code. The first pass (pass 0) makes the decisions,
 // the resolve pass, also once per game pixel, finishes rules 1, 2 and 9, which need the neighbours'
 // decisions, and the output pass (pass 1) only draws the corners.
@@ -80,27 +89,8 @@
 // 13. Tiles between walls: in a row of 1-pixel tiles (4 or more, in a repeating pattern) that runs
 //     between two straight walls, like the squares of a gauge, a blocked corner between two tiles
 //     stays square, so no diagonal is chained through the row.
-// XBRZ_MINC = 0 turns rules 1, 8 and 11 off, and XBRZ_DIAG = 0 the others.
-//#crisp}
-//#plain // xBRZ freescale, multipass: xBRZ at any scale factor, in three passes.
-//#plain //
-//#plain // Two optional rules, both off by default (plain xBRZ); the xbrz-crisp preset turns them on:
-//#plain // - XBRZ_MINC (crisp: 20) leaves a corner square when its two colors differ by less than this
-//#plain //   (x/255, YCbCr distance), so soft shading and textures keep their pixels.
-//#plain // - XBRZ_DIAG (crisp: 100) leaves a corner square when the two colors its cut would join differ
-//#plain //   by more than this, so a junction of three colors is not pulled into a fake diagonal (an idea
-//#plain //   from torcado's cleanEdge, MIT license). Antialiasing ramps use 92, shallow and steep lines are
-//#plain //   only blocked when they would cut a pixel with a lighter color, a blocked corner is still cut
-//#plain //   when a neighbour on the same diagonal is cut or at the tip of a 1-pixel diagonal stripe, a cut
-//#plain //   between two close inner tones runs up to a darker outline, a corner whose blend color runs
-//#plain //   straight on stays square, two dark strokes meeting in an L around a light gap (an eye) are
-//#plain //   not joined, and where 1-pixel stripes end flush (gauges, health bars) the end corners stay
-//#plain //   square.
-//#plain //   The shallow and steep line tests also weigh hue a little more than lightness (1.2x).
-//#plain //   A pixel closed in a row between two near-black outline pixels is not pulled out of it.
-//#plain //   A corner left square by XBRZ_MINC on a long straight line between two stripes is still cut,
-//#plain //   the notch where a near-black shadow runs under an object is closed, and a blocked corner
-//#plain //   between 1-pixel tiles in a row between two walls stays square.
+// XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3 and 8 to
+// 13 off, so with XBRZ_MINC at 0 only rules 2 and 4 to 7 run.
 //
 // The first pass makes every blend decision once per input pixel (blend type, line type, blend
 // color and the minimum contrast) and the resolve pass, also once per input pixel, settles the
@@ -173,7 +163,6 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #pragma parameter XBRZ_MINC "xBRZ: minimum contrast to round a corner (x/255, 0 = off)" 20 0 80 2
 //#plain-default XBRZ_MINC 0
 #pragma parameter XBRZ_DIAG "xBRZ: max color distance on the diagonal (0 = off)" 100 0 160 4
-//#plain-default XBRZ_DIAG 0
 #define XBRZ_TOL global.XBRZ_TOL
 #define XBRZ_DOM global.XBRZ_DOM
 #define XBRZ_STEEP global.XBRZ_STEEP
@@ -227,7 +216,10 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 #define BLEND(r) mod(r, 4.0)
 #define FLAG(r, f) mod(floor((r) / (f)), 2.0)
 
-// ---- crisp tunables (XBRZ_MINC and XBRZ_DIAG are in the menu) ----
+// ---- rule tunables (XBRZ_MINC and XBRZ_DIAG are in the menu) ----
+// rules 3, 9, 10, 12 and 13 belong to the crisp look rather than fixing clear xBRZ errors, so they
+// run only when XBRZ_MINC is on too (plain xBRZ, with XBRZ_MINC 0, keeps rules 2 and 4 to 7)
+#define CRISP_RULES (XBRZ_MINC > 0.0 && XBRZ_DIAG > 0.0)
 #define XBRZ_HYST 4.0       // 1. a corner this close below XBRZ_MINC is weak
 #define XBRZ_DIAG_AA 92.0   // 2. diagonal limit on antialiasing ramps
 #define XBRZ_RAMP 1.15      // 2, 6. a ramp: (d(E,P) + d(P,Q)) / d(E,Q) up to this
@@ -271,14 +263,14 @@ bool IsPixEqual(vec3 pixA, vec3 pixB)
 // 9. Line shapes
 // ============================================================================================
 // the extra distance for the shallow and steep line tests (a line passes with it or with xBRZ's):
-// with the crisp rules on (XBRZ_DIAG > 0) hue weighs 1.2x more than lightness, scaled so that as
+// with the crisp rules on (CRISP_RULES) hue weighs 1.2x more than lightness, scaled so that as
 // many neighbour pairs pass the thresholds
 float DistShape(vec3 pixA, vec3 pixB)
 {
   const vec3 w = vec3(0.2627, 0.6780, 0.0593);
   const float scaleB = 0.5 / (1.0 - 0.0593);
   const float scaleR = 0.5 / (1.0 - 0.2627);
-  vec2 k = XBRZ_DIAG > 0.0 ? vec2(0.937, 1.125) : vec2(1.0);
+  vec2 k = CRISP_RULES ? vec2(0.937, 1.125) : vec2(1.0);
   vec3 diff = pixA - pixB;
   float y = dot(diff.rgb, w);
   float Y = k.x * y;
@@ -462,7 +454,7 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
   float stripeCG = float(min(DistYCbCr(C, E), DistYCbCr(E, G)) * 255.0 <= XBRZ_STRIPE);
   float stripeAI = float(min(DistYCbCr(A, E), DistYCbCr(E, I)) * 255.0 <= XBRZ_STRIPE);
   eye *= 1.0 - vec4(stripeCG, stripeAI, stripeCG, stripeAI);
-  if (dot(eye, vec4(1.0)) > 0.0)
+  if (CRISP_RULES && dot(eye, vec4(1.0)) > 0.0)
   {
     eye *= vec4(sec.x > 0.5 ? strokeEnds(Px, coord, vec2(2.,-1.), vec2(0.,1.)) : strokeEnds(Px, coord, vec2(-1.,2.), vec2(1.,0.)),
                 sec.y > 0.5 ? strokeEnds(Py, coord, vec2(1.,2.), vec2(1.,0.)) : strokeEnds(Py, coord, vec2(-2.,-1.), vec2(0.,1.)),
@@ -689,7 +681,7 @@ vec4 closedPixel(vec4 res, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 
 {
   // only where xBRZ found a shallow or steep line
   vec4 line = min(FLAG(res, 16.0) + FLAG(res, 64.0), 1.0) * vec4(greaterThan(BLEND(res), vec4(0.0)));
-  if (XBRZ_DIAG <= 0.0 || dot(line, vec4(1.0)) <= 0.0)
+  if (!CRISP_RULES || dot(line, vec4(1.0)) <= 0.0)
     return res;
   vec4 sc = FLAG(res, 8.0);
   // Q (A, C, I, G for the corners x, y, z, w) is an outline close to black, darker than both E and P
@@ -1089,7 +1081,7 @@ void main()
   res += 8.0 * second;
 
   // ============================================================================================
-  // the crisp rules, in order
+  // the rules, in order
   // ============================================================================================
   vec4 xbrz = res;
   vec4 contrast, weak;
@@ -1108,7 +1100,7 @@ void main()
   res = closedPixel(res, A, B, C, D, E, F, G, H, I);                            // 10
 
   // 12. closed shadow (the notch's corner and, on the shadow's side, the corners next to the notch)
-  if (XBRZ_DIAG > 0.0)
+  if (CRISP_RULES)
   {
     float lE = dot(E, lumaW);
     // cheap gates on the 3x3 before the 7x7 tests (cross order B D F H, diagonal order A C G I):
@@ -1185,7 +1177,7 @@ void main()
     }
   }
   // 13. tiles between walls: a blocked corner between two tiles is dropped
-  if (XBRZ_DIAG > 0.0 && max(max(res.x, res.y), max(res.z, res.w)) >= 128.0)
+  if (CRISP_RULES && max(max(res.x, res.y), max(res.z, res.w)) >= 128.0)
   {
     vec4 blk = vec4(greaterThanEqual(res, vec4(128.0))) * vec4(greaterThan(BLEND(res), vec4(0.0)));
     vec4 sc = FLAG(mod(res, 128.0), 8.0);

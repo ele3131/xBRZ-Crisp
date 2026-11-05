@@ -108,7 +108,7 @@ Edges are still found exactly as xBRZ finds them, so outlines and text are smoot
 
 The shader is based on the libretro `xbrz-freescale-multipass` port. Blend color ties and the order of the four corners follow the reference C++ xBRZ, the GLSL version takes the output scale from the image size instead of the texture size, and the output pass reads the image from the pass before xBRZ, so it also works after other shaders in a preset (a color correction, for example). It runs in three passes: the first decides every corner once per game pixel, a resolve pass settles the decisions that depend on the neighbors, also once per game pixel, and the output pass only draws the corners.
 
-The code keeps the xBRZ part and the crisp rules apart: the crisp rules sit between `//#crisp{` and `//#crisp}` markers, and `tools/make-multipass.py` removes them to write plain `xbrz-freescale-multipass`. Each file starts with a numbered list of the crisp rules, and each rule has its own section with the same number in the code.
+The code is shared with plain `xbrz-freescale-multipass`: `tools/make-multipass.py` writes it from these files, with its own title and `XBRZ_MINC` at 0, so it keeps rules 2 and 4 to 7, the ones that fix clear xBRZ errors; the other rules are the crisp look and run only with `XBRZ_MINC` above 0. Each file starts with a numbered list of the rules, and each rule has its own section with the same number in the code.
 
 Tested in RetroArch on Android (gl driver, Game Boy Advance at 6x). The slang version was compiled to SPIR-V with glslang and renders the same output as the GLSL version in an offline harness.
 

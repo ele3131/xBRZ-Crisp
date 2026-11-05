@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Writes plain xbrz-freescale-multipass from the xBRZ crisp shaders.
 
-The crisp passes are xbrz-freescale-multipass plus the crisp rules. Everything between a
-"//#crisp{" line and a "//#crisp}" line is crisp only and is dropped; a line starting with
-"//#plain" is only in the plain shader and is turned on. The output uses the libretro layout,
+The crisp passes are xbrz-freescale-multipass with a minimum contrast (XBRZ_MINC 20 instead of 0).
+Everything between a "//#crisp{" line and a "//#crisp}" line is crisp only and is dropped; a line
+starting with "//#plain" is only in the plain shader and is turned on. The output uses the libretro layout,
 with the resolve pass between pass 0 and pass 1, and the two xbrz-freescale-multipass presets
 (the libretro ones have no resolve pass yet).
 
