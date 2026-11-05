@@ -4,7 +4,8 @@
 The crisp passes are xbrz-freescale-multipass plus the crisp rules. Everything between a
 "//#crisp{" line and a "//#crisp}" line is crisp only and is dropped; a line starting with
 "//#plain" is only in the plain shader and is turned on. The output uses the libretro layout,
-so the existing xbrz-freescale-multipass presets load it unchanged.
+with the resolve pass between pass 0 and pass 1, and the two xbrz-freescale-multipass presets
+(the libretro ones have no resolve pass yet).
 
 usage: tools/make-multipass.py [outdir]   (default: build/multipass)
 """
@@ -13,11 +14,17 @@ import os, re, sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, 'build', 'multipass')
 JOBS = [
-    ('shaders/shaders_glsl/xbrz/shaders/xbrz-crisp/xbrz-crisp-pass%d.glsl',
-     'glsl-shaders/xbrz/shaders/xbrz-freescale-multipass/xbrz-freescale-pass%d.glsl'),
-    ('shaders/shaders_slang/edge-smoothing/xbrz/shaders/xbrz-crisp/xbrz-crisp-pass%d.slang',
-     'slang-shaders/edge-smoothing/xbrz/shaders/xbrz-freescale-multipass/xbrz-freescale-pass%d.slang'),
+    ('shaders/shaders_glsl/xbrz/shaders/xbrz-crisp/xbrz-crisp-%s.glsl',
+     'glsl-shaders/xbrz/shaders/xbrz-freescale-multipass/xbrz-freescale-%s.glsl'),
+    ('shaders/shaders_slang/edge-smoothing/xbrz/shaders/xbrz-crisp/xbrz-crisp-%s.slang',
+     'slang-shaders/edge-smoothing/xbrz/shaders/xbrz-freescale-multipass/xbrz-freescale-%s.slang'),
 ]
+PASSES = ('pass0', 'resolve', 'pass1')
+PRESETS = {
+    'glsl-shaders/xbrz/xbrz-freescale-multipass.glslp': '',
+    'slang-shaders/edge-smoothing/xbrz/xbrz-freescale-multipass.slangp':
+        'shader0 = ../../stock.slang\nalias0 = xbrz_fs_refpass\n\n',
+}
 
 
 def plain(text, name):
@@ -47,9 +54,21 @@ def plain(text, name):
 
 
 for src, dst in JOBS:
-    for p in (0, 1):
+    for p in PASSES:
         s, d = os.path.join(ROOT, src % p), os.path.join(OUT, dst % p)
         os.makedirs(os.path.dirname(d), exist_ok=True)
         with open(s) as f: text = plain(f.read(), src % p)
         with open(d, 'w') as f: f.write(text)
         print(d)
+
+for dst, head in PRESETS.items():
+    ext = dst.rsplit('.', 1)[1][:-1]
+    first = 1 if head else 0
+    text = 'shaders = %d\n\n' % (len(PASSES) + first) + head
+    for i, p in enumerate(PASSES, first):
+        text += ('shader%d = shaders/xbrz-freescale-multipass/xbrz-freescale-%s.%s\nfilter_linear%d = false\n'
+                 'scale_type%d = %s\nscale%d = 1.0\n' % (i, p, ext, i, i, 'viewport' if p == 'pass1' else 'source', i))
+        if p != PASSES[-1]: text += '\n'
+    d = os.path.join(OUT, dst)
+    with open(d, 'w') as f: f.write(text)
+    print(d)
