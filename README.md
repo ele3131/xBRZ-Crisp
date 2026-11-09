@@ -3,7 +3,6 @@
 </p>
 
 <p align="center">
-  <b>The smoothness of xBRZ, with respect for every pixel the artist drew.</b><br><sub>Compared with Zenju's original C++ xBRZ. Built on libretro's xBRZ shader for RetroArch.</sub><br><br>
   ✨ Outlines and text come out smooth and sharp, just like xBRZ<br>
   🌿 Grass, foliage, stone and dithering keep their original pixels<br>
   🙂 Faces and small sprites keep their expression, with no fake diagonals<br>
