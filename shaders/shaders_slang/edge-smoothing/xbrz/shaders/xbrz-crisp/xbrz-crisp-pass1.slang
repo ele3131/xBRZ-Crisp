@@ -89,8 +89,22 @@
 // 13. Tiles between walls: in a row of 1-pixel tiles (4 or more, in a repeating pattern) that runs
 //     between two straight walls, like the squares of a gauge, a blocked corner between two tiles
 //     stays square, so no diagonal is chained through the row.
+//#crisp{
+// 14. Straight steps: where an edge between two clearly different colors (XBRZ_STRAIGHT) climbs in
+//     regular steps of 2 to 6 pixels, along a 1-pixel stroke with one side in a single color (or a
+//     dark stroke whose sides take only two lighter colors, like the shadow of a letter between the
+//     letter and its background) or between two single colors, like the italic stems of a font, a
+//     rail or an outline,
+//     the corner at each step is cut with one line of the steps' slope (2:1, 3:1, or 4:1 for steps of
+//     4 to 6; xBRZ only draws 45 degrees and 2:1), and with steps of 3 or more the corner next to the
+//     step at the thin end gets a sliver of that line. Both sides of a stroke then run parallel and a
+//     long step does not bend. Runs of 7 or more, irregular steps and low-contrast edges (water,
+//     wood, shading) keep xBRZ's lines.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 14 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+//#crisp}
+//#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
+//#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //
 // The first pass makes every blend decision once per input pixel (blend type, line type, blend
 // color and the minimum contrast) and the resolve pass, also once per input pixel, settles the
@@ -246,6 +260,11 @@ void main()
   vec4 secondPix = FLAG(info, 8.0);
   vec4 haveShallowLine = FLAG(info, 16.0);
   vec4 haveSteepLine = FLAG(info, 64.0);
+//#crisp{
+  // 14. Straight steps: a 3:1 (+32) or 4:1 (+128) line; a thin end (BLEND 2) starts 1 pixel further along
+  vec4 longL = FLAG(info, 32.0) + 2.0 * FLAG(info, 128.0);
+  vec4 shiftA = vec4(equal(blendResult, vec4(2.0))) * vec4(greaterThan(longL, vec4(0.0)));
+//#crisp}
 
   // ============================================================================================
   // xBRZ: drawing the corners
@@ -266,6 +285,15 @@ void main()
       origin = haveShallowLine.z > 0.0? vec2(0.0, 0.25) : vec2(0.0, 0.5);
       direction.x += haveShallowLine.z;
       direction.y -= haveSteepLine.z;
+//#crisp{
+      if (longL.z > 0.0)
+      {
+        if (haveShallowLine.z > 0.0) origin = vec2(0.5, 0.0);
+        origin += shiftA.z * (haveShallowLine.z > 0.0 ? vec2(1.0, 0.0) : vec2(0.0, 1.0));
+        direction.x += haveShallowLine.z * longL.z;
+        direction.y -= haveSteepLine.z * longL.z;
+      }
+//#crisp}
     }
     vec2 bo = (secondPix.z > 0.0) ? vec2( 0., 1.) : vec2( 1., 0.);
     vec3 blendPix = P(bo.x, bo.y);
@@ -284,6 +312,15 @@ void main()
       origin = haveShallowLine.y > 0.0? vec2(0.25, 0.0) : vec2(0.5, 0.0);
       direction.y -= haveShallowLine.y;
       direction.x -= haveSteepLine.y;
+//#crisp{
+      if (longL.y > 0.0)
+      {
+        if (haveShallowLine.y > 0.0) origin = vec2(0.0, -0.5);
+        origin += shiftA.y * (haveShallowLine.y > 0.0 ? vec2(0.0, -1.0) : vec2(1.0, 0.0));
+        direction.y -= haveShallowLine.y * longL.y;
+        direction.x -= haveSteepLine.y * longL.y;
+      }
+//#crisp}
     }
     vec2 bo = (secondPix.y > 0.0) ? vec2( 1., 0.) : vec2( 0.,-1.);
     vec3 blendPix = P(bo.x, bo.y);
@@ -302,6 +339,15 @@ void main()
       origin = haveShallowLine.x > 0.0? vec2(0.0, -0.25) : vec2(0.0, -0.5);
       direction.x -= haveShallowLine.x;
       direction.y += haveSteepLine.x;
+//#crisp{
+      if (longL.x > 0.0)
+      {
+        if (haveShallowLine.x > 0.0) origin = vec2(-0.5, 0.0);
+        origin += shiftA.x * (haveShallowLine.x > 0.0 ? vec2(-1.0, 0.0) : vec2(0.0, -1.0));
+        direction.x -= haveShallowLine.x * longL.x;
+        direction.y += haveSteepLine.x * longL.x;
+      }
+//#crisp}
     }
     vec2 bo = (secondPix.x > 0.0) ? vec2( 0.,-1.) : vec2(-1., 0.);
     vec3 blendPix = P(bo.x, bo.y);
@@ -320,6 +366,15 @@ void main()
       origin = haveShallowLine.w > 0.0? vec2(-0.25, 0.0) : vec2(-0.5, 0.0);
       direction.y += haveShallowLine.w;
       direction.x += haveSteepLine.w;
+//#crisp{
+      if (longL.w > 0.0)
+      {
+        if (haveShallowLine.w > 0.0) origin = vec2(0.0, 0.5);
+        origin += shiftA.w * (haveShallowLine.w > 0.0 ? vec2(0.0, 1.0) : vec2(-1.0, 0.0));
+        direction.y += haveShallowLine.w * longL.w;
+        direction.x += haveSteepLine.w * longL.w;
+      }
+//#crisp}
     }
     vec2 bo = (secondPix.w > 0.0) ? vec2(-1., 0.) : vec2( 0., 1.);
     vec3 blendPix = P(bo.x, bo.y);

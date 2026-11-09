@@ -88,8 +88,22 @@
 // 13. Tiles between walls: in a row of 1-pixel tiles (4 or more, in a repeating pattern) that runs
 //     between two straight walls, like the squares of a gauge, a blocked corner between two tiles
 //     stays square, so no diagonal is chained through the row.
+//#crisp{
+// 14. Straight steps: where an edge between two clearly different colors (XBRZ_STRAIGHT) climbs in
+//     regular steps of 2 to 6 pixels, along a 1-pixel stroke with one side in a single color (or a
+//     dark stroke whose sides take only two lighter colors, like the shadow of a letter between the
+//     letter and its background) or between two single colors, like the italic stems of a font, a
+//     rail or an outline,
+//     the corner at each step is cut with one line of the steps' slope (2:1, 3:1, or 4:1 for steps of
+//     4 to 6; xBRZ only draws 45 degrees and 2:1), and with steps of 3 or more the corner next to the
+//     step at the thin end gets a sliver of that line. Both sides of a stroke then run parallel and a
+//     long step does not bend. Runs of 7 or more, irregular steps and low-contrast edges (water,
+//     wood, shading) keep xBRZ's lines.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 14 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+//#crisp}
+//#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
+//#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //
 // The first pass makes every blend decision once per input pixel (blend type, line type, blend
 // color and the minimum contrast) and the resolve pass, also once per input pixel, settles the
@@ -140,6 +154,9 @@
 //#crisp}
 //#plain // Resolve pass of xbrz-freescale-multipass (OpenGL / GLES)
 
+//#crisp{
+#pragma parameter XBRZ_MINC "xBRZ: minimum contrast to round a corner (x/255, 0 = off)" 20 0 80 2
+//#crisp}
 #if defined(VERTEX)
 
 #if __VERSION__ >= 130
@@ -202,6 +219,13 @@ uniform sampler2D Texture;
 COMPAT_VARYING vec4 TEX0;
 #define vTexCoord TEX0.xy
 #define FRAG_OUT FragColor
+//#crisp{
+#ifdef PARAMETER_UNIFORM
+uniform COMPAT_PRECISION float XBRZ_MINC;
+#else
+#define XBRZ_MINC 20.0
+#endif
+//#crisp}
 
 // the input of the first pass, which is the original image unless other shaders run before xBRZ
 uniform sampler2D PassPrev2Texture;
@@ -233,9 +257,130 @@ float distYCbCr(vec3 pixA, vec3 pixB)
 #define BLEND(r) mod(r, 4.0)
 #define FLAG(r, f) mod(floor((r) / (f)), 2.0)
 
+//#crisp{
+// ---- 14. Straight steps ----
+#define XBRZ_STRAIGHT 64.0   // 14. minimum contrast (x/255) of a straightened edge
+vec2 stepBase = vec2(0.0);
+vec3 PS(vec2 v) { return COMPAT_TEXTURE(PassPrev2Texture, stepBase + ORIG_SIZE.zw * v).rgb; }
+bool sameTone(vec3 a, vec3 b) { return distYCbCr(a, b) * 255.0 <= 20.0; }
+#define XBRZ_DARK 0.3       // 14. a stroke this dark (luma) or darker may have two lighter side colors
+// a side pixel clearly lighter than a dark stroke
+bool lighterSide(vec3 side, vec3 stroke) { return distYCbCr(side, stroke) * 255.0 >= XBRZ_STRAIGHT && dot(side - stroke, vec3(0.2627, 0.6780, 0.0593)) > 0.0; }
+// counts the colors on the sides of a dark stroke (up to 3): a letter's shadow has two, the letter and
+// its background, while an outline around shading has more and keeps its pixels
+float sideTones(inout vec3 t1, inout vec3 t2, float n, vec3 c)
+{
+  if (n < 0.5) { t1 = c; return 1.0; }
+  if (sameTone(c, t1)) return n;
+  if (n < 1.5) { t2 = c; return 2.0; }
+  return sameTone(c, t2) ? n : 3.0;
+}
+// A step at the pixel s: the line runs along a (past the step) and the cut crosses b. Returns
+// x: the steps' run length (2 to 4; runs of 5 and 6 count as 4) where a 1-pixel stroke, of s's color or
+//    of the color past the step, runs on along both runs with one of its sides in a single color, or
+//    with both sides in two lighter colors when the stroke is dark, 0 otherwise;
+// y: the run length where both sides of the edge keep one color each (a plain edge), 0 otherwise.
+vec2 stepRun(vec2 s, vec2 a, vec2 b)
+{
+  vec3 X = PS(s);
+  vec3 Y = PS(s + a);
+  if (distYCbCr(X, Y) * 255.0 < XBRZ_STRAIGHT) return vec2(0.0);
+  vec3 farX = X, farY = Y;
+  float strokeX = 0.0, plainX = 0.0, strokeY = 0.0, plainY = 0.0;
+  // the run of X: X at s - k a (k = 0, 1, ...) and at s + k a - b (k = 1, 2, ...)
+  float n1 = 0.0, n2 = 0.0;
+  bool thin = true, nu = true, fu = true, dk = true;
+  vec3 t1 = X, t2 = X;
+  float nt = 0.0;
+  for (int k = 0; k < 7; k++)
+  {
+    vec2 o = s - float(k) * a;
+    vec3 nr = PS(o + b);
+    if (!sameTone(PS(o), X) || sameTone(nr, X)) break;
+    vec3 fr = PS(o - b);
+    if (k == 0) farX = fr;
+    n1 += 1.0; thin = thin && !sameTone(fr, X); nu = nu && sameTone(nr, Y); fu = fu && sameTone(fr, farX);
+    dk = dk && lighterSide(nr, X) && lighterSide(fr, X);
+    if (dk) { nt = sideTones(t1, t2, nt, nr); nt = sideTones(t1, t2, nt, fr); }
+  }
+  if (n1 >= 2.0 && n1 <= 6.0)
+  {
+    for (int k = 1; k < 8; k++)
+    {
+      vec2 o = s + float(k) * a;
+      vec3 nr = PS(o);
+      if (sameTone(nr, X) || !sameTone(PS(o - b), X)) break;
+      vec3 fr = PS(o - 2.0 * b);
+      n2 += 1.0; thin = thin && !sameTone(fr, X); nu = nu && sameTone(nr, Y); fu = fu && sameTone(fr, farX);
+      dk = dk && lighterSide(nr, X) && lighterSide(fr, X);
+      if (dk) { nt = sideTones(t1, t2, nt, nr); nt = sideTones(t1, t2, nt, fr); }
+    }
+    float nX = (n2 <= 6.0 && abs(n1 - n2) <= 1.0) ? min(4.0, min(n1, n2)) : 0.0;
+    bool darkX = dk && nt < 2.5 && dot(X, vec3(0.2627, 0.6780, 0.0593)) <= XBRZ_DARK;
+    strokeX = (thin && (nu || fu || darkX)) ? nX : 0.0;
+    plainX = nu ? nX : 0.0;
+  }
+  // the run of Y: Y at s - k a + b (k = 0, 1, ...) and at s + k a (k = 1, 2, ...)
+  n1 = 0.0; n2 = 0.0; thin = true; nu = true; fu = true; dk = true; nt = 0.0;
+  for (int k = 0; k < 7; k++)
+  {
+    vec2 o = s - float(k) * a;
+    vec3 nr = PS(o);
+    if (sameTone(nr, Y) || !sameTone(PS(o + b), Y)) break;
+    vec3 fr = PS(o + 2.0 * b);
+    if (k == 0) farY = fr;
+    n1 += 1.0; thin = thin && !sameTone(fr, Y); nu = nu && sameTone(nr, X); fu = fu && sameTone(fr, farY);
+    dk = dk && lighterSide(nr, Y) && lighterSide(fr, Y);
+    if (dk) { nt = sideTones(t1, t2, nt, nr); nt = sideTones(t1, t2, nt, fr); }
+  }
+  if (n1 >= 2.0 && n1 <= 6.0)
+  {
+    for (int k = 1; k < 8; k++)
+    {
+      vec2 o = s + float(k) * a;
+      vec3 nr = PS(o - b);
+      if (!sameTone(PS(o), Y) || sameTone(nr, Y)) break;
+      vec3 fr = PS(o + b);
+      n2 += 1.0; thin = thin && !sameTone(fr, Y); nu = nu && sameTone(nr, X); fu = fu && sameTone(fr, farY);
+      dk = dk && lighterSide(nr, Y) && lighterSide(fr, Y);
+      if (dk) { nt = sideTones(t1, t2, nt, nr); nt = sideTones(t1, t2, nt, fr); }
+    }
+    float nY = (n2 <= 6.0 && abs(n1 - n2) <= 1.0) ? min(4.0, min(n1, n2)) : 0.0;
+    bool darkY = dk && nt < 2.5 && dot(Y, vec3(0.2627, 0.6780, 0.0593)) <= XBRZ_DARK;
+    strokeY = (thin && (nu || fu || darkY)) ? nY : 0.0;
+    plainY = nu ? nY : 0.0;
+  }
+  return vec2(max(strokeX, strokeY), max(plainX, plainY));
+}
+// slope (0: keep xBRZ's line, else 2, 3 or 4) and line type (1 steep, 2 shallow) of a corner, from its
+// steep and shallow step runs and xBRZ's own line type (xs steep, xh shallow)
+vec2 stepSlope(vec2 st, vec2 sh, float xs, float xh)
+{
+  if (st.x >= 2.0 && sh.x < 2.0) return vec2(st.x, 1.0);
+  if (sh.x >= 2.0 && st.x < 2.0) return vec2(sh.x, 2.0);
+  if (xs > 0.0 && st.y >= 3.0 && sh.x < 2.0) return vec2(st.y, 1.0);
+  if (xh > 0.0 && sh.y >= 3.0 && st.x < 2.0) return vec2(sh.y, 2.0);
+  return vec2(0.0);
+}
+// the thin end of a step of 3 or more at the step pixel s (= v or h from E, in the corner's frame v, h):
+// its slope when the step there is a steep (steep = true) or shallow line of that length, else 0
+float thinEnd(vec2 v, vec2 h, bool steep, float xLine)
+{
+  vec2 s = steep ? v : h;
+  vec2 r = steep ? stepRun(s, v, h) : stepRun(s, h, v);
+  if (max(r.x, r.y * xLine) < 3.0) return 0.0;
+  r = steep ? stepSlope(r, stepRun(s, h, v), xLine, 0.0) : stepSlope(stepRun(s, v, h), r, 0.0, xLine);
+  return (r.x >= 3.0 && r.y == (steep ? 1.0 : 2.0)) ? r.x : 0.0;
+}
+float drawsLine(float r) { return float(r < 128.0 && BLEND(r) > 0.0 && BLEND(r) < 3.0 && FLAG(r, 4.0) > 0.0); }
+
+//#crisp}
 // The parts of rules 1, 2 and 9 that need the neighbours' decisions, once per game pixel (they were in
 // the output pass, once per output pixel). The word written for the output pass keeps BLEND (the
 // final blend type: 0 none, anything else cut), +4 line, +8 second color, +16 shallow, +64 steep.
+//#crisp{
+// Rule 14 (straight steps) is also made here, and adds BLEND 2 (a thin end), +32 (3:1) and +128 (4:1).
+//#crisp}
 void main()
 {
   vec2 pos = fract(vTexCoord * SRC_SIZE.xy) - vec2(0.5, 0.5);
@@ -308,7 +453,55 @@ void main()
     haveShallowLine *= 1.0 - tone * shallowN;
   }
 
-  vec4 res = blendResult + 4.0 * FLAG(info, 4.0) + 8.0 * FLAG(info, 8.0) + 16.0 * haveShallowLine + 64.0 * haveSteepLine;
+//#crisp{
+  // ---- 14. Straight steps ----
+  // nn: the slope of a cut corner's line (0: xBRZ's), ty: its type (1 steep, 2 shallow); a free corner
+  // next to the step pixel along the line (steep: E + v, shallow: E + h) takes that line's thin end
+  vec4 nn = vec4(0.0), ty = vec4(0.0), thinN = vec4(0.0), thinSteep = vec4(0.0);
+  if (XBRZ_MINC > 0.0)
+  {
+    stepBase = ocoord;
+    // each corner's frame: v runs from E across the corner's vertical side, h across its horizontal side
+    vec2 vX = vec2(0.,-1.), hX = vec2(-1.,0.), vY = vec2(1.,0.), hY = vec2(0.,-1.);
+    vec2 vZ = vec2(0., 1.), hZ = vec2( 1.,0.), vW = vec2(-1.,0.), hW = vec2(0., 1.);
+    vec4 lineOn = FLAG(info, 4.0) * vec4(greaterThan(blendResult, vec4(0.0)));
+    vec2 r;
+    if (lineOn.x > 0.0) { r = stepSlope(stepRun(vec2(0.), vX, hX), stepRun(vec2(0.), hX, vX), haveSteepLine.x, haveShallowLine.x); nn.x = r.x; ty.x = r.y; }
+    if (lineOn.y > 0.0) { r = stepSlope(stepRun(vec2(0.), vY, hY), stepRun(vec2(0.), hY, vY), haveSteepLine.y, haveShallowLine.y); nn.y = r.x; ty.y = r.y; }
+    if (lineOn.z > 0.0) { r = stepSlope(stepRun(vec2(0.), vZ, hZ), stepRun(vec2(0.), hZ, vZ), haveSteepLine.z, haveShallowLine.z); nn.z = r.x; ty.z = r.y; }
+    if (lineOn.w > 0.0) { r = stepSlope(stepRun(vec2(0.), vW, hW), stepRun(vec2(0.), hW, vW), haveSteepLine.w, haveShallowLine.w); nn.w = r.x; ty.w = r.y; }
+    vec4 free = vec4(equal(blendResult, vec4(0.0)));
+    if (dot(free, vec4(1.0)) > 0.0)
+    {
+      vec4 nL = INFO_AT(-1.0, 0.0), nR = INFO_AT(1.0, 0.0), nU = INFO_AT(0.0, -1.0), nDn = INFO_AT(0.0, 1.0);
+      vec4 cSt = free * vec4(drawsLine(nU.x), drawsLine(nR.y), drawsLine(nDn.z), drawsLine(nL.w));
+      vec4 cSh = free * vec4(drawsLine(nL.x), drawsLine(nU.y), drawsLine(nR.z), drawsLine(nDn.w));
+      if (dot(cSt + cSh, vec4(1.0)) > 0.0)
+      {
+        vec3 E0 = P(0., 0.);
+        if (cSt.x > 0.0 && sameTone(PS(vX), E0)) { thinN.x = thinEnd(vX, hX, true, FLAG(nU.x, 64.0)); thinSteep.x = 1.0; }
+        if (thinN.x == 0.0 && cSh.x > 0.0 && sameTone(PS(hX), E0)) { thinN.x = thinEnd(vX, hX, false, FLAG(nL.x, 16.0)); thinSteep.x = 0.0; }
+        if (cSt.y > 0.0 && sameTone(PS(vY), E0)) { thinN.y = thinEnd(vY, hY, true, FLAG(nR.y, 64.0)); thinSteep.y = 1.0; }
+        if (thinN.y == 0.0 && cSh.y > 0.0 && sameTone(PS(hY), E0)) { thinN.y = thinEnd(vY, hY, false, FLAG(nU.y, 16.0)); thinSteep.y = 0.0; }
+        if (cSt.z > 0.0 && sameTone(PS(vZ), E0)) { thinN.z = thinEnd(vZ, hZ, true, FLAG(nDn.z, 64.0)); thinSteep.z = 1.0; }
+        if (thinN.z == 0.0 && cSh.z > 0.0 && sameTone(PS(hZ), E0)) { thinN.z = thinEnd(vZ, hZ, false, FLAG(nR.z, 16.0)); thinSteep.z = 0.0; }
+        if (cSt.w > 0.0 && sameTone(PS(vW), E0)) { thinN.w = thinEnd(vW, hW, true, FLAG(nL.w, 64.0)); thinSteep.w = 1.0; }
+        if (thinN.w == 0.0 && cSh.w > 0.0 && sameTone(PS(hW), E0)) { thinN.w = thinEnd(vW, hW, false, FLAG(nDn.w, 16.0)); thinSteep.w = 0.0; }
+      }
+    }
+  }
+  vec4 over = vec4(greaterThan(nn, vec4(0.0)));
+  haveSteepLine = mix(haveSteepLine, vec4(equal(ty, vec4(1.0))), over);
+  haveShallowLine = mix(haveShallowLine, vec4(equal(ty, vec4(2.0))), over);
+  vec4 isThin = vec4(greaterThan(thinN, vec4(0.0)));
+  vec4 slope = mix(nn, thinN, isThin);
+  // the output word: BLEND 1 cut, 2 the thin end of a straight step (its line starts 1 pixel further
+  // along); +32 a 3:1 line, +128 a 4:1 line
+  vec4 res = min(blendResult, vec4(1.0)) + 4.0 * FLAG(info, 4.0) + 8.0 * FLAG(info, 8.0) + 16.0 * haveShallowLine + 64.0 * haveSteepLine;
+  res = mix(res, 2.0 + 4.0 + 24.0 * (1.0 - thinSteep) + 64.0 * thinSteep, isThin);
+  res += 32.0 * vec4(equal(slope, vec4(3.0))) + 128.0 * vec4(equal(slope, vec4(4.0)));
+//#crisp}
+//#plain   vec4 res = blendResult + 4.0 * FLAG(info, 4.0) + 8.0 * FLAG(info, 8.0) + 16.0 * haveShallowLine + 64.0 * haveSteepLine;
   FRAG_OUT = res / 255.0;
 }
 
