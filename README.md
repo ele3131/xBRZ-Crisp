@@ -25,13 +25,11 @@
 </div>
 
 > [!NOTE]
-> **Which xBRZ?** xBRZ is [Zenju's C++ scaler](https://sourceforge.net/projects/xbrz/). The images here compare xBRZ Crisp with that original, version 1.9 at its default settings, labeled **xBRZ (original)**. xBRZ Crisp is not built on the C++ code: it is a RetroArch shader built on libretro's `xbrz-freescale-multipass`, a separate GLSL and slang shader that follows the xBRZ idea with its own code and thresholds. That libretro shader already includes some of xBRZ Crisp's improvements, and the comparison page shows it too, labeled **xBRZ (original)**.
+> **Which xBRZ?** xBRZ is [Zenju's C++ scaler](https://sourceforge.net/projects/xbrz/). The images here compare xBRZ Crisp with that original, version 1.9 at its default settings, labeled **xBRZ (original)**. xBRZ Crisp is not built on the C++ code: it is a RetroArch shader built on libretro's `xbrz-freescale-multipass`, a separate GLSL and slang shader that follows the xBRZ idea with its own code and thresholds. That libretro shader already includes some of xBRZ Crisp's improvements, and the comparison page shows it too, labeled **xBRZ (libretro)**.
 
 <h2 align="center">🎬 Interactive Comparison</h2>
 
 <a href="https://ele3131.github.io/xBRZ-Crisp/"><img src="comparisons/preview-20.png" alt="Animated comparison in Golden Sun, Castlevania: Aria of Sorrow, Harry Potter: Prisoner of Azkaban and Tales of Phantasia: xBRZ (original), then xBRZ Crisp 20" width="720"></a>
-
-Pick integer scaling, MMPX Advanced, ScaleFX, xBRZ (original), xBRZ (original) or xBRZ Crisp (contrast 10 to 30) on each side, drag the line across 12 Game Boy Advance scenes, zoom in up to 4×, hold a button to see the original pixels, and mark in red every spot where the two sides differ.
 
 <h2 align="center">🌄 Gallery</h2>
 
