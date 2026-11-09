@@ -44,8 +44,6 @@
   </tr>
 </table>
 
-Faces keep their expression. Since 1.4, a corner where three different colors meet is no longer cut into a fake diagonal, so Link's eyebrow stays straight instead of being pulled into his eye, and stacked stripes such as health bars end square:
-
 <img src="comparisons/7-faces.png" alt="Link in The Minish Cap, a face in Final Fantasy Tactics Advance and the health bar of Castlevania: Aria of Sorrow: original, xBRZ (original) and xBRZ Crisp" width="100%">
 
 Text and portraits keep their shape too, as in the spell menu of Harry Potter: Prisoner of Azkaban:
