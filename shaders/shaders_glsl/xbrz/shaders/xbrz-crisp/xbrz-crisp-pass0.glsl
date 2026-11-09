@@ -100,11 +100,13 @@
 //     step at the thin end gets a sliver of that line. Both sides of a stroke then run parallel and a
 //     long step does not bend. Runs of 7 or more, irregular steps and low-contrast edges (water,
 //     wood, shading) keep xBRZ's lines.
-// 15. Lone pixel test on strong edges: xBRZ draws no line through a pixel that already has another
-//     corner cut and differs from the pixel across it, so a lone pixel keeps its shape. Where the pixel
-//     differs from both colors of the corner by 64 or more, that test uses the reference xBRZ tolerance
-//     (30) instead of XBRZ_TOL, so a light pixel close to its background is cut as in the reference xBRZ,
-//     like Isaac's leg in Golden Sun; textures and shading keep XBRZ_TOL.
+// 15. Lone pixel and L-shape tests on strong edges: xBRZ draws no line through a pixel that already
+//     has another corner cut and differs from the pixel across it, so a lone pixel keeps its shape, and
+//     only rounds a corner, without a line, where one color wraps around it in an L. Where the pixel
+//     differs from both colors of the corner by 64 or more (56 for the L), these tests use the reference
+//     xBRZ tolerance (30) instead of XBRZ_TOL, so a light pixel close to its background is cut, and a
+//     light tip is rounded, as in the reference xBRZ, like Isaac's leg in Golden Sun; textures and
+//     shading keep XBRZ_TOL.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 // 11 to 15 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
@@ -280,6 +282,7 @@ uniform COMPAT_PRECISION float XBRZ_DIAG;
 #define XBRZ_HYST 4.0       // 1. a corner this close below XBRZ_MINC is weak
 #define XBRZ_GUARD 30.0     // 15. lone pixel test tolerance on strong edges (reference xBRZ)
 #define XBRZ_GUARD_EDGE 64.0 // 15. a strong edge: the pixel differs from both corner colors by this much
+#define XBRZ_GUARD_EDGE_L 56.0 // 15. the same for the L-shape test
 #define XBRZ_DIAG_AA 92.0   // 2. diagonal limit on antialiasing ramps
 #define XBRZ_RAMP 1.15      // 2, 6. a ramp: (d(E,P) + d(P,Q)) / d(E,Q) up to this
 #define XBRZ_STRIPE 64.0    // 2, 3. a diagonal stripe keeps a close color (within this) along its length
@@ -318,10 +321,16 @@ bool IsPixEqual(vec3 pixA, vec3 pixB)
   return (DistYCbCr(pixA, pixB) < EQUAL_COLOR_TOLERANCE);
 }
 
-// 15. Lone pixel test on strong edges: the tolerance of xBRZ's lone pixel test in the blend decisions
+// 15. Lone pixel test on strong edges: the tolerance of xBRZ's lone pixel test (GuardEqual) and L-shape
+// test (ShapeEqual) in the blend decisions; edge is how much E differs from the closer corner color
 bool GuardEqual(vec3 pixA, vec3 pixB, float edge)
 {
-  return DistYCbCr(pixA, pixB) < (CRISP_RULES && edge * 255.0 >= XBRZ_GUARD_EDGE ? XBRZ_GUARD / 255.0 : EQUAL_COLOR_TOLERANCE);
+  return DistYCbCr(pixA, pixB) < (XBRZ_MINC > 0.0 && edge * 255.0 >= XBRZ_GUARD_EDGE ? XBRZ_GUARD / 255.0 : EQUAL_COLOR_TOLERANCE);
+}
+
+bool ShapeEqual(vec3 pixA, vec3 pixB, float edge)
+{
+  return DistYCbCr(pixA, pixB) < (XBRZ_MINC > 0.0 && edge * 255.0 >= XBRZ_GUARD_EDGE_L ? XBRZ_GUARD / 255.0 : EQUAL_COLOR_TOLERANCE);
 }
 
 // ============================================================================================
@@ -1091,7 +1100,7 @@ void main()
   //                    -|-|x|x|-
   if(blendResult.z == BLEND_DOMINANT || (blendResult.z == BLEND_NORMAL &&
     !((blendResult.y != BLEND_NONE && !GuardEqual(E, G, min(DistYCbCr(E, F), DistYCbCr(E, H)))) || (blendResult.w != BLEND_NONE && !GuardEqual(C, E, min(DistYCbCr(E, F), DistYCbCr(E, H)))) ||
-     (IsPixEqual(G, H) && IsPixEqual(H, I) && IsPixEqual(F, I) && IsPixEqual(C, F) && !IsPixEqual(E, I)))))
+     (ShapeEqual(G, H, min(DistYCbCr(E, F), DistYCbCr(E, H))) && ShapeEqual(H, I, min(DistYCbCr(E, F), DistYCbCr(E, H))) && ShapeEqual(F, I, min(DistYCbCr(E, F), DistYCbCr(E, H))) && ShapeEqual(C, F, min(DistYCbCr(E, F), DistYCbCr(E, H))) && !ShapeEqual(E, I, min(DistYCbCr(E, F), DistYCbCr(E, H)))))))
   {
     res.z += 4.0;
     vec2 line = lineTests(F, G, H, C, E, DistYCbCr(F, H), eq(N_m1_p2, H) && !eq(G, H), eq(N_p2_m1, F) && !eq(C, F));
@@ -1106,7 +1115,7 @@ void main()
   //                    -|x|x|-|-
   if(blendResult.w == BLEND_DOMINANT || (blendResult.w == BLEND_NORMAL &&
     !((blendResult.z != BLEND_NONE && !GuardEqual(A, E, min(DistYCbCr(D, E), DistYCbCr(E, H)))) || (blendResult.x != BLEND_NONE && !GuardEqual(E, I, min(DistYCbCr(D, E), DistYCbCr(E, H)))) ||
-     (IsPixEqual(A, D) && IsPixEqual(D, G) && IsPixEqual(G, H) && IsPixEqual(H, I) && !IsPixEqual(E, G)))))
+     (ShapeEqual(A, D, min(DistYCbCr(D, E), DistYCbCr(E, H))) && ShapeEqual(D, G, min(DistYCbCr(D, E), DistYCbCr(E, H))) && ShapeEqual(G, H, min(DistYCbCr(D, E), DistYCbCr(E, H))) && ShapeEqual(H, I, min(DistYCbCr(D, E), DistYCbCr(E, H))) && !ShapeEqual(E, G, min(DistYCbCr(D, E), DistYCbCr(E, H)))))))
   {
     res.w += 4.0;
     vec2 line = lineTests(H, A, D, I, E, DistYCbCr(D, H), eq(N_m2_m1, D) && !eq(A, D), eq(N_p1_p2, H) && !eq(I, H));
@@ -1121,7 +1130,7 @@ void main()
   //                    -|-|-|-|-
   if(blendResult.y == BLEND_DOMINANT || (blendResult.y == BLEND_NORMAL &&
     !((blendResult.x != BLEND_NONE && !GuardEqual(E, I, min(DistYCbCr(B, E), DistYCbCr(E, F)))) || (blendResult.z != BLEND_NONE && !GuardEqual(A, E, min(DistYCbCr(B, E), DistYCbCr(E, F)))) ||
-     (IsPixEqual(F, I) && IsPixEqual(C, F) && IsPixEqual(B, C) && IsPixEqual(A, B) && !IsPixEqual(C, E)))))
+     (ShapeEqual(F, I, min(DistYCbCr(B, E), DistYCbCr(E, F))) && ShapeEqual(C, F, min(DistYCbCr(B, E), DistYCbCr(E, F))) && ShapeEqual(B, C, min(DistYCbCr(B, E), DistYCbCr(E, F))) && ShapeEqual(A, B, min(DistYCbCr(B, E), DistYCbCr(E, F))) && !ShapeEqual(C, E, min(DistYCbCr(B, E), DistYCbCr(E, F)))))))
   {
     res.y += 4.0;
     vec2 line = lineTests(B, I, F, A, E, DistYCbCr(B, F), eq(N_p2_p1, F) && !eq(I, F), eq(N_m1_m2, B) && !eq(A, B));
@@ -1136,7 +1145,7 @@ void main()
   //                    -|-|-|-|-
   if(blendResult.x == BLEND_DOMINANT || (blendResult.x == BLEND_NORMAL &&
     !((blendResult.w != BLEND_NONE && !GuardEqual(C, E, min(DistYCbCr(B, E), DistYCbCr(D, E)))) || (blendResult.y != BLEND_NONE && !GuardEqual(E, G, min(DistYCbCr(B, E), DistYCbCr(D, E)))) ||
-     (IsPixEqual(B, C) && IsPixEqual(A, B) && IsPixEqual(A, D) && IsPixEqual(D, G) && !IsPixEqual(A, E)))))
+     (ShapeEqual(B, C, min(DistYCbCr(B, E), DistYCbCr(D, E))) && ShapeEqual(A, B, min(DistYCbCr(B, E), DistYCbCr(D, E))) && ShapeEqual(A, D, min(DistYCbCr(B, E), DistYCbCr(D, E))) && ShapeEqual(D, G, min(DistYCbCr(B, E), DistYCbCr(D, E))) && !ShapeEqual(A, E, min(DistYCbCr(B, E), DistYCbCr(D, E)))))))
   {
     res.x += 4.0;
     vec2 line = lineTests(D, C, B, G, E, DistYCbCr(B, D), eq(N_p1_m2, B) && !eq(C, B), eq(N_m2_p1, D) && !eq(G, D));

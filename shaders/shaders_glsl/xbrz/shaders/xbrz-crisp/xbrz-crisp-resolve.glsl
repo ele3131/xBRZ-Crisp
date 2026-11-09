@@ -43,7 +43,8 @@
 //    of a lock of hair (that line may also run toward the pixel diagonal to E when it has E's color,
 //    so a thin arm closes up to the next color).
 // 3. Eye: where two dark strokes of different colors meet in an L around a 1-pixel light gap, like
-//    a pupil under an eyebrow, the corner stays square.
+//    a pupil under an eyebrow, the corner stays square. Not where one stroke ends in the other's
+//    color, like a shaded outline: that is one outline, cut as in xBRZ.
 // 4. Diagonal up to the wall: a corner changed by rules 2 and 3 comes back as in xBRZ where the
 //    pixel's color runs on as a 45-degree diagonal along the cut up to a straight line, like hair or
 //    a fence post, unless that would bend a straight line or stretch a lone 1-pixel dot.
@@ -99,8 +100,15 @@
 //     step at the thin end gets a sliver of that line. Both sides of a stroke then run parallel and a
 //     long step does not bend. Runs of 7 or more, irregular steps and low-contrast edges (water,
 //     wood, shading) keep xBRZ's lines.
+// 15. Lone pixel and L-shape tests on strong edges: xBRZ draws no line through a pixel that already
+//     has another corner cut and differs from the pixel across it, so a lone pixel keeps its shape, and
+//     only rounds a corner, without a line, where one color wraps around it in an L. Where the pixel
+//     differs from both colors of the corner by 64 or more (56 for the L), these tests use the reference
+//     xBRZ tolerance (30) instead of XBRZ_TOL, so a light pixel close to its background is cut, and a
+//     light tip is rounded, as in the reference xBRZ, like Isaac's leg in Golden Sun; textures and
+//     shading keep XBRZ_TOL.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 14 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 15 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
