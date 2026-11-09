@@ -103,7 +103,7 @@
 //     wood, shading) keep xBRZ's lines.
 // 15. Lone pixel test on strong edges: xBRZ draws no line through a pixel that already has another
 //     corner cut and differs from the pixel across it, so a lone pixel keeps its shape. Where the pixel
-//     differs from both colors of the corner by 80 or more, that test uses the reference xBRZ tolerance
+//     differs from both colors of the corner by 64 or more, that test uses the reference xBRZ tolerance
 //     (30) instead of XBRZ_TOL, so a light pixel close to its background is cut as in the reference xBRZ,
 //     like Isaac's leg in Golden Sun; textures and shading keep XBRZ_TOL.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
@@ -242,7 +242,7 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 #define CRISP_RULES (XBRZ_MINC > 0.0 && XBRZ_DIAG > 0.0)
 #define XBRZ_HYST 4.0       // 1. a corner this close below XBRZ_MINC is weak
 #define XBRZ_GUARD 30.0     // 15. lone pixel test tolerance on strong edges (reference xBRZ)
-#define XBRZ_GUARD_EDGE 80.0 // 15. a strong edge: the pixel differs from both corner colors by this much
+#define XBRZ_GUARD_EDGE 64.0 // 15. a strong edge: the pixel differs from both corner colors by this much
 #define XBRZ_DIAG_AA 92.0   // 2. diagonal limit on antialiasing ramps
 #define XBRZ_RAMP 1.15      // 2, 6. a ramp: (d(E,P) + d(P,Q)) / d(E,Q) up to this
 #define XBRZ_STRIPE 64.0    // 2, 3. a diagonal stripe keeps a close color (within this) along its length
