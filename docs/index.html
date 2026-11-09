@@ -121,8 +121,9 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
   <header class="prose">
     <h1>xBRZ Crisp</h1>
     <p class="lede">xBRZ smooths every corner it finds, so soft shading and textures melt into blobs. xBRZ Crisp only rounds a corner when its two colors are clearly different. Outlines, text and sprites are smoothed as in xBRZ, and grass, foliage and stone keep the pixels the artists drew.</p>
+    <p class="muted"><b>Which xBRZ?</b> xBRZ is <a href="https://sourceforge.net/projects/xbrz/">Zenju's C++ scaler</a>; this page shows it as xBRZ (original). xBRZ Crisp is not built on the C++ code: it is a RetroArch shader built on libretro's <code>xbrz-freescale-multipass</code>, a separate GLSL and slang shader that follows the xBRZ idea with its own code and thresholds. That libretro shader already includes some of xBRZ Crisp's improvements, and you can pick it here too, as xBRZ (libretro).</p>
     <p><a href="#how">See what Crisp adds on top of xBRZ</a></p>
-    <p class="muted">Drag the line to compare. All frames are Game Boy Advance screens at 6x, rendered with the RetroArch shader code. Integer (integer scaling) shows the original pixels. MMPX Adv (MMPX Advanced) is the libretro scalenx shader at 2x, enlarged 3x, and ScaleFX is the libretro scalefx-9x preset at 9x, scaled down to 6x by area averaging. xBRZ (latest) is the current libretro <code>xbrz-freescale-multipass</code>, which already includes improvements that came from xBRZ Crisp.</p>
+    <p class="muted">Drag the line to compare. All frames are Game Boy Advance screens at 6x. xBRZ (original) is Zenju's C++ xBRZ 1.9 at its default settings; the others are rendered with the RetroArch shader code. Integer (integer scaling) shows the original pixels. MMPX Adv (MMPX Advanced) is the libretro scalenx shader at 2x, enlarged 3x, and ScaleFX is the libretro scalefx-9x preset at 9x, scaled down to 6x by area averaging. xBRZ (libretro) is the current libretro <code>xbrz-freescale-multipass</code>, which already includes improvements that came from xBRZ Crisp.</p>
   </header>
 
   <section class="controls" aria-label="Comparison settings">
@@ -138,7 +139,8 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
         <button type="button" data-v="original">Integer</button>
         <button type="button" data-v="mmpx">MMPX Adv</button>
         <button type="button" data-v="scalefx">ScaleFX</button>
-        <button type="button" data-v="xbrz">xBRZ (latest)</button>
+        <button type="button" data-v="xbrzcpp">xBRZ (original)</button>
+        <button type="button" data-v="xbrz">xBRZ (libretro)</button>
         <button type="button" data-v="crisp">xBRZ Crisp</button>
       </div>
       <div class="group minc"><span>Crisp contrast</span>
@@ -163,7 +165,8 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
         <button type="button" data-v="original">Integer</button>
         <button type="button" data-v="mmpx">MMPX Adv</button>
         <button type="button" data-v="scalefx">ScaleFX</button>
-        <button type="button" data-v="xbrz">xBRZ (latest)</button>
+        <button type="button" data-v="xbrzcpp">xBRZ (original)</button>
+        <button type="button" data-v="xbrz">xBRZ (libretro)</button>
         <button type="button" data-v="crisp">xBRZ Crisp</button>
       </div>
       <div class="group minc"><span>Crisp contrast</span>
@@ -215,7 +218,7 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
     </div>
   </div>
   <div class="peekbar"><button class="peek" id="peek" type="button" aria-pressed="false" title="Hold to see the original pixels (or hold the O key)">Hold for Integer</button></div>
-  <p class="hint" id="info">Tip: from 2× to 4× the view scrolls; the line stays where you put it. Arrow keys move the line when it has focus. "Mark differences" outlines in red every spot where the two sides differ. Hold the button under the picture (or the O key) to see the original pixels. xBRZ (latest) is the current libretro <code>xbrz-freescale-multipass</code>, which includes the port fixes and thresholds contributed by xBRZ Crisp since October 20, 2026 (tolerance 15, steep 3.2, dominant 3.8).</p>
+  <p class="hint" id="info">Tip: from 2× to 4× the view scrolls; the line stays where you put it. Arrow keys move the line when it has focus. "Mark differences" outlines in red every spot where the two sides differ. Hold the button under the picture (or the O key) to see the original pixels. xBRZ (original) is Zenju's C++ xBRZ. xBRZ (libretro) is the current libretro <code>xbrz-freescale-multipass</code>, which includes the port fixes and thresholds contributed by xBRZ Crisp since October 20, 2026 (tolerance 15, steep 3.2, dominant 3.8; the C++ xBRZ uses 30, 2.4 and 3.6).</p>
 
   <section class="prose">
     <h2>Presets</h2>
@@ -242,51 +245,52 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
       <tbody>
         <tr><td class="mono">XBRZ_MINC</td><td class="num">20</td><td>Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off (the tolerance and steep thresholds below still apply).</td></tr>
         <tr><td class="mono">XBRZ_DIAG</td><td class="num">100</td><td>Maximum color distance (x/255) between the two colors a cut would join. Above it, the corner stays square. 0 turns it off.</td></tr>
-        <tr><td class="mono">XBRZ_TOL</td><td class="num">15</td><td>Equal color tolerance. The reference C++ xBRZ uses 30.</td></tr>
-        <tr><td class="mono">XBRZ_STEEP</td><td class="num">3.2</td><td>Steep and shallow line threshold. The reference C++ xBRZ uses 2.2, which turns 1-pixel steps into slopes; 3.2 keeps letters and 1-pixel details closer to the original.</td></tr>
-        <tr><td class="mono">XBRZ_DOM</td><td class="num">3.8</td><td>Dominant direction threshold. The reference C++ xBRZ uses 3.6; 3.8 keeps small corners close to square instead of cutting them into long tips.</td></tr>
+        <tr><td class="mono">XBRZ_TOL</td><td class="num">15</td><td>Equal color tolerance. The original C++ xBRZ uses 30.</td></tr>
+        <tr><td class="mono">XBRZ_STEEP</td><td class="num">3.2</td><td>Steep and shallow line threshold. The original C++ xBRZ uses 2.4 (2.2 before version 1.9), which turns more 1-pixel steps into slopes; 3.2 keeps letters and 1-pixel details closer to the original.</td></tr>
+        <tr><td class="mono">XBRZ_DOM</td><td class="num">3.8</td><td>Dominant direction threshold. The original C++ xBRZ uses 3.6; 3.8 keeps small corners close to square instead of cutting them into long tips.</td></tr>
       </tbody>
     </table>
   </div>
 
   <section class="prose" id="how">
     <h2>What Crisp adds on top of xBRZ</h2>
+    <p class="muted">The pictures show the original C++ xBRZ. xBRZ Crisp runs the same corner test as xBRZ, with the thresholds listed under Parameters, and then adds the vetoes below.</p>
     <p>xBRZ scales pixel art by asking one question at every corner of every pixel: is this the corner of a shape? If the answer is yes, it cuts the corner with a neighbor's color, and a staircase of pixels becomes a smooth line. That works beautifully on outlines and text. Its weakness is that it says yes too often, so shading, textures and faces get shapes the artist never drew.</p>
     <p>xBRZ Crisp keeps every answer xBRZ gives and adds a few vetoes. A vetoed corner simply stays square, the way the artist drew it. Nothing is blurred and no new colors are made.</p>
 
     <h3>1. Soft shading is not a shape</h3>
-    <figure><img src="img/explain/contrast.png" alt="Ivy in Tales of Phantasia: original, xBRZ (latest) and xBRZ Crisp" loading="lazy"><figcaption>Tales of Phantasia, ivy on a wall. Red circles mark some of the spots where xBRZ and Crisp differ.</figcaption></figure>
+    <figure><img src="img/explain/contrast.png" alt="Ivy in Tales of Phantasia: original, xBRZ (original) and xBRZ Crisp" loading="lazy"><figcaption>Tales of Phantasia, ivy on a wall. Red circles mark some of the spots where xBRZ and Crisp differ.</figcaption></figure>
     <p>In grass, leaves and stone, neighboring pixels differ by only a few shades. xBRZ reads each of those small steps as an edge and rounds it, so the texture melts into wavy blobs. Crisp measures how different the two colors of each corner are (a YCbCr distance out of 255) and leaves the corner square below <code>XBRZ_MINC</code>. Real edges, like outlines, are far above the limit and stay smooth. A corner just below the limit is still rounded when the corners on both sides of it along the same diagonal are, so a diagonal edge has no tooth where its contrast dips for a pixel. Where a line crosses an antialiasing pixel on a strong edge, like the edge of a roof in Golden Sun, both halves of the pixel are cut as in xBRZ, so the pixel becomes part of the diagonal instead of a notch in it.</p>
-    <figure><img src="img/explain/contrast-steps.png" alt="Golden Sun grass: original, xBRZ (latest), Crisp 10, 20 and 30" loading="lazy"><figcaption>Golden Sun, village grass at the three presets.</figcaption></figure>
+    <figure><img src="img/explain/contrast-steps.png" alt="Golden Sun grass: original, xBRZ (original), Crisp 10, 20 and 30" loading="lazy"><figcaption>Golden Sun, village grass at the three presets.</figcaption></figure>
     <p>This limit is the one dial that sets the look: 10 stays closest to xBRZ, 30 keeps the most texture, and 20, the default, sits in between. Up to 20, each step keeps more of the original pixels for little loss of smoothness. Past it, smooth antialiased shapes start to lose more.</p>
 
     <h3>2. Different colors are not joined</h3>
-    <figure><img src="img/explain/diagonal.png" alt="A villager's scarf in Golden Sun: original, xBRZ (latest) and xBRZ Crisp" loading="lazy"><figcaption>Golden Sun, a villager's face and scarf.</figcaption></figure>
+    <figure><img src="img/explain/diagonal.png" alt="A villager's scarf in Golden Sun: original, xBRZ (original) and xBRZ Crisp" loading="lazy"><figcaption>Golden Sun, a villager's face and scarf.</figcaption></figure>
     <p>Cutting a corner joins its two diagonal neighbors into one line. That is right when they share a color, as along a sloped outline. When they are very different, like a purple scarf next to skin, the corner is a meeting point of three colors, not a line, and xBRZ pulls one color into the other: the scarf runs into the face and the hair into the scarf. Crisp only joins diagonal neighbors whose colors are within <code>XBRZ_DIAG</code> (100) of each other.</p>
 
     <h3>3. Dark pixels keep their shape</h3>
-    <figure><img src="img/explain/dark.png" alt="A face in Final Fantasy Tactics Advance: original, xBRZ (latest) and xBRZ Crisp" loading="lazy"><figcaption>Final Fantasy Tactics Advance, eyes under a hood.</figcaption></figure>
+    <figure><img src="img/explain/dark.png" alt="A face in Final Fantasy Tactics Advance: original, xBRZ (original) and xBRZ Crisp" loading="lazy"><figcaption>Final Fantasy Tactics Advance, eyes under a hood.</figcaption></figure>
     <p>Eyes, pupils and outlines are often a single dark pixel wide, and that pixel is what we read as the shape. Where a sloped line would shave a dark pixel with a lighter color, at a meeting of different colors, Crisp keeps the dark pixel whole. The eyes stay the straight strokes the artist drew instead of being rounded into drops.</p>
 
     <h3>4. Lines end the way they were drawn</h3>
-    <figure><img src="img/explain/stripes.png" alt="Harry's robe in Harry Potter: Prisoner of Azkaban: original, xBRZ (latest) and xBRZ Crisp" loading="lazy"><figcaption>Harry Potter: Prisoner of Azkaban, the red trim of Harry's robe.</figcaption></figure>
+    <figure><img src="img/explain/stripes.png" alt="Harry's robe in Harry Potter: Prisoner of Azkaban: original, xBRZ (original) and xBRZ Crisp" loading="lazy"><figcaption>Harry Potter: Prisoner of Azkaban, the red trim of Harry's robe.</figcaption></figure>
     <p>Robes, health bars, frames and windows are built from straight 1-pixel lines. xBRZ rounds their ends and bends them where they meet another line. Crisp keeps a corner square when its blend color runs straight on, and stacked stripes that end together all end square, so the trim stays straight and the collar keeps its shape. A short stripe whose end meets a line running on, like a dark blue line in Minish Cap, lets that line close as in xBRZ.</p>
-    <figure><img src="img/explain/outline.png" alt="A character in Final Fantasy Tactics Advance: original, xBRZ (latest) and xBRZ Crisp" loading="lazy"><figcaption>Final Fantasy Tactics Advance, a character seen from behind.</figcaption></figure>
+    <figure><img src="img/explain/outline.png" alt="A character in Final Fantasy Tactics Advance: original, xBRZ (original) and xBRZ Crisp" loading="lazy"><figcaption>Final Fantasy Tactics Advance, a character seen from behind.</figcaption></figure>
     <p>The vetoes never cut a line short. A blocked corner is still cut when the next corner along the same diagonal is cut, so diagonal lines are drawn to their end, and between two close inner tones the cut runs on up to the dark outline, which stays whole. Where the artist drew a 45-degree diagonal of one color up to a straight line, like a lock of hair or the corner of a fence post, the corner is rounded as in xBRZ, unless that would bend a straight line or stretch a lone dot such as an eye. A thin light stroke that runs on along the diagonal, like the white strokes of letters or a ring with gray antialiasing, is rounded as in xBRZ too, so letters have no square joints.</p>
 
     <h3>5. The artist's antialiasing stays</h3>
-    <figure><img src="img/explain/antialias.png" alt="Yellow hair with a dark outline in Final Fantasy Tactics Advance: original, xBRZ (latest) and xBRZ Crisp" loading="lazy"><figcaption>Final Fantasy Tactics Advance, yellow hair with a dark outline.</figcaption></figure>
+    <figure><img src="img/explain/antialias.png" alt="Yellow hair with a dark outline in Final Fantasy Tactics Advance: original, xBRZ (original) and xBRZ Crisp" loading="lazy"><figcaption>Final Fantasy Tactics Advance, yellow hair with a dark outline.</figcaption></figure>
     <p>Many sprites already have hand-placed in-between pixels that soften a corner, like the dark orange pixels between this black outline and the yellow hair. When one of a corner's colors sits between the other two, Crisp treats it as the artist's antialiasing and uses a stricter limit (92), so xBRZ does not round the same corner a second time. When that in-between pixel is a single step on a diagonal edge, with the far color wrapping around it and the pixel's own color running on along the cut, the corner is rounded as in xBRZ, so shaded edges like Soma's cape in Castlevania run on to their end. A diagonal that ends on a straight edge, like the tip of a lock of Link's hair, is also closed as in xBRZ.</p>
 
     <h3>6. Steps are drawn straight</h3>
-    <figure><img src="img/explain/steps.png" alt="Golden Sun italic dialog text and a rail along a building: original, xBRZ (latest) and xBRZ Crisp" loading="lazy"><figcaption>Golden Sun, italic dialog text (top), and a rail along a building (bottom).</figcaption></figure>
+    <figure><img src="img/explain/steps.png" alt="Golden Sun italic dialog text and a rail along a building: original, xBRZ (original) and xBRZ Crisp" loading="lazy"><figcaption>Golden Sun, italic dialog text (top), and a rail along a building (bottom).</figcaption></figure>
     <p>xBRZ draws only two slopes, 45 degrees and 2:1. A line the artist drew with longer steps, like the stems of Golden Sun's italic letters, a rail or the edge of a roof, comes out bent at every step, and the two sides of a 1-pixel stroke can get different slopes, so the stroke wobbles. Where an edge between clearly different colors climbs in regular steps of 2 to 6 pixels, Crisp cuts each step with one line of the steps' own slope (2:1, 3:1 or 4:1), and the pixel at the thin end of a long step gets a sliver of the same line. Both sides of a stroke run parallel, and a letter's dark shadow runs parallel to its letter. Curves, irregular steps and low-contrast edges like water and wood keep xBRZ's lines.</p>
 
     <h3>What does not change</h3>
-    <figure><img src="img/explain/text.png" alt="Spell menu text in Harry Potter: Prisoner of Azkaban: original, xBRZ (latest) and xBRZ Crisp" loading="lazy"><figcaption>Harry Potter: Prisoner of Azkaban, spell menu.</figcaption></figure>
-    <p>Edges are found exactly as xBRZ finds them, so letters, outlines and large shapes come out as smooth as in xBRZ. The result reads like xBRZ from a distance, with clean round shapes. Up close, textures, faces and interface details look like the original art instead of being repainted.</p>
+    <figure><img src="img/explain/text.png" alt="Spell menu text in Harry Potter: Prisoner of Azkaban: original, xBRZ (original) and xBRZ Crisp" loading="lazy"><figcaption>Harry Potter: Prisoner of Azkaban, spell menu.</figcaption></figure>
+    <p>Edges are found with xBRZ's own test, so letters, outlines and large shapes come out as smooth as in xBRZ. The result reads like xBRZ from a distance, with clean round shapes. Up close, textures, faces and interface details look like the original art instead of being repainted.</p>
     <p>The idea of only joining colors that match along the diagonal comes from <a href="https://github.com/libretro/slang-shaders/tree/master/edge-smoothing/cleanEdge">cleanEdge</a> by torcado. No cleanEdge code is included.</p>
-    <p class="muted">Port details: the shader is based on the libretro <code>xbrz-freescale-multipass</code> port. Blend color ties and the order of the four corners follow the reference C++ xBRZ, the GLSL version takes the output scale from the image size instead of the texture size, and the output pass reads the image from the pass before xBRZ, so it also works after other shaders in a preset.</p>
+    <p class="muted">Port details: xBRZ Crisp started as a set of fixes to libretro's <code>xbrz-freescale-multipass</code>, a shader written for RetroArch separately from <a href="https://sourceforge.net/projects/xbrz/">Zenju's C++ xBRZ</a>, and most of its code has been rewritten since. Blend color ties and the order of the four corners were changed to follow the C++ xBRZ, the GLSL version takes the output scale from the image size instead of the texture size, and the output pass reads the image from the pass before xBRZ, so it also works after other shaders in a preset.</p>
   </section>
 
   <section class="prose">
@@ -315,8 +319,8 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
     ["dbz_title", "Dragon Ball Z: Buu's Fury · title"],
     ["dbz_snake", "Dragon Ball Z: Buu's Fury · Snake Way"]
   ];
-  var NAME = { original: "Integer", mmpx: "MMPX Adv", scalefx: "ScaleFX", xbrz: "xBRZ (latest)", crisp: "xBRZ Crisp" };
-  var state = { scene: "gs_village", left: { alg: "xbrz", minc: 10 }, right: { alg: "crisp", minc: 20 }, zoom: 1, pos: 0.5, marks: false };
+  var NAME = { original: "Integer", mmpx: "MMPX Adv", scalefx: "ScaleFX", xbrzcpp: "xBRZ (original)", xbrz: "xBRZ (libretro)", crisp: "xBRZ Crisp" };
+  var state = { scene: "gs_village", left: { alg: "xbrzcpp", minc: 10 }, right: { alg: "crisp", minc: 20 }, zoom: 1, pos: 0.5, marks: false };
 
   var $ = function (id) { return document.getElementById(id); };
   var sel = $("scene"), frame = $("frame"), stage = $("stage"), imgL = $("imgL"), imgR = $("imgR"), cv = $("cvM"), marks = $("marks"), info = $("info");
@@ -332,7 +336,7 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
   function src(scene, k) { return "img/" + scene + "-" + k + ".png"; }
 
   // preload the current scene's six images so switching sides is instant
-  function preload(scene) { ["original", "xbrz", "mmpx", "scalefx", "crisp12", "crisp20", "crisp24"].forEach(function (k) { var i = new Image(); i.src = src(scene, k); }); }
+  function preload(scene) { ["original", "xbrzcpp", "xbrz", "mmpx", "scalefx", "crisp12", "crisp20", "crisp24"].forEach(function (k) { var i = new Image(); i.src = src(scene, k); }); }
 
   function setPressed(group, value) {
     Array.prototype.forEach.call(group.querySelectorAll("button"), function (b) { b.setAttribute("aria-pressed", String(b.dataset.v === String(value))); });
