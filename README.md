@@ -46,8 +46,6 @@
 
 <img src="comparisons/7-faces.png" alt="Link in The Minish Cap, a face in Final Fantasy Tactics Advance and the health bar of Castlevania: Aria of Sorrow: original, xBRZ (original) and xBRZ Crisp" width="100%">
 
-Text and portraits keep their shape too, as in the spell menu of Harry Potter: Prisoner of Azkaban:
-
 <img src="comparisons/6-azkaban-menu.png" alt="Spell menu: original, xBRZ (original), MMPX Advanced and xBRZ Crisp" width="100%">
 
 <sub>More: [other games](comparisons/3-other-games-20.png)</sub>
