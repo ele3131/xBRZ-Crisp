@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="comparisons/design/banner.png" alt="xBRZ Crisp: the original xBRZ on the left, xBRZ Crisp on the right" width="100%">
+  <img src="comparisons/design/banner.png" alt="xBRZ Crisp: Golden Sun village with two magnified circles of grass, xBRZ turning it into blobs and xBRZ Crisp keeping its pixels" width="100%">
 </p>
 
 <p align="center">
