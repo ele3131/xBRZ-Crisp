@@ -3,5 +3,5 @@
   <rect x="2" y="2" width="516" height="80" rx="18" fill="url(#g)"/>
   <circle cx="54" cy="42" r="25" fill="#ffffff"/>
   <path d="M46 29 L67 42 L46 55 Z" fill="#3b63d9"/>
-  <text x="290" y="52" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="29" font-weight="700" fill="#ffffff">Comparison Tool</text>
+  <text x="296" y="52" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="27" font-weight="700" fill="#ffffff">Interactive Comparison Tool</text>
 </svg>
