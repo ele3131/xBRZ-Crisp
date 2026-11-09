@@ -104,7 +104,7 @@
 // 15. Lone pixel and L-shape tests on strong edges: xBRZ draws no line through a pixel that already
 //     has another corner cut and differs from the pixel across it, so a lone pixel keeps its shape, and
 //     only rounds a corner, without a line, where one color wraps around it in an L. Where the pixel
-//     differs from both colors of the corner by 64 or more (56 for the L), these tests use the reference
+//     differs from both colors of the corner by 64 or more (54 for the L), these tests use the reference
 //     xBRZ tolerance (30) instead of XBRZ_TOL, so a light pixel close to its background is cut, and a
 //     light tip is rounded, as in the reference xBRZ, like Isaac's leg in Golden Sun; textures and
 //     shading keep XBRZ_TOL.
