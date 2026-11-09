@@ -9,10 +9,6 @@
   🎮 Ready for RetroArch, in GLSL and slang
 </p>
 
-<p align="center">
-  <a href="https://ele3131.github.io/xBRZ-Crisp/"><img src="comparisons/design/button.svg" alt="Open the Interactive Comparison" width="420"></a>
-</p>
-
 <div align="center">
 <table align="center" width="100%">
   <tr>
@@ -25,6 +21,10 @@
 
 > [!NOTE]
 > **Which xBRZ?** xBRZ is [Zenju's C++ scaler](https://sourceforge.net/projects/xbrz/). The images here compare xBRZ Crisp with that original, version 1.9 at its default settings, labeled **xBRZ (original)**. xBRZ Crisp is not built on the C++ code: it is a RetroArch shader built on libretro's `xbrz-freescale-multipass`, a separate GLSL and slang shader that follows the xBRZ idea with its own code and thresholds. That libretro shader already includes some of xBRZ Crisp's improvements, and the comparison page shows it too, labeled **xBRZ (libretro)**.
+
+<p align="center">
+  <a href="https://ele3131.github.io/xBRZ-Crisp/"><img src="comparisons/design/button.svg" alt="Open the Interactive Comparison" width="420"></a>
+</p>
 
 <h2 align="center">🎬 Interactive Comparison</h2>
 
