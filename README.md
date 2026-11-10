@@ -124,7 +124,7 @@ Tested in RetroArch on Android (gl driver, Game Boy Advance at 6x). The slang ve
 
 <h2 align="center">🤝 Giving back to libretro</h2>
 
-Part of xBRZ Crisp is now in libretro's xBRZ shader. Starting with our first pull request on October 20, 2026, libretro's `xbrz-freescale-multipass` has taken in its port fixes, tuned thresholds and lighter output pass, plus the `xbrz-crisp` preset ([glsl #576](https://github.com/libretro/glsl-shaders/pull/576), [#577](https://github.com/libretro/glsl-shaders/pull/577), [slang #971](https://github.com/libretro/slang-shaders/pull/971), [#973](https://github.com/libretro/slang-shaders/pull/973)). None of these changes are in the original C++ xBRZ. The comparison page shows this libretro version as xBRZ (libretro), next to the original.
+Part of xBRZ Crisp is now in libretro's port of the xBRZ scaler. Starting with our first pull request on October 20, 2026, libretro's `xbrz-freescale-multipass` has taken in its port fixes, tuned thresholds and lighter output pass, plus the `xbrz-crisp` preset ([glsl #576](https://github.com/libretro/glsl-shaders/pull/576), [#577](https://github.com/libretro/glsl-shaders/pull/577), [slang #971](https://github.com/libretro/slang-shaders/pull/971), [#973](https://github.com/libretro/slang-shaders/pull/973)). None of these changes are in the original C++ xBRZ. The comparison page shows this libretro version as xBRZ (libretro), next to the original.
 
 <h2 align="center">⚖️ License</h2>
 
