@@ -146,12 +146,17 @@
 //     stands apart from its other neighbors, both corners stay square, so the darker shade does not
 //     bulge into the stripe and the side between them is straight; the darker pixel then leaks no
 //     round tip into the pixel past the stripe's end either.
+// 24. A line with nothing to go on to: a 2:1 or 1:2 line between two colors XBRZ_HOOK or more apart is drawn only
+//     where a corner at one of the two ends of its step is cut too (the pixel beside E along the line has the
+//     other half of the line) and no other corner at the point where the corner meets its neighbors draws a line
+//     (a staircase keeps its lines). Where none is and no line meets there, the corner is a plain tip like a corner
+//     without a line, so the end of a 1-pixel bar, like the end of a letter's stroke, does not grow a hook.
 // 23. A loose pixel is a square with rounded corners: where a pixel differs from each of its 4 side neighbors by
 //     XBRZ_LOOSE or more and from all 4 diagonal neighbors, and xBRZ cuts all 4 of its corners (a dot, an eye, a
 //     highlight), the corners take a plain tip with no line and the output pass draws that tip smaller than a
 //     normal one, so the pixel stays a square with softened corners instead of a circle.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 23 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 24 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -275,7 +280,7 @@ float distYCbCr(vec3 pixA, vec3 pixB)
 #define FLAG(r, f) mod(floor((r) / (f)), 2.0)
 
 //#crisp{
-// ---- Tunables of rules 14 and 17 to 23 (distances in x/255, like XBRZ_MINC), in rule order ----
+// ---- Tunables of rules 14 and 17 to 24 (distances in x/255, like XBRZ_MINC), in rule order ----
 #define XBRZ_STRAIGHT 64.0   // 14. minimum contrast of a straightened edge
 #define XBRZ_DARK 0.3        // 14. a stroke this dark (luma) or darker may have two lighter side colors
 #define XBRZ_LONE_RAMP 1.4   // 17. not a ramp: d(L,E) + d(E,O) above this times d(L,O)
@@ -285,6 +290,7 @@ float distYCbCr(vec3 pixA, vec3 pixB)
 #define XBRZ_JUNC_RAMP 1.06  // 20. not a junction but a ramp: the two shorter distances of E and its two neighbors add up to less than this times the longest
 #define XBRZ_LINE_SIDE 25.0  // 21. the other neighbor of a corner differs from a straight line by this
 #define XBRZ_LOOSE 60.0      // 23. a pixel this far from each of its 4 side neighbors is loose
+#define XBRZ_HOOK 90.0       // 24. a line between two colors this far apart needs a corner to go on to
 
 // ---- Helpers of the Crisp rules ----
 // The center of E in the original image, set once in main. It is the one place the original is read from
@@ -613,6 +619,7 @@ void main()
   vec4 sec = FLAG(info, 8.0);
   vec4 x22 = vec4(0.0);
   vec4 small23 = vec4(0.0); // 23. the corners of a loose pixel, which take a smaller tip
+  vec4 hook24 = vec4(0.0);  // 24. the corners whose line has nothing to go on to
   vec4 nn = vec4(0.0), ty = vec4(0.0), thinN = vec4(0.0), thinSteep = vec4(0.0);
   if (XBRZ_MINC > 0.0)
   {
@@ -737,6 +744,30 @@ void main()
         blendResult *= 1.0 - line21 * (1.0 - on21);
       }
 
+      // ---- 24. A line with nothing to go on to ----
+      // a 2:1 or 1:2 line between colors XBRZ_HOOK or more apart is drawn only where another corner goes on along
+      // it: the corner at either end of its step, one pixel beside E along the line (x: shallow D.z and C.z, steep
+      // B.z and G.z; y: F.w and A.w, B.w and I.w; z: F.x and G.x, H.x and C.x; w: D.y and I.y, H.y and A.y) must be
+      // cut. Where neither partner is cut, the corner is cut by a plain tip, like a corner without a line (the
+      // change is made after rule 14, which keeps the lines of a straight step), so the end of a 1-pixel bar does
+      // not grow a hook
+      if (anyCut(blendResult))
+      {
+        vec4 lone24 = line * isCut(blendResult) * abs(haveShallowLine - haveSteepLine);
+        if (dot(lone24, vec4(1.0)) > 0.0)
+        {
+          vec4 cB = cutOf(iB), cD = cutOf(iD), cF = cutOf(iF), cH = cutOf(iH), cA = cutOf(iA), cC = cutOf(iC), cG = cutOf(iG), cI = cutOf(iI);
+          vec4 partSh = vec4(max(cD.z, cC.z), max(cF.w, cA.w), max(cF.x, cG.x), max(cD.y, cI.y));
+          vec4 partSt = vec4(max(cB.z, cG.z), max(cB.w, cI.w), max(cH.x, cC.x), max(cH.y, cA.y));
+          // the line is steep on the screen where the word says steep at x and z, and shallow at y and w
+          vec4 steepOnScreen = vec4(haveSteepLine.x, haveShallowLine.y, haveSteepLine.z, haveShallowLine.w);
+          vec4 part = mix(partSh, partSt, steepOnScreen);
+          vec4 pDist = vec4(dist255(E, sec.x > 0.5 ? B : D), dist255(E, sec.y > 0.5 ? F : B), dist255(E, sec.z > 0.5 ? H : F), dist255(E, sec.w > 0.5 ? D : H));
+          vec4 hook = lone24 * (1.0 - part) * vec4(greaterThanEqual(pDist, vec4(XBRZ_HOOK)));
+          hook24 = hook;
+        }
+      }
+
       // ---- 22. Crossed cuts ----
       // a cut corner whose color comes from the neighbor n stays square when n's corner at the other end of
       // their shared side cuts back into E (the two cuts cross along that side), E and n are close shades
@@ -843,6 +874,9 @@ void main()
   vec4 over = vec4(greaterThan(nn, vec4(0.0)));
   haveSteepLine = mix(haveSteepLine, vec4(equal(ty, vec4(1.0))), over);
   haveShallowLine = mix(haveShallowLine, vec4(equal(ty, vec4(2.0))), over);
+  // 24. a line with nothing to go on to becomes a plain tip, unless rule 14 gave it a line of its own slope
+  hook24 *= 1.0 - over;
+  line *= 1.0 - hook24; haveShallowLine *= 1.0 - hook24; haveSteepLine *= 1.0 - hook24;
   thinN *= 1.0 - x22; // 22. a crossed cut takes no thin end either
   vec4 isThin = vec4(greaterThan(thinN, vec4(0.0)));
   vec4 slope = mix(nn, thinN, isThin);
