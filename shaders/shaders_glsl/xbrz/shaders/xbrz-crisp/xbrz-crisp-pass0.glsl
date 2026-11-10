@@ -134,9 +134,16 @@
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
 //     straight line of three of its color along the pixel's side, where the corner's other neighbor
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
-//     bending into the pixel, and checkered patterns keep their squares.
+//     bending into the pixel, and checkered patterns keep their squares. A strong thin line of four that
+//     starts beside the pixel and runs toward the corner counts too, and where the other neighbor is darker
+//     and goes on along the cut, the corner takes that neighbor's color instead of staying square.
+// 22. Crossed cuts: where two neighboring pixels of close but distinct shades cut into each other from the two ends
+//     of their shared side, the lighter one ends a 45-degree stripe of its color and the darker one
+//     stands apart from its other neighbors, both corners stay square, so the darker shade does not
+//     bulge into the stripe and the side between them is straight; the darker pixel then leaks no
+//     round tip into the pixel past the stripe's end either.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 21 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 22 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.

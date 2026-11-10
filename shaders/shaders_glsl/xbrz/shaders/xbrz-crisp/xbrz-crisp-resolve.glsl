@@ -134,9 +134,16 @@
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
 //     straight line of three of its color along the pixel's side, where the corner's other neighbor
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
-//     bending into the pixel, and checkered patterns keep their squares.
+//     bending into the pixel, and checkered patterns keep their squares. A strong thin line of four that
+//     starts beside the pixel and runs toward the corner counts too, and where the other neighbor is darker
+//     and goes on along the cut, the corner takes that neighbor's color instead of staying square.
+// 22. Crossed cuts: where two neighboring pixels of close but distinct shades cut into each other from the two ends
+//     of their shared side, the lighter one ends a 45-degree stripe of its color and the darker one
+//     stands apart from its other neighbors, both corners stay square, so the darker shade does not
+//     bulge into the stripe and the side between them is straight; the darker pixel then leaks no
+//     round tip into the pixel past the stripe's end either.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 21 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 22 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -421,6 +428,44 @@ float thinEnd(vec2 v, vec2 h, bool steep, float xLine)
   return (r.x >= 3.0 && r.y == (steep ? 1.0 : 2.0)) ? r.x : 0.0;
 }
 float drawsLine(float r) { return float(r < 128.0 && BLEND(r) > 0.0 && BLEND(r) < 3.0 && FLAG(r, 4.0) > 0.0); }
+// 22. the pixel at o (from stepBase): its color goes on along the diagonal d (a 45-degree stripe), it
+// differs from all 4 of its neighbors, and its brightness
+float stripe22(vec2 o, vec2 d) { vec3 c = PS(o); return (distYCbCr(c, PS(o + d)) * 255.0 < 15.0 || distYCbCr(c, PS(o - d)) * 255.0 < 15.0) ? 1.0 : 0.0; }
+float lone22(vec2 o) { vec3 c = PS(o); return (distYCbCr(c, PS(o + vec2(-1., 0.))) * 255.0 >= 15.0 && distYCbCr(c, PS(o + vec2(1., 0.))) * 255.0 >= 15.0 && distYCbCr(c, PS(o + vec2(0., -1.))) * 255.0 >= 15.0 && distYCbCr(c, PS(o + vec2(0., 1.))) * 255.0 >= 15.0) ? 1.0 : 0.0; }
+float luma22(vec2 o) { return dot(PS(o), vec3(0.2627, 0.6780, 0.0593)); }
+// 22. n's corner (its info word r) paints E (E is its candidate s: 0 first, 1 second), one of the two cuts
+// was blocked by the diagonal limit (mbl: E's corner), one of them draws a line along the shared side (the
+// flag "along" on n's corner, "mine" on E's), E and n are distinct but close shades (under 64 apart, and
+// at least 45 when the darker one sits on a ramp down to a still darker pixel past it), and
+// the lighter of the two pixels lies on a 45-degree stripe of its color along d while the darker one differs
+// from all 4 of its neighbors
+// 22. a plain round corner of E that takes its color from p, where p is a darker pixel apart from its 4
+// neighbors at the end of a lighter 45-degree stripe (the stripe ends at p - q, beside p), E, p, q and the
+// corner pixel p + q are four colors, and p and the stripe's end cross their cuts (see back22): the stripe
+// stops at p, so p's color leaks no tip into E
+float corner22(vec4 w, vec2 c) { return c.y < 0.0 ? (c.x < 0.0 ? w.x : w.y) : (c.x > 0.0 ? w.z : w.w); }
+float tip22(vec2 p, vec2 q, vec3 e, vec2 c0)
+{
+  vec3 cp = PS(p), cl = PS(p - q);
+  float dl = distYCbCr(cl, cp) * 255.0;
+  if (dl < 15.0 || dl >= 64.0 || dot(cl - cp, vec3(0.2627, 0.6780, 0.0593)) <= 0.0) return 0.0;
+  vec3 cq = PS(q), ck = PS(p + q);
+  if (distYCbCr(cp, cq) * 255.0 < 15.0 || distYCbCr(cp, ck) * 255.0 < 15.0 || distYCbCr(cq, ck) * 255.0 < 15.0 || distYCbCr(e, ck) * 255.0 < 15.0 || distYCbCr(e, cp) * 255.0 < 15.0) return 0.0;
+  if (distYCbCr(cl, PS(p - q + p - q)) * 255.0 >= 15.0 || distYCbCr(cp, PS(p + p)) * 255.0 < 15.0) return 0.0;
+  vec4 iP = floor(INFO(c0 + p * INFO_STEP) * 255.0 + 0.5), iL = floor(INFO(c0 + (p - q) * INFO_STEP) * 255.0 + 0.5);
+  float rP = corner22(iP, -p - q), rL = corner22(iL, p + q);
+  if (BLEND(rP) == 0.0 || BLEND(rL) == 0.0 || max(FLAG(rP, 128.0), FLAG(rL, 128.0)) < 0.5) return 0.0;
+  return 1.0;
+}
+float back22(float r, float s, vec2 n, vec2 d, float along, float mine, float mbl)
+{
+  if (BLEND(r) == 0.0 || abs(FLAG(r, 8.0) - s) > 0.5 || max(FLAG(r, 128.0), mbl) < 0.5 || max(FLAG(r, along), mine) < 0.5) return 0.0;
+  float dn = distYCbCr(PS(vec2(0.)), PS(n)) * 255.0;
+  if (dn >= 64.0) return 0.0;
+  vec2 lit = luma22(n) > luma22(vec2(0.)) ? n : vec2(0.), dark = luma22(n) > luma22(vec2(0.)) ? vec2(0.) : n;
+  if (dn < 45.0 && luma22(dark + dark - lit) < luma22(dark)) return 0.0; // a faint step on a ramp toward a darker pixel stays
+  return stripe22(lit, d) * lone22(dark);
+}
 
 //#crisp}
 // The parts of rules 1, 2 and 9 that need the neighbours' decisions, once per game pixel (they were in
@@ -591,9 +636,10 @@ void main()
   }
 
   // ---- 21. A straight line does not bend ----
-  // a cut corner whose color comes from a pixel in a straight line of three of its color along E's side
-  // (the pixel and its two neighbors along that side), where the corner's other neighbor differs from it
-  // by more than XBRZ_LINE_SIDE, stays square: the line goes on straight past E instead of bending into it
+  // a cut corner whose color comes from a pixel p in a straight line of its color along E's side (three
+  // pixels centered on p, or a strong line of four that starts at p and runs toward the corner), where the
+  // corner's other neighbor q differs from it by more than XBRZ_LINE_SIDE, does not take the line's color:
+  // it takes q's color where q is darker than E and goes on along the cut, and otherwise stays square
   if (XBRZ_MINC > 0.0 && dot(vec4(greaterThan(blendResult, vec4(0.0))), vec4(1.0)) > 0.0)
   {
     vec4 s21 = FLAG(info, 8.0);
@@ -602,12 +648,62 @@ void main()
     vec2 pY = s21.y > 0.5 ? vec2(1., 0.) : vec2(0., -1.), qY = s21.y > 0.5 ? vec2(0., -1.) : vec2(1., 0.);
     vec2 pZ = s21.z > 0.5 ? vec2(0., 1.) : vec2(1., 0.), qZ = s21.z > 0.5 ? vec2(1., 0.) : vec2(0., 1.);
     vec2 pW = s21.w > 0.5 ? vec2(-1., 0.) : vec2(0., 1.), qW = s21.w > 0.5 ? vec2(0., 1.) : vec2(-1., 0.);
-    // the direction of E's side next to p: horizontal for B and H, vertical for D and F
+    #define DIST21(a, b) (distYCbCr(P(a.x, a.y), P(b.x, b.y)) * 255.0)
+    #define SAME21(a, b) (DIST21(a, b) < 15.0)
+    // the direction of E's side next to p (horizontal for B and H, vertical for D and F), and the same
+    // direction pointing toward the corner
     #define ALONG21(p) (abs(p.y) > 0.5 ? vec2(1., 0.) : vec2(0., 1.))
-    #define LINE21(p, q) ((distYCbCr(P(p.x, p.y), P(p.x + ALONG21(p).x, p.y + ALONG21(p).y)) * 255.0 < 15.0 && distYCbCr(P(p.x, p.y), P(p.x - ALONG21(p).x, p.y - ALONG21(p).y)) * 255.0 < 15.0 && distYCbCr(P(p.x, p.y), P(q.x, q.y)) * 255.0 > XBRZ_LINE_SIDE) ? 1.0 : 0.0)
+    #define TOWARD21(p, q) (abs(p.y) > 0.5 ? vec2(q.x, 0.) : vec2(0., q.y))
+    // p in the middle of three of its color along E's side
+    #define MID21(p) (SAME21(p, (p + ALONG21(p))) && SAME21(p, (p - ALONG21(p))))
+    // a line of four from p toward the corner: it differs from E by 64 or more and is thin (the pixel
+    // across it from E is closer to E than to p), q's color does not cross it (at p - q), the cut ends at p
+    // (the pixel past p along the cut is closer to E than to p and q), and E's color does not go on along
+    // the cut on either side
+    #define FROM21(p, q) (DIST21(p, vec2(0.)) >= 64.0 && !SAME21(q, (p - q)) && DIST21((2.0 * p), p) > DIST21((2.0 * p), vec2(0.)) && SAME21(p, (p + TOWARD21(p, q))) && SAME21(p, (p + 2.0 * TOWARD21(p, q))) && SAME21(p, (p + 3.0 * TOWARD21(p, q))) && DIST21((2.0 * p - q), vec2(0.)) < min(DIST21((2.0 * p - q), p), DIST21((2.0 * p - q), q)) && DIST21(vec2(0.), (q - p)) >= 20.0 && DIST21(vec2(0.), (p - q)) >= 20.0)
+    #define LINE21(p, q) (((MID21(p) || FROM21(p, q)) && DIST21(p, q) > XBRZ_LINE_SIDE) ? 1.0 : 0.0)
+    // q takes the corner: q's color goes on away from E (2q) and along the cut one step past q (2q - p),
+    // the line differs from E by 64 or more, the pixel beside q toward E is closer to E than to q, and q is
+    // darker than E
+    #define ON21(p, q) ((SAME21(q, (2.0 * q)) && DIST21(p, vec2(0.)) >= 64.0 && SAME21(q, (2.0 * q - p)) && DIST21((q - p), vec2(0.)) < DIST21((q - p), q) && dot(P(q.x, q.y), vec3(0.2627, 0.6780, 0.0593)) < dot(P(0., 0.), vec3(0.2627, 0.6780, 0.0593))) ? 1.0 : 0.0)
     vec4 line21 = vec4(blendResult.x > 0.0 ? LINE21(pX, qX) : 0.0, blendResult.y > 0.0 ? LINE21(pY, qY) : 0.0,
                        blendResult.z > 0.0 ? LINE21(pZ, qZ) : 0.0, blendResult.w > 0.0 ? LINE21(pW, qW) : 0.0);
-    blendResult *= 1.0 - line21;
+    vec4 on21 = line21 * vec4(ON21(pX, qX), ON21(pY, qY), ON21(pZ, qZ), ON21(pW, qW));
+    // a corner that takes q's color becomes a plain corner (no line) in that color
+    info += 8.0 * on21 * (1.0 - 2.0 * s21);
+    haveShallowLine *= 1.0 - on21;
+    haveSteepLine *= 1.0 - on21;
+    blendResult *= 1.0 - line21 * (1.0 - on21);
+  }
+
+  // ---- 22. Crossed cuts ----
+  // a cut corner whose color comes from the neighbor n stays square when n's corner at the other end of
+  // their shared side cuts back into E (the two cuts cross along that side), E and n are close shades
+  // (under 64 apart), and the lighter of the two ends a 45-degree stripe of its color next to a darker pixel that
+  // differs from its 4 neighbors (see back22); n's corner stays square the same way, so the side between
+  // them is straight and the darker shade does not bulge into the stripe
+  vec4 x22 = vec4(0.0);
+  if (XBRZ_MINC > 0.0 && dot(vec4(greaterThan(blendResult, vec4(0.0))), vec4(1.0)) > 0.0)
+  {
+    stepBase = ocoord;
+    vec4 s22 = FLAG(info, 8.0), sh22 = FLAG(info, 16.0), st22 = FLAG(info, 64.0), bl22 = FLAG(INFO_AT(0.0, 0.0), 128.0);
+    vec4 iD = INFO_AT(-1.0, 0.0), iB = INFO_AT(0.0, -1.0), iF = INFO_AT(1.0, 0.0), iH = INFO_AT(0.0, 1.0);
+    vec2 dXZ = vec2(1., -1.), dYW = vec2(1., 1.);
+    if (blendResult.x > 0.0) x22.x = s22.x > 0.5 ? back22(iB.z, 1.0, vec2(0., -1.), dXZ, 16.0, sh22.x, bl22.x) : back22(iD.z, 0.0, vec2(-1., 0.), dXZ, 64.0, st22.x, bl22.x);
+    if (blendResult.y > 0.0) x22.y = s22.y > 0.5 ? back22(iF.w, 1.0, vec2(1., 0.), dYW, 64.0, st22.y, bl22.y) : back22(iB.w, 0.0, vec2(0., -1.), dYW, 16.0, sh22.y, bl22.y);
+    if (blendResult.z > 0.0) x22.z = s22.z > 0.5 ? back22(iH.x, 1.0, vec2(0., 1.), dXZ, 16.0, sh22.z, bl22.z) : back22(iF.x, 0.0, vec2(1., 0.), dXZ, 64.0, st22.z, bl22.z);
+    if (blendResult.w > 0.0) x22.w = s22.w > 0.5 ? back22(iD.y, 1.0, vec2(-1., 0.), dYW, 64.0, st22.w, bl22.w) : back22(iH.y, 0.0, vec2(0., 1.), dYW, 16.0, sh22.w, bl22.w);
+    blendResult *= 1.0 - x22;
+    // and a round corner at the far end of such a lone darker pixel takes no tip of it (see tip22)
+    vec4 L22 = FLAG(info, 4.0), t22 = vec4(0.0);
+    vec3 e22 = PS(vec2(0.0));
+    vec2 vD = vec2(-1., 0.), vB = vec2(0., -1.), vF = vec2(1., 0.), vH = vec2(0., 1.);
+    if (blendResult.x > 0.0 && L22.x < 0.5) t22.x = s22.x > 0.5 ? tip22(vB, vD, e22, coord) : tip22(vD, vB, e22, coord);
+    if (blendResult.y > 0.0 && L22.y < 0.5) t22.y = s22.y > 0.5 ? tip22(vF, vB, e22, coord) : tip22(vB, vF, e22, coord);
+    if (blendResult.z > 0.0 && L22.z < 0.5) t22.z = s22.z > 0.5 ? tip22(vH, vF, e22, coord) : tip22(vF, vH, e22, coord);
+    if (blendResult.w > 0.0 && L22.w < 0.5) t22.w = s22.w > 0.5 ? tip22(vD, vH, e22, coord) : tip22(vH, vD, e22, coord);
+    blendResult *= 1.0 - t22;
+    x22 = max(x22, t22);
   }
 
   // ---- 14. Straight steps ----
@@ -649,6 +745,7 @@ void main()
   vec4 over = vec4(greaterThan(nn, vec4(0.0)));
   haveSteepLine = mix(haveSteepLine, vec4(equal(ty, vec4(1.0))), over);
   haveShallowLine = mix(haveShallowLine, vec4(equal(ty, vec4(2.0))), over);
+  thinN *= 1.0 - x22; // 22. a crossed cut takes no thin end either
   vec4 isThin = vec4(greaterThan(thinN, vec4(0.0)));
   vec4 slope = mix(nn, thinN, isThin);
   // the output word: BLEND 1 cut, 2 the thin end of a straight step (its line starts 1 pixel further
