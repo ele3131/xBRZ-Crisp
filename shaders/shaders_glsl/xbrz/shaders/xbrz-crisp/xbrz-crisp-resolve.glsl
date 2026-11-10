@@ -107,8 +107,20 @@
 //     xBRZ tolerance (30) instead of XBRZ_TOL, so a light pixel close to its background is cut, and a
 //     light tip is rounded, as in the reference xBRZ, like Isaac's leg in Golden Sun; textures and
 //     shading keep XBRZ_TOL.
+// 16. Line in another color: where xBRZ draws a line through a lone pixel along a pair of one color
+//     but paints the corner with the other neighbor's color, which differs from the line's by more
+//     than XBRZ_TINT and does not lie on an antialiasing ramp with it, the corner stays square when
+//     the line is lighter than the pixel or the pixel sits in a straight line of one color (its two
+//     opposite neighbors match, like the stripes of a background), and otherwise the line is drawn at
+//     45 degrees in its own color. A single pixel keeps its shape instead of being pierced by a spike
+//     of a third color, like the wine pixel at a junction of four colors in Golden Sun's village.
+// 17. A line drawn on one side only: where xBRZ cuts a corner with a line between two lone pixels
+//     (neither goes on along the line and the pixel's own color does not repeat along it) but the
+//     pixel across the line draws the same line in the first pixel's color, and the three colors are
+//     not an antialiasing ramp, the corner stays square, so the line does not stick a spike into the
+//     pixel, like the light gray pixel under the pot in Golden Sun's village.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 15 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 17 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -272,6 +284,7 @@ vec2 stepBase = vec2(0.0);
 vec3 PS(vec2 v) { return COMPAT_TEXTURE(PassPrev2Texture, stepBase + ORIG_SIZE.zw * v).rgb; }
 bool sameTone(vec3 a, vec3 b) { return distYCbCr(a, b) * 255.0 <= 20.0; }
 #define XBRZ_DARK 0.3       // 14. a stroke this dark (luma) or darker may have two lighter side colors
+#define XBRZ_LONE_RAMP 1.4 // 17. not a ramp: d(L,E) + d(E,O) above this times d(L,O)
 // a side pixel clearly lighter than a dark stroke
 bool lighterSide(vec3 side, vec3 stroke) { return distYCbCr(side, stroke) * 255.0 >= XBRZ_STRAIGHT && dot(side - stroke, vec3(0.2627, 0.6780, 0.0593)) > 0.0; }
 // counts the colors on the sides of a dark stroke (up to 3): a letter's shadow has two, the letter and
@@ -462,6 +475,47 @@ void main()
   }
 
 //#crisp{
+  // ---- 17. A line drawn on one side only ----
+  // a corner that draws xBRZ's line in the line's own color, where the pixel across the line (O) draws
+  // the same line in E's color, stays square: the line is E's color there, not a spike into E
+  if (XBRZ_MINC > 0.0)
+  {
+    vec4 sh = haveShallowLine, st = haveSteepLine;
+    vec4 on = vec4(greaterThan(blendResult, vec4(0.0))) * FLAG(info, 4.0) * abs(sh - st)
+            * vec4(equal(FLAG(info, 8.0), st));
+    if (dot(on, vec4(1.0)) > 0.0)
+    {
+      vec4 oU = INFO_AT(0.0, -1.0), oL = INFO_AT(-1.0, 0.0), oR = INFO_AT(1.0, 0.0), oD = INFO_AT(0.0, 1.0);
+      // O's matching corner: x: shallow B.z, steep D.z; y: shallow F.w, steep B.w;
+      // z: shallow H.x, steep F.x; w: shallow D.y, steep H.y
+      vec4 oSh = vec4(oU.z, oR.w, oD.x, oL.y), oSt = vec4(oL.z, oU.w, oR.x, oD.y);
+      vec4 o = mix(oSt, oSh, sh);
+      vec4 oDraw = vec4(lessThan(o, vec4(128.0))) * vec4(greaterThan(BLEND(o), vec4(0.0))) * FLAG(o, 4.0)
+                 * mix(FLAG(o, 64.0), FLAG(o, 16.0), sh) * vec4(equal(FLAG(o, 8.0), sh));
+      // the line is only two lone pixels: neither goes on along the line
+      #define CONT(ax, ay, bx, by) float(distYCbCr(P(ax, ay), P(bx, by)) * 255.0 < 15.0)
+      vec4 cSh = vec4(max(CONT(-1., 0., -2., 0.), CONT(1., -1., 2., -1.)), max(CONT(0., -1., 0., -2.), CONT(1., 1., 1., 2.)),
+                      max(CONT(1., 0., 2., 0.), CONT(-1., 1., -2., 1.)), max(CONT(0., 1., 0., 2.), CONT(-1., -1., -1., -2.)));
+      vec4 cSt = vec4(max(CONT(0., -1., 0., -2.), CONT(-1., 1., -1., 2.)), max(CONT(1., 0., 2., 0.), CONT(-1., -1., -2., -1.)),
+                      max(CONT(0., 1., 0., 2.), CONT(1., -1., 1., -2.)), max(CONT(-1., 0., -2., 0.), CONT(1., 1., 2., 1.)));
+      oDraw *= 1.0 - mix(cSt, cSh, sh);
+      // and E's color does not repeat along the line (a dotted line with E as one of its dots)
+      vec3 E1 = P(0., 0.);
+      #define REP(vx, vy) max(float(distYCbCr(E1, P(vx, vy)) * 255.0 < 15.0), float(distYCbCr(E1, P(-(vx), -(vy))) * 255.0 < 15.0))
+      vec4 rSh = vec4(REP(2., -1.), REP(1., 2.), REP(2., -1.), REP(1., 2.));
+      vec4 rSt = vec4(REP(1., -2.), REP(2., 1.), REP(1., -2.), REP(2., 1.));
+      oDraw *= 1.0 - mix(rSt, rSh, sh);
+      // and the line's color L, E and O are not an antialiasing ramp (for a steep line L and O swap,
+      // which leaves the test the same)
+      vec3 pB = P(0., -1.), pD = P(-1., 0.), pF = P(1., 0.), pH = P(0., 1.);
+      vec4 dLE = vec4(distYCbCr(pD, E1), distYCbCr(pB, E1), distYCbCr(pF, E1), distYCbCr(pH, E1));
+      vec4 dOE = vec4(distYCbCr(pB, E1), distYCbCr(pF, E1), distYCbCr(pH, E1), distYCbCr(pD, E1));
+      vec4 dLO = vec4(distYCbCr(pD, pB), distYCbCr(pB, pF), distYCbCr(pF, pH), distYCbCr(pH, pD));
+      oDraw *= vec4(greaterThan(dLE + dOE, XBRZ_LONE_RAMP * dLO));
+      blendResult *= 1.0 - on * oDraw;
+    }
+  }
+
   // ---- 14. Straight steps ----
   // nn: the slope of a cut corner's line (0: xBRZ's), ty: its type (1 steep, 2 shallow); a free corner
   // next to the step pixel along the line (steep: E + v, shallow: E + h) takes that line's thin end

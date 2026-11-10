@@ -107,8 +107,20 @@
 //     xBRZ tolerance (30) instead of XBRZ_TOL, so a light pixel close to its background is cut, and a
 //     light tip is rounded, as in the reference xBRZ, like Isaac's leg in Golden Sun; textures and
 //     shading keep XBRZ_TOL.
+// 16. Line in another color: where xBRZ draws a line through a lone pixel along a pair of one color
+//     but paints the corner with the other neighbor's color, which differs from the line's by more
+//     than XBRZ_TINT and does not lie on an antialiasing ramp with it, the corner stays square when
+//     the line is lighter than the pixel or the pixel sits in a straight line of one color (its two
+//     opposite neighbors match, like the stripes of a background), and otherwise the line is drawn at
+//     45 degrees in its own color. A single pixel keeps its shape instead of being pierced by a spike
+//     of a third color, like the wine pixel at a junction of four colors in Golden Sun's village.
+// 17. A line drawn on one side only: where xBRZ cuts a corner with a line between two lone pixels
+//     (neither goes on along the line and the pixel's own color does not repeat along it) but the
+//     pixel across the line draws the same line in the first pixel's color, and the three colors are
+//     not an antialiasing ramp, the corner stays square, so the line does not stick a spike into the
+//     pixel, like the light gray pixel under the pot in Golden Sun's village.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 15 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 17 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.

@@ -107,8 +107,20 @@
 //     xBRZ tolerance (30) instead of XBRZ_TOL, so a light pixel close to its background is cut, and a
 //     light tip is rounded, as in the reference xBRZ, like Isaac's leg in Golden Sun; textures and
 //     shading keep XBRZ_TOL.
+// 16. Line in another color: where xBRZ draws a line through a lone pixel along a pair of one color
+//     but paints the corner with the other neighbor's color, which differs from the line's by more
+//     than XBRZ_TINT and does not lie on an antialiasing ramp with it, the corner stays square when
+//     the line is lighter than the pixel or the pixel sits in a straight line of one color (its two
+//     opposite neighbors match, like the stripes of a background), and otherwise the line is drawn at
+//     45 degrees in its own color. A single pixel keeps its shape instead of being pierced by a spike
+//     of a third color, like the wine pixel at a junction of four colors in Golden Sun's village.
+// 17. A line drawn on one side only: where xBRZ cuts a corner with a line between two lone pixels
+//     (neither goes on along the line and the pixel's own color does not repeat along it) but the
+//     pixel across the line draws the same line in the first pixel's color, and the three colors are
+//     not an antialiasing ramp, the corner stays square, so the line does not stick a spike into the
+//     pixel, like the light gray pixel under the pot in Golden Sun's village.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 15 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 17 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -283,6 +295,8 @@ uniform COMPAT_PRECISION float XBRZ_DIAG;
 #define XBRZ_GUARD 30.0     // 15. lone pixel test tolerance on strong edges (reference xBRZ)
 #define XBRZ_GUARD_EDGE 64.0 // 15. a strong edge: the pixel differs from both corner colors by this much
 #define XBRZ_GUARD_EDGE_L 54.0 // 15. the same for the L-shape test
+#define XBRZ_TINT 20.0      // 16. the two colors beside the line differ by more than this
+#define XBRZ_TINT_RAMP 1.2  // 16. not a ramp: d(E,P) + d(P,L) above this times d(E,L)
 #define XBRZ_DIAG_AA 92.0   // 2. diagonal limit on antialiasing ramps
 #define XBRZ_RAMP 1.15      // 2, 6. a ramp: (d(E,P) + d(P,Q)) / d(E,Q) up to this
 #define XBRZ_STRIPE 64.0    // 2, 3. a diagonal stripe keeps a close color (within this) along its length
@@ -1280,6 +1294,37 @@ void main()
       d = n;
     }
     res *= 1.0 - tile;
+  }
+  // 16. Line in another color: a lone E whose corner draws a line along a pair of one color but is
+  // painted with the other candidate
+  if (XBRZ_MINC > 0.0 && !(eq(A, E) || eq(B, E) || eq(C, E) || eq(D, E) || eq(E, F) || eq(E, G) || eq(E, H) || eq(E, I)))
+  {
+    vec4 r = res;
+    vec4 sh = FLAG(r, 16.0), st = FLAG(r, 64.0), sec = FLAG(r, 8.0);
+    // a shallow line is drawn along the first candidate's color and a steep one along the second's; the
+    // corner is painted with the other candidate, which differs from it by more than XBRZ_TINT
+    vec4 cand = vec4(DistYCbCr(B, D), DistYCbCr(B, F), DistYCbCr(F, H), DistYCbCr(D, H));
+    vec4 tint = vec4(lessThan(r, vec4(128.0))) * vec4(greaterThan(BLEND(r), vec4(0.0))) * FLAG(r, 4.0) *
+                abs(sh - st) * (sh * sec + st * (1.0 - sec)) * vec4(greaterThan(cand * 255.0, vec4(XBRZ_TINT)));
+    // the two pixels that make the line have one color
+    vec4 pSh = vec4(DistYCbCr(C, D), DistYCbCr(B, I), DistYCbCr(F, G), DistYCbCr(A, H));
+    vec4 pSt = vec4(DistYCbCr(B, G), DistYCbCr(A, F), DistYCbCr(C, H), DistYCbCr(D, I));
+    tint *= vec4(lessThan(sh * pSh + st * pSt, vec4(EQUAL_COLOR_TOLERANCE)));
+    // E, the paint color P and the line's color L are not an antialiasing ramp
+    vec4 dE1 = vec4(DistYCbCr(D, E), DistYCbCr(B, E), DistYCbCr(E, F), DistYCbCr(E, H));
+    vec4 dE2 = vec4(DistYCbCr(B, E), DistYCbCr(E, F), DistYCbCr(E, H), DistYCbCr(D, E));
+    vec4 dP = mix(dE1, dE2, sec), dL = mix(dE2, dE1, sec);
+    tint *= vec4(greaterThan(dP + cand, XBRZ_TINT_RAMP * dL));
+    // a line darker than E is drawn at 45 degrees in its own color; a lighter one, or any line through an
+    // E that sits in a straight line of one color (its two opposite neighbors match), leaves the corner square
+    vec4 lumC1 = vec4(dot(D, lumaW), dot(B, lumaW), dot(F, lumaW), dot(H, lumaW));
+    vec4 lumC2 = vec4(dot(B, lumaW), dot(F, lumaW), dot(H, lumaW), dot(D, lumaW));
+    vec4 lumLine = mix(lumC1, lumC2, st);
+    bool straight = DistYCbCr(D, F) < EQUAL_COLOR_TOLERANCE || DistYCbCr(B, H) < EQUAL_COLOR_TOLERANCE;
+    vec4 dark = vec4(lessThan(lumLine, vec4(dot(E, lumaW)))) * (straight ? 0.0 : 1.0);
+    vec4 flip = st - sec;  // +1: paint the second candidate, -1: the first
+    res -= tint * dark * (16.0 * sh + 64.0 * st + 32.0 * FLAG(r, 32.0) - 8.0 * flip);
+    res *= 1.0 - tint * (1.0 - dark);
   }
   FRAG_OUT = res / 255.0;
 }
