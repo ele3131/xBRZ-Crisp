@@ -131,7 +131,10 @@
 //     (XBRZ_JUNCTION) stays square where no line goes on through it (neither color continues past the
 //     corner, the pixel's own color does not continue along the cut, and fewer than three pixels in a
 //     row cut that corner), so a pixel at a junction of several colors keeps its square shape, while
-//     antialiased curves, whose cuts run on, stay round.
+//     antialiased curves, whose cuts run on, stay round. A corner on a dark outline with an
+//     antialiasing pixel is still cut: the pixel and its two neighbors form a ramp (XBRZ_JUNC_RAMP),
+//     the darkest of them is dark, and one neighbor's color goes on just past the other along the cut,
+//     like the outline of a neck that runs on behind its transition pixel.
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
 //     straight line of three of its color along the pixel's side, where the corner's other neighbor
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of

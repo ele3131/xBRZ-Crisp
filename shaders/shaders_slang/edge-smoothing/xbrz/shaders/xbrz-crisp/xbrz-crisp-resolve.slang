@@ -131,7 +131,10 @@
 //     (XBRZ_JUNCTION) stays square where no line goes on through it (neither color continues past the
 //     corner, the pixel's own color does not continue along the cut, and fewer than three pixels in a
 //     row cut that corner), so a pixel at a junction of several colors keeps its square shape, while
-//     antialiased curves, whose cuts run on, stay round.
+//     antialiased curves, whose cuts run on, stay round. A corner on a dark outline with an
+//     antialiasing pixel is still cut: the pixel and its two neighbors form a ramp (XBRZ_JUNC_RAMP),
+//     the darkest of them is dark, and one neighbor's color goes on just past the other along the cut,
+//     like the outline of a neck that runs on behind its transition pixel.
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
 //     straight line of three of its color along the pixel's side, where the corner's other neighbor
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
@@ -278,6 +281,7 @@ bool sameTone(vec3 a, vec3 b) { return distYCbCr(a, b) * 255.0 <= 20.0; }
 #define XBRZ_ISO 40.0      // 19. a pixel this far (x/255) from all 8 of its neighbors keeps out of their corners
 #define XBRZ_JUNCTION 40.0 // 20. two neighbors this far apart (x/255) do not make one edge across a corner
 #define XBRZ_JUNC_NEAR 20.0 // 20. a color this close (x/255) to the next pixel goes on along the cut
+#define XBRZ_JUNC_RAMP 1.06 // 20. not a junction but a ramp: the two shorter distances of E and its two neighbors add up to less than this times the longest
 #define XBRZ_LINE_SIDE 25.0 // 21. the other neighbor of a corner differs from a straight line by this (x/255)
 // 19. 1.0 when the pixel c differs from all 8 of its neighbors by XBRZ_ISO or more
 float isoOf(vec3 c, vec3 n0, vec3 n1, vec3 n2, vec3 n3, vec3 n4, vec3 n5, vec3 n6, vec3 n7)
@@ -577,6 +581,7 @@ void main()
   // a cut corner between two neighbors of clearly different colors (XBRZ_JUNCTION) stays square where
   // nothing goes on along the cut: neither neighbor's color continues past the corner, E's color does
   // not continue along the cut, and fewer than three pixels in a row cut that corner along the line
+  // (a corner on a dark outline with an antialiasing pixel is left to xBRZ: see ramp20 and cr20)
   if (XBRZ_MINC > 0.0 && dot(vec4(greaterThan(blendResult, vec4(0.0))), vec4(1.0)) > 0.0)
   {
     vec3 qA = P(-1., -1.), qB = P(0., -1.), qC = P(1., -1.), qD = P(-1., 0.), qE = P(0., 0.);
@@ -584,6 +589,16 @@ void main()
     #define DD20(a, b) (distYCbCr(a, b) * 255.0)
     #define NEAR20(a, b) (DD20(a, b) < XBRZ_JUNC_NEAR ? 1.0 : 0.0)
     vec4 cand20 = vec4(DD20(qB, qD), DD20(qB, qF), DD20(qF, qH), DD20(qD, qH));
+    // the three colors E and the two neighbors of a corner form a ramp (their distances sum to under
+    // RAMP + 1 times the longest), and one neighbor's color goes on just past the other along the cut
+    vec4 dE1 = vec4(DD20(qE, qD), DD20(qE, qB), DD20(qE, qF), DD20(qE, qH));
+    vec4 dE2 = vec4(DD20(qE, qB), DD20(qE, qF), DD20(qE, qH), DD20(qE, qD));
+    vec4 ramp20 = vec4(lessThan(dE1 + dE2 + cand20, (1.0 + XBRZ_JUNC_RAMP) * max(cand20, max(dE1, dE2))));
+    vec4 cr20 = max(vec4(NEAR20(qB, P(-2., 1.)), NEAR20(qF, P(-1., -2.)), NEAR20(qH, P(2., -1.)), NEAR20(qD, P(1., 2.))),
+                    vec4(NEAR20(qD, P(1., -2.)), NEAR20(qB, P(2., 1.)), NEAR20(qF, P(-1., 2.)), NEAR20(qH, P(-2., -1.))));
+    #define LU20(c) dot(c, vec3(0.2627, 0.6780, 0.0593))
+    vec4 lu20 = vec4(LU20(qD), LU20(qB), LU20(qF), LU20(qH));
+    vec4 lmin20 = min(min(lu20, lu20.yzwx), vec4(LU20(qE)));
     // each neighbor's color past the corner, along the cut (x: D and B, y: B and F, z: F and H, w: H and D)
     vec4 ext1 = vec4(NEAR20(qD, P(-2., 1.)), NEAR20(qB, P(-1., -2.)), NEAR20(qF, P(2., -1.)), NEAR20(qH, P(1., 2.)));
     vec4 ext2 = vec4(NEAR20(qB, P(1., -2.)), NEAR20(qF, P(2., 1.)), NEAR20(qH, P(-1., 2.)), NEAR20(qD, P(-2., -1.)));
@@ -596,7 +611,7 @@ void main()
     vec4 u1 = CUT20(1., -1.), u2 = CUT20(2., -2.), d1 = CUT20(-1., 1.), d2 = CUT20(-2., 2.);
     vec4 runA = vec4(u1.x + u1.x * u2.x, m1.y + m1.y * m2.y, u1.z + u1.z * u2.z, m1.w + m1.w * m2.w);
     vec4 runB = vec4(d1.x + d1.x * d2.x, p1.y + p1.y * p2.y, d1.z + d1.z * d2.z, p1.w + p1.w * p2.w);
-    vec4 on20 = vec4(greaterThan(blendResult, vec4(0.0))) * vec4(greaterThan(cand20, vec4(XBRZ_JUNCTION))) *
+    vec4 on20 = vec4(greaterThan(blendResult, vec4(0.0))) * vec4(greaterThan(cand20, vec4(XBRZ_JUNCTION))) * (1.0 - ramp20 * cr20 * vec4(greaterThan(min(dE1, dE2), vec4(40.0))) * vec4(lessThan(min(dE1, dE2), vec4(70.0))) * vec4(lessThan(lmin20, vec4(0.35)))) *
                 (1.0 - ext1) * (1.0 - ext2) * (1.0 - extE) * vec4(lessThan(1.0 + runA + runB, vec4(3.0)));
     blendResult *= 1.0 - on20;
   }
