@@ -280,38 +280,50 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 // rules 3, 9, 12 and 13 belong to the crisp look rather than fixing clear xBRZ errors, so they
 // run only when XBRZ_MINC is on too (plain xBRZ, with XBRZ_MINC 0, keeps rules 2, 4 to 7 and 10)
 #define CRISP_RULES (XBRZ_MINC > 0.0 && XBRZ_DIAG > 0.0)
+#define XBRZ_ALIKE 20.0     // colors this close (x/255) count as alike
 #define XBRZ_HYST 4.0       // 1. a corner this close below XBRZ_MINC is weak
+#define XBRZ_DIAG_AA 92.0   // 2. diagonal limit on antialiasing ramps
+#define XBRZ_RAMP 1.15      // 2, 6. a ramp: (d(E,P) + d(P,Q)) / d(E,Q) up to this
+#define XBRZ_STRIPE 64.0    // 2, 3. a diagonal stripe keeps a close color (within this) along its length
+#define XBRZ_OUTLINE 0.15   // 2, 3. an outline is darker (in luma) than both inner tones by this much
+#define XBRZ_NOT_LIGHTER 4.0 // 2. P is not lighter than E up to this much more luma (x/255)
+#define XBRZ_THIN_LIGHT 0.15 // 5. a thin stroke is lighter (in luma) than both of its colors by this much
+#define XBRZ_THIN_DARK 0.45 // 5. on colors darker than this (luma) the stroke counts without the test of its sides
+#define XBRZ_TONE 0.6       // 5, 6. a pixel has E's tone when it is closer to E than this times its distance to the other colors
+#define XBRZ_NOTCH 45.0     // 6. the notch's diagonal limit is XBRZ_DIAG plus this
+#define XBRZ_TIP 36.0       // 7. stripe ends stay square above this diagonal distance
+#define XBRZ_AA_LINE 1.01   // 8. E lies between the colors: d(P1,E) + d(E,P2) up to this times d(P1,P2)
+#define XBRZ_AA_EDGE 40.0   // 8. the two colors differ by at least this
+#define XBRZ_FAR_TONE 36.0  // 9. two colors that clearly differ: more than this apart
+#define XBRZ_BLACK 0.15     // 10. a near-black outline is darker than this (luma)
+#define XBRZ_BLACK_GAP 0.1  // 10. the outline is darker (luma) than E and the pixel closed by it by this much
+#define XBRZ_STRONG 40.0    // 11. the contour past a 1-pixel stripe differs from it by at least this
+#define XBRZ_SHADOW 0.10    // 12. a shadow is darker than this (luma)
+#define XBRZ_SHADOW_NEAR 0.08 // 12. close to a shadow color: darker than XBRZ_SHADOW plus this
+#define XBRZ_SHADOW_BG 0.07 // 12. close to the background: lighter than XBRZ_SHADOW plus this
+#define XBRZ_SHADOW_FLOOR 0.15 // 12. the floor and the object are lighter than the shadow by more than this (luma)
 #define XBRZ_GUARD 30.0     // 15. lone pixel test tolerance on strong edges (reference xBRZ)
 #define XBRZ_GUARD_EDGE 64.0 // 15. a strong edge: the pixel differs from both corner colors by this much
 #define XBRZ_GUARD_EDGE_L 54.0 // 15. the same for the L-shape test
 #define XBRZ_TINT 20.0      // 16. the two colors beside the line differ by more than this
 #define XBRZ_TINT_RAMP 1.2  // 16. not a ramp: d(E,P) + d(P,L) above this times d(E,L)
 #define XBRZ_TINT_DARK 0.25 // 18. a near-black outline is darker than this (luma)
-#define XBRZ_DIAG_AA 92.0   // 2. diagonal limit on antialiasing ramps
-#define XBRZ_RAMP 1.15      // 2, 6. a ramp: (d(E,P) + d(P,Q)) / d(E,Q) up to this
-#define XBRZ_STRIPE 64.0    // 2, 3. a diagonal stripe keeps a close color (within this) along its length
-#define XBRZ_OUTLINE 0.15   // 2, 3. an outline is darker (in luma) than both inner tones by this much
-#define XBRZ_TIP 36.0       // 7. stripe ends stay square above this diagonal distance
-#define XBRZ_AA_LINE 1.01   // 8. E lies between the colors: d(P1,E) + d(E,P2) up to this times d(P1,P2)
-#define XBRZ_AA_EDGE 40.0   // 8. the two colors differ by at least this
-#define XBRZ_STRONG 40.0    // 11. the contour past a 1-pixel stripe differs from it by at least this
-#define XBRZ_SHADOW 0.10    // 12. a shadow is darker than this (luma)
-#define alike(a,b) (DistYCbCr(a, b) * 255.0 <= 20.0)
+#define alike(a,b) (DistYCbCr(a, b) * 255.0 <= XBRZ_ALIKE)
 #define eq(a,b)  (a == b)
 #define neq(a,b) (a != b)
 
 // the ring of pixels two steps from E (the 5x5 window without its corners), read once in main
 vec3 N_m1_m2, N_p0_m2, N_p1_m2, N_m2_m1, N_p2_m1, N_m2_p0, N_p2_p0, N_m2_p1, N_p2_p1, N_m1_p2, N_p0_p2, N_p1_p2;
 
+// the luma weights (Rec. 2020) and the scales of the two chroma differences, for DistYCbCr and DistShape
 const vec3 lumaW = vec3(0.2627, 0.6780, 0.0593);
+const float scaleB = 0.5 / (1.0 - 0.0593);
+const float scaleR = 0.5 / (1.0 - 0.2627);
 
 float DistYCbCr(vec3 pixA, vec3 pixB)
 {
-  const vec3 w = vec3(0.2627, 0.6780, 0.0593);
-  const float scaleB = 0.5 / (1.0 - 0.0593);
-  const float scaleR = 0.5 / (1.0 - 0.2627);
   vec3 diff = pixA - pixB;
-  float Y = dot(diff.rgb, w);
+  float Y = dot(diff.rgb, lumaW);
   float Cb = scaleB * (diff.b - Y);
   float Cr = scaleR * (diff.r - Y);
   return sqrt((Y * Y) + (Cb * Cb) + (Cr * Cr));
@@ -325,17 +337,38 @@ bool IsPixEqual(vec3 pixA, vec3 pixB)
   return (DistYCbCr(pixA, pixB) < EQUAL_COLOR_TOLERANCE);
 }
 
-// 15. Lone pixel test on strong edges: the tolerance of xBRZ's lone pixel test (GuardEqual) and L-shape
-// test (ShapeEqual) in the blend decisions; edge is how much E differs from the closer corner color
-bool GuardEqual(vec3 pixA, vec3 pixB, float edge)
+// 15. Lone pixel and L-shape tests on strong edges: the tolerance of xBRZ's lone pixel test and L-shape
+// test in the blend decisions; edge is how much E differs from the closer corner color, and edgeLimit
+// how much that must be (XBRZ_GUARD_EDGE or XBRZ_GUARD_EDGE_L) for the reference tolerance to apply
+bool equalOnEdge(vec3 pixA, vec3 pixB, float edge, float edgeLimit)
 {
-  return DistYCbCr(pixA, pixB) < (XBRZ_MINC > 0.0 && edge * 255.0 >= XBRZ_GUARD_EDGE ? XBRZ_GUARD / 255.0 : EQUAL_COLOR_TOLERANCE);
+  return DistYCbCr(pixA, pixB) < (XBRZ_MINC > 0.0 && edge * 255.0 >= edgeLimit ? XBRZ_GUARD / 255.0 : EQUAL_COLOR_TOLERANCE);
 }
 
-bool ShapeEqual(vec3 pixA, vec3 pixB, float edge)
+// xBRZ's test of whether a corner (blend type own) is cut, in the corner's own frame: c2 is the diagonal
+// pixel of the corner and c0 to c4 run around it (for the bottom-right corner G H I F C), and nbr0 and
+// nbr4 are the blend types of the corners on the c0 side and the c4 side. A dominant corner is always
+// cut. A normal one is not cut when the lone pixel test fails (a corner beside it is cut and E differs
+// from the pixel c0, or c4, at the far end of that side) or when the L-shape test holds (c0 to c4 are
+// one color around the corner pixel c2, which E does not share)
+bool cornerCut(int own, int nbr0, int nbr4, float edge, vec3 E, vec3 c0, vec3 c1, vec3 c2, vec3 c3, vec3 c4)
 {
-  return DistYCbCr(pixA, pixB) < (XBRZ_MINC > 0.0 && edge * 255.0 >= XBRZ_GUARD_EDGE_L ? XBRZ_GUARD / 255.0 : EQUAL_COLOR_TOLERANCE);
+  if (own == BLEND_DOMINANT)
+    return true;
+  if (own != BLEND_NORMAL)
+    return false;
+  bool lone0 = nbr0 != BLEND_NONE && !equalOnEdge(E, c0, edge, XBRZ_GUARD_EDGE);
+  if (lone0)
+    return false;
+  bool lone4 = nbr4 != BLEND_NONE && !equalOnEdge(c4, E, edge, XBRZ_GUARD_EDGE);
+  if (lone4)
+    return false;
+  bool lShape = equalOnEdge(c0, c1, edge, XBRZ_GUARD_EDGE_L) && equalOnEdge(c1, c2, edge, XBRZ_GUARD_EDGE_L) &&
+                equalOnEdge(c3, c2, edge, XBRZ_GUARD_EDGE_L) && equalOnEdge(c4, c3, edge, XBRZ_GUARD_EDGE_L) &&
+                !equalOnEdge(E, c2, edge, XBRZ_GUARD_EDGE_L);
+  return !lShape;
 }
+
 
 // ============================================================================================
 // 9. Line shapes
@@ -345,12 +378,9 @@ bool ShapeEqual(vec3 pixA, vec3 pixB, float edge)
 // the thresholds
 float DistShape(vec3 pixA, vec3 pixB)
 {
-  const vec3 w = vec3(0.2627, 0.6780, 0.0593);
-  const float scaleB = 0.5 / (1.0 - 0.0593);
-  const float scaleR = 0.5 / (1.0 - 0.2627);
   const vec2 k = vec2(0.937, 1.125);
   vec3 diff = pixA - pixB;
-  float y = dot(diff.rgb, w);
+  float y = dot(diff.rgb, lumaW);
   float Y = k.x * y;
   float Cb = k.y * scaleB * (diff.b - y);
   float Cr = k.y * scaleR * (diff.r - y);
@@ -374,12 +404,12 @@ float toneLine(vec3 a, vec3 b, vec3 c, vec3 d)
 
 // a line found only because hue weighs more (+32) is dropped where the pixel at its far end is closer
 // to E than to the line's color: that pixel belongs to E's side, so the line would cut into E's run.
-// It is also dropped where its two colors clearly differ (more than 36) and the line's color runs on
+// It is also dropped where its two colors clearly differ (more than XBRZ_FAR_TONE) and the line's color runs on
 // along a 45-degree diagonal in the same color (alt45, as for plainLine): the line would bend that
 // diagonal toward another stroke (the tip of Goku's nose in Buu's Fury)
 bool farTone(vec3 a, vec3 b, vec3 c, vec3 d, vec3 E, bool alt45)
 {
-  return !(toneLine(a, b, c, d) > 0.5 && (DistYCbCr(E, b) < DistYCbCr(a, b) || (alt45 && DistYCbCr(a, b) * 255.0 > 36.0)));
+  return !(toneLine(a, b, c, d) > 0.5 && (DistYCbCr(E, b) < DistYCbCr(a, b) || (alt45 && DistYCbCr(a, b) * 255.0 > XBRZ_FAR_TONE)));
 }
 
 // the shallow (x) and steep (y) line tests of a corner, a line along a-b against one along c-d, as
@@ -453,10 +483,40 @@ float runWall(vec3 E, vec2 coord, vec2 d)
 }
 
 // ============================================================================================
+// helper for rule 7
+// ============================================================================================
+// E ends a stripe at one of its four ends, read in the end's own frame: the canonical end is the left
+// one (the stripe runs on to the right, D lies past the end, B and H are the stripes on both sides).
+// The other ends pass the pixels turned to that frame: the right end passes C B A F D I H G for
+// A B C D F G H I, the top end A D G B H C F I, and the bottom end G D A H B I F C. l2 and r2 are the
+// pixels two steps from E past the end and along the stripe, rt and rb the ones beside r2 on the
+// sides of B and H. o1 and o2 are the offsets (in the whole window) of the pixels two steps past the
+// end and two to the side, o3 of the pixel three steps along the stripe.
+bool stripeEnd(vec2 coord, vec2 o1, vec2 o2, vec2 o3, bool thin, vec3 E, vec3 A, vec3 B, vec3 C, vec3 D, vec3 F, vec3 G, vec3 H, vec3 I,
+               vec3 l2, vec3 r2, vec3 rt, vec3 rb)
+{
+  // the cheap terms first: E's stripe runs on along F and ends at D, and the stripes on both sides
+  // differ from the pixels past their ends (A, G) and run on (C, I)
+  if (!(thin && alike(E, F) && !eq(E, D) && !eq(B, A) && !eq(H, G) && alike(B, C) && alike(H, I)))
+    return false;
+  // E is not an end when its color runs on along a diagonal past the end (a line turning diagonal,
+  // like the bottom of a 3), or when a side stripe bends into it there
+  if (alike(A, E) && alike(E, P(o1.x, o1.y)) && !alike(D, E) && !alike(B, E))
+    return false;
+  if (alike(E, G) && alike(E, P(o2.x, o2.y)) && !alike(D, E) && !alike(E, H))
+    return false;
+  if ((alike(A, E) && alike(B, D)) || (alike(E, G) && alike(D, H)))
+    return false;
+  // all three stripes run at least 3 pixels back from the end, and E's 4 when the color past the end
+  // runs straight on (a line meeting a short stripe, not a gauge)
+  return alike(E, r2) && (alike(E, P(o3.x, o3.y)) || !eq(D, l2)) && alike(C, rt) && alike(I, rb);
+}
+
+// ============================================================================================
 // Rules 2 to 7 (XBRZ_DIAG)
 // ============================================================================================
 vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 G, vec3 H, vec3 I,
-                   float dEB, float dED, float dEF, float dEH)
+                   vec4 pair, float dEB, float dED, float dEF, float dEH)
 {
   // only pixels that still have a corner to cut
   vec4 cut = vec4(greaterThan(BLEND(res), vec4(0.0)));
@@ -466,8 +526,6 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
   vec4 before = res;
 
   // ---- what the rules look at ----
-  // the two colors on each corner's diagonal: top-left D-B, top-right B-F, bottom-right F-H, bottom-left H-D
-  vec4 pair = vec4(DistYCbCr(B, D), DistYCbCr(B, F), DistYCbCr(F, H), DistYCbCr(D, H));
   // E's distance to the first and second candidate of each corner
   vec4 dEP = vec4(dED, dEB, dEF, dEH);
   vec4 dEQ = vec4(dEB, dEF, dEH, dED);
@@ -479,7 +537,7 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
   vec4 lP = vec4(dot(Px, lumaW), dot(Py, lumaW), dot(Pz, lumaW), dot(Pw, lumaW));
   vec4 lQ = vec4(dot(Qx, lumaW), dot(Qy, lumaW), dot(Qz, lumaW), dot(Qw, lumaW));
   // dark keeps its pixel: P is not lighter than E
-  vec4 notLighter = vec4(lessThanEqual(lP, vec4(lE + 4.0 / 255.0)));
+  vec4 notLighter = vec4(lessThanEqual(lP, vec4(lE + XBRZ_NOT_LIGHTER / 255.0)));
   // P runs straight on away from the corner (a horizontal or vertical line or frame)
   vec4 straight = vec4(float(sec.x > 0.5 ? alike(B, C) : alike(D, G)), float(sec.y > 0.5 ? alike(F, I) : alike(A, B)),
                        float(sec.z > 0.5 ? alike(G, H) : alike(C, F)), float(sec.w > 0.5 ? alike(A, D) : alike(H, I)));
@@ -634,28 +692,31 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
   // on along the diagonal of the cut (E's color in C or G for the / corners, A or I for the \ ones, not
   // on E's far side), like the white strokes of letters or a ring with gray antialiasing
   // only a changed corner where E is lighter than both colors, and not between two lone pixels (like an eye)
-  vec4 back = vec4(greaterThan(vec4(lE) - max(lP, lQ), vec4(0.15))) * cut * vec4(notEqual(res, before)) * (1.0 - loneP * loneQ);
+  // E's distance to the diagonal neighbors, read by rules 5 and 6 (set by the first of them that needs it)
+  float eA = 0.0, eC = 0.0, eG = 0.0, eI = 0.0;
+  bool haveDiagDist = false;
+  vec4 back = vec4(greaterThan(vec4(lE) - max(lP, lQ), vec4(XBRZ_THIN_LIGHT))) * cut * vec4(notEqual(res, before)) * (1.0 - loneP * loneQ);
   if (dot(back, vec4(1.0)) > 0.0)
   {
     // E's color, or a tone closer to E than the corner's two colors (an antialiasing step), goes on along the diagonal
     vec4 dPQmin = min(mix(dEP, dEQ, sec), mix(dEQ, dEP, sec));
-    float eC = DistYCbCr(C, E), eG = DistYCbCr(E, G), eA = DistYCbCr(A, E), eI = DistYCbCr(E, I);
+    eC = DistYCbCr(C, E), eG = DistYCbCr(E, G), eA = DistYCbCr(A, E), eI = DistYCbCr(E, I);
+    haveDiagDist = true;
     // a diagonal neighbour counts only when the stroke really bends there: the cross neighbour beside it on E's far side
     // is not E's tone too (a peak on top of a straight line is not a diagonal stroke)
-    vec4 tE = 0.6 * dPQmin;
+    vec4 tE = XBRZ_TONE * dPQmin;
     bvec4 aD = bvec4(alike(C, E), alike(E, G), alike(A, E), alike(E, I));
     bvec4 nD = bvec4(aD.x || eC < tE.x, aD.y || eG < tE.x, aD.z || eA < tE.y, aD.w || eI < tE.y);
     bvec4 nD2 = bvec4(aD.x || eC < tE.z, aD.y || eG < tE.z, aD.z || eA < tE.w, aD.w || eI < tE.w);
-    float fB = DistYCbCr(B, E), fD = DistYCbCr(D, E), fF = DistYCbCr(E, F), fH = DistYCbCr(E, H);
     // x: C beside F, G beside H; y: A beside D, I beside H; z: C beside B, G beside D; w: A beside B, I beside F
-    vec4 sideA = vec4(float(aD.x && !(fF < tE.x)) + float(aD.y && !(fH < tE.x)), float(aD.z && !(fD < tE.y)) + float(aD.w && !(fH < tE.y)),
-                      float(aD.x && !(fB < tE.z)) + float(aD.y && !(fD < tE.z)), float(aD.z && !(fB < tE.w)) + float(aD.w && !(fF < tE.w)));
-    vec4 sideN = vec4(float(nD.x && !(fF < tE.x)) + float(nD.y && !(fH < tE.x)), float(nD.z && !(fD < tE.y)) + float(nD.w && !(fH < tE.y)),
-                      float(nD2.x && !(fB < tE.z)) + float(nD2.y && !(fD < tE.z)), float(nD2.z && !(fB < tE.w)) + float(nD2.w && !(fF < tE.w)));
+    vec4 sideA = vec4(float(aD.x && !(dEF < tE.x)) + float(aD.y && !(dEH < tE.x)), float(aD.z && !(dED < tE.y)) + float(aD.w && !(dEH < tE.y)),
+                      float(aD.x && !(dEB < tE.z)) + float(aD.y && !(dED < tE.z)), float(aD.z && !(dEB < tE.w)) + float(aD.w && !(dEF < tE.w)));
+    vec4 sideN = vec4(float(nD.x && !(dEF < tE.x)) + float(nD.y && !(dEH < tE.x)), float(nD.z && !(dED < tE.y)) + float(nD.w && !(dEH < tE.y)),
+                      float(nD2.x && !(dEB < tE.z)) + float(nD2.y && !(dED < tE.z)), float(nD2.z && !(dEB < tE.w)) + float(nD2.w && !(dEF < tE.w)));
     sideA = min(sideA, vec4(1.0)); sideN = min(sideN, vec4(1.0));
     vec4 farOff = vec4(float(!alike(E, I)), float(!alike(E, G)), float(!alike(A, E)), float(!alike(C, E)));
     vec4 along = sideA * farOff;
-    along = max(along, sideA * vec4(lessThan(max(lP, lQ), vec4(0.45))));
+    along = max(along, sideA * vec4(lessThan(max(lP, lQ), vec4(XBRZ_THIN_DARK))));
     along = max(along, sideN * farOff);
     back *= along;
     res = mix(res, before, back);
@@ -664,27 +725,30 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
 
   // ---- 6. Antialiasing notch ----
   // a corner blocked on an antialiasing ramp comes back where P is a single antialiasing pixel between E
-  // and Q (the ramp runs E, P, Q and the diagonal is within XBRZ_DIAG + 45), Q's tone wraps around P in
+  // and Q (the ramp runs E, P, Q and the diagonal is within XBRZ_DIAG + XBRZ_NOTCH), Q's tone wraps around P in
   // the outer corner (A, C, I, G) and E's tone runs on along the cut (C or G for the / corners, A or I
   // for the \ ones), like the shaded edges of a cape
   if (any(notEqual(res, before)))
   {
     vec4 dPc = mix(dEP, dEQ, sec), dQc = mix(dEQ, dEP, sec);
-    vec4 notch = vec4(lessThanEqual((dPc + pair) / max(dQc, vec4(1e-5)), vec4(XBRZ_RAMP))) * vec4(lessThanEqual(pair * 255.0, vec4(XBRZ_DIAG + 45.0)))
+    vec4 notch = vec4(lessThanEqual((dPc + pair) / max(dQc, vec4(1e-5)), vec4(XBRZ_RAMP))) * vec4(lessThanEqual(pair * 255.0, vec4(XBRZ_DIAG + XBRZ_NOTCH)))
                * loneP * cut * vec4(notEqual(res, before));
     // the color tests only where a notch can come back
     if (dot(notch, vec4(1.0)) > 0.0)
     {
-      vec4 wrap = vec4(lessThan(vec4(DistYCbCr(A, Qx), DistYCbCr(C, Qy), DistYCbCr(I, Qz), DistYCbCr(G, Qw)), 0.6 * pair));
-      // E's tone in a diagonal neighbour X: closer to E than to P and Q by 0.6
-      float eA = DistYCbCr(A, E), eC = DistYCbCr(C, E), eG = DistYCbCr(E, G), eI = DistYCbCr(E, I);
-      vec4 onC = vec4(lessThan(vec4(eC), 0.6 * min(vec4(DistYCbCr(Px, C), DistYCbCr(Py, C), DistYCbCr(Pz, C), DistYCbCr(Pw, C)),
+      vec4 wrap = vec4(lessThan(vec4(DistYCbCr(A, Qx), DistYCbCr(C, Qy), DistYCbCr(I, Qz), DistYCbCr(G, Qw)), XBRZ_TONE * pair));
+      // E's tone in a diagonal neighbour X: closer to E than to P and Q by XBRZ_TONE
+      if (!haveDiagDist)
+      {
+        eC = DistYCbCr(C, E), eG = DistYCbCr(E, G), eA = DistYCbCr(A, E), eI = DistYCbCr(E, I);
+      }
+      vec4 onC = vec4(lessThan(vec4(eC), XBRZ_TONE * min(vec4(DistYCbCr(Px, C), DistYCbCr(Py, C), DistYCbCr(Pz, C), DistYCbCr(Pw, C)),
                                                    vec4(DistYCbCr(Qx, C), DistYCbCr(Qy, C), DistYCbCr(Qz, C), DistYCbCr(Qw, C)))));
-      vec4 onG = vec4(lessThan(vec4(eG), 0.6 * min(vec4(DistYCbCr(Px, G), DistYCbCr(Py, G), DistYCbCr(Pz, G), DistYCbCr(Pw, G)),
+      vec4 onG = vec4(lessThan(vec4(eG), XBRZ_TONE * min(vec4(DistYCbCr(Px, G), DistYCbCr(Py, G), DistYCbCr(Pz, G), DistYCbCr(Pw, G)),
                                                    vec4(DistYCbCr(Qx, G), DistYCbCr(Qy, G), DistYCbCr(Qz, G), DistYCbCr(Qw, G)))));
-      vec4 onA = vec4(lessThan(vec4(eA), 0.6 * min(vec4(DistYCbCr(Px, A), DistYCbCr(Py, A), DistYCbCr(Pz, A), DistYCbCr(Pw, A)),
+      vec4 onA = vec4(lessThan(vec4(eA), XBRZ_TONE * min(vec4(DistYCbCr(Px, A), DistYCbCr(Py, A), DistYCbCr(Pz, A), DistYCbCr(Pw, A)),
                                                    vec4(DistYCbCr(Qx, A), DistYCbCr(Qy, A), DistYCbCr(Qz, A), DistYCbCr(Qw, A)))));
-      vec4 onI = vec4(lessThan(vec4(eI), 0.6 * min(vec4(DistYCbCr(Px, I), DistYCbCr(Py, I), DistYCbCr(Pz, I), DistYCbCr(Pw, I)),
+      vec4 onI = vec4(lessThan(vec4(eI), XBRZ_TONE * min(vec4(DistYCbCr(Px, I), DistYCbCr(Py, I), DistYCbCr(Pz, I), DistYCbCr(Pw, I)),
                                                    vec4(DistYCbCr(Qx, I), DistYCbCr(Qy, I), DistYCbCr(Qz, I), DistYCbCr(Qw, I)))));
       vec4 along = vec4(max(onC.x, onG.x), max(onA.y, onI.y), max(onC.z, onG.z), max(onA.w, onI.w));
       notch *= wrap * along;
@@ -709,36 +773,24 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
     // the stripes only need to keep a similar color (within 20/255) along their length, so a background
     // with a slight gradient still counts as one stripe
     bool nB = alike(B, E), nD = alike(D, E), nF = alike(E, F), nH = alike(E, H);
-    // the cheap terms of each end first (the stripes beside E end where E ends); the rest only where one passes
-    bool cL = thinH && nF && !eD && !eq(B, A) && !eq(H, G) && alike(B, C) && alike(H, I);
-    bool cR = thinH && nD && !eF && !eq(B, C) && !eq(H, I) && alike(A, B) && alike(G, H);
-    bool cT = thinV && nH && !eB && !eq(D, A) && !eq(F, C) && alike(D, G) && alike(F, I);
-    bool cB = thinV && nB && !eH && !eq(D, G) && !eq(F, I) && alike(A, D) && alike(C, F);
-    if (cL || cR || cT || cB)
-    {
     // only inside a stack of parallel stripes: the rows (or columns) on both sides run along the line too
     // and they all end flush at the same column (or row), like the stripes of a gauge
-    // all three stripes run at least 3 pixels back from the end, and E's 4 when the color past the
-    // end runs straight on (a line meeting a short stripe, not a gauge); E is not an end when its
-    // color runs on along a diagonal past the end (a line turning diagonal, like the bottom of a 3)
-    float endL = 0.0;
-    if (cL) endL = (thinH && nF && !eD && !(alike(A, E) && alike(E, P(-2., -2.)) && !alike(D, E) && !alike(B, E)) && !(alike(E, G) && alike(E, P(-2., 2.)) && !alike(D, E) && !alike(E, H)) && !(alike(A, E) && alike(B, D)) && !(alike(E, G) && alike(D, H)) && alike(B, C) && alike(H, I) && !eq(B, A) && !eq(H, G) && alike(E, N_p2_p0) && (alike(E, P(3., 0.)) || !eq(D, N_m2_p0)) && alike(C, N_p2_m1) && alike(I, N_p2_p1)) ? 1.0 : 0.0;
-    float endR = 0.0;
-    if (cR) endR = (thinH && nD && !eF && !(alike(C, E) && alike(E, P(2., -2.)) && !alike(E, F) && !alike(B, E)) && !(alike(E, I) && alike(E, P(2., 2.)) && !alike(E, F) && !alike(E, H)) && !(alike(C, E) && alike(B, F)) && !(alike(E, I) && alike(F, H)) && alike(A, B) && alike(G, H) && !eq(B, C) && !eq(H, I) && alike(E, N_m2_p0) && (alike(E, P(-3., 0.)) || !eq(F, N_p2_p0)) && alike(A, N_m2_m1) && alike(G, N_m2_p1)) ? 1.0 : 0.0;
-    float endT = 0.0;
-    if (cT) endT = (thinV && nH && !eB && !(alike(A, E) && alike(E, P(-2., -2.)) && !alike(B, E) && !alike(D, E)) && !(alike(C, E) && alike(E, P(2., -2.)) && !alike(B, E) && !alike(E, F)) && !(alike(A, E) && alike(B, D)) && !(alike(C, E) && alike(B, F)) && alike(D, G) && alike(F, I) && !eq(D, A) && !eq(F, C) && alike(E, N_p0_p2) && (alike(E, P(0., 3.)) || !eq(B, N_p0_m2)) && alike(G, N_m1_p2) && alike(I, N_p1_p2)) ? 1.0 : 0.0;
-    float endB = 0.0;
-    if (cB) endB = (thinV && nB && !eH && !(alike(E, G) && alike(E, P(-2., 2.)) && !alike(E, H) && !alike(D, E)) && !(alike(E, I) && alike(E, P(2., 2.)) && !alike(E, H) && !alike(E, F)) && !(alike(E, G) && alike(D, H)) && !(alike(E, I) && alike(F, H)) && alike(A, D) && alike(C, F) && !eq(D, G) && !eq(F, I) && alike(E, N_p0_m2) && (alike(E, P(0., -3.)) || !eq(H, N_p0_p2)) && alike(A, N_m1_m2) && alike(C, N_p1_m2)) ? 1.0 : 0.0;
-    vec4 tip = vec4(max(endL, endT), max(endR, endT), max(endR, endB), max(endL, endB));
-    tip *= vec4(greaterThan(pair * 255.0, vec4(XBRZ_TIP)));
-    // E's stripe is not a stripe of its own where a side stripe is a close tone of it (an inner tone of a shaded
-    // area): there a corner that xBRZ cuts with a line between two outline colors darker than E is not a stripe
-    // end, so the outline goes on as a diagonal (the forehead under Gohan's hair in Buu's Fury)
-    float aH = float((nB && !eB) || (nH && !eH)), aV = float((nD && !eD) || (nF && !eF));
-    vec4 soft = vec4(max(endL * aH, endT * aV), max(endR * aH, endT * aV), max(endR * aH, endB * aV), max(endL * aH, endB * aV));
-    soft *= vec4(lessThan(max(lP, lQ), vec4(lE - XBRZ_OUTLINE)));
-    tip *= 1.0 - soft * min(FLAG(res, 16.0) + FLAG(res, 64.0), vec4(1.0));
-    res *= 1.0 - tip * (1.0 - kept);
+    float endL = float(stripeEnd(coord, vec2(-2., -2.), vec2(-2., 2.), vec2(3., 0.), thinH, E, A, B, C, D, F, G, H, I, N_m2_p0, N_p2_p0, N_p2_m1, N_p2_p1));
+    float endR = float(stripeEnd(coord, vec2(2., -2.), vec2(2., 2.), vec2(-3., 0.), thinH, E, C, B, A, F, D, I, H, G, N_p2_p0, N_m2_p0, N_m2_m1, N_m2_p1));
+    float endT = float(stripeEnd(coord, vec2(-2., -2.), vec2(2., -2.), vec2(0., 3.), thinV, E, A, D, G, B, H, C, F, I, N_p0_m2, N_p0_p2, N_m1_p2, N_p1_p2));
+    float endB = float(stripeEnd(coord, vec2(-2., 2.), vec2(2., 2.), vec2(0., -3.), thinV, E, G, D, A, H, B, I, F, C, N_p0_p2, N_p0_m2, N_m1_m2, N_p1_m2));
+    if (endL + endR + endT + endB > 0.0)
+    {
+      vec4 tip = vec4(max(endL, endT), max(endR, endT), max(endR, endB), max(endL, endB));
+      tip *= vec4(greaterThan(pair * 255.0, vec4(XBRZ_TIP)));
+      // E's stripe is not a stripe of its own where a side stripe is a close tone of it (an inner tone of a shaded
+      // area): there a corner that xBRZ cuts with a line between two outline colors darker than E is not a stripe
+      // end, so the outline goes on as a diagonal (the forehead under Gohan's hair in Buu's Fury)
+      float aH = float((nB && !eB) || (nH && !eH)), aV = float((nD && !eD) || (nF && !eF));
+      vec4 soft = vec4(max(endL * aH, endT * aV), max(endR * aH, endT * aV), max(endR * aH, endB * aV), max(endL * aH, endB * aV));
+      soft *= vec4(lessThan(max(lP, lQ), vec4(lE - XBRZ_OUTLINE)));
+      tip *= 1.0 - soft * min(FLAG(res, 16.0) + FLAG(res, 64.0), vec4(1.0));
+      res *= 1.0 - tip * (1.0 - kept);
     }
   }
   return res;
@@ -786,7 +838,7 @@ vec4 closedPixel(vec4 res, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 
   vec3 Px = sc.x > 0.5 ? B : D, Py = sc.y > 0.5 ? F : B, Pz = sc.z > 0.5 ? H : F, Pw = sc.w > 0.5 ? D : H;
   vec4 lQ = vec4(dot(A, lumaW), dot(C, lumaW), dot(I, lumaW), dot(G, lumaW));
   vec4 lP = vec4(dot(Px, lumaW), dot(Py, lumaW), dot(Pz, lumaW), dot(Pw, lumaW));
-  vec4 dark = vec4(lessThan(lQ + 0.1, lP)) * vec4(lessThan(lQ + 0.1, vec4(dot(E, lumaW)))) * vec4(lessThan(lQ, vec4(0.15)));
+  vec4 dark = vec4(lessThan(lQ + XBRZ_BLACK_GAP, lP)) * vec4(lessThan(lQ + XBRZ_BLACK_GAP, vec4(dot(E, lumaW)))) * vec4(lessThan(lQ, vec4(XBRZ_BLACK)));
   vec4 closed = dark * line;
   if (dot(closed, vec4(1.0)) <= 0.0)
     return res;
@@ -813,7 +865,7 @@ vec4 closedPixel(vec4 res, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 
 float onTone(vec3 X, vec3 a, vec3 b)
 {
   float da = DistYCbCr(X, a);
-  return float(da < DistYCbCr(X, b) && da * 255.0 <= 20.0);
+  return float(da < DistYCbCr(X, b) && da * 255.0 <= XBRZ_ALIKE);
 }
 // X is past a stripe of tone a (next to tone b) on a strong contour: neither tone, and XBRZ_STRONG from a
 float strongPx(vec3 X, vec3 a, vec3 b)
@@ -897,6 +949,21 @@ vec4 diagonalStripes(vec2 coord, vec3 B, vec3 D, vec3 E, vec3 F, vec3 H, float d
   return r;
 }
 
+// rule 11: a corner that rule 1 squared comes back where it lies on a straight line (diagonalStripes);
+// a corner that comes back is no longer weak
+vec4 largerWindowLines(vec4 res, vec2 coord, vec3 B, vec3 D, vec3 E, vec3 F, vec3 H, float dEB, float dED, float dEF, float dEH,
+                       vec4 xbrz, vec4 contrast, inout vec4 weak)
+{
+  vec4 sq = vec4(lessThan(contrast, vec4(XBRZ_MINC))) * vec4(greaterThan(BLEND(xbrz), vec4(0.0)));
+  if (XBRZ_MINC > 0.0 && dot(sq, vec4(1.0)) > 0.0)
+  {
+    sq *= diagonalStripes(coord, B, D, E, F, H, dEB, dED, dEF, dEH, xbrz, sq);
+    res = mix(res, xbrz, sq);
+    weak *= 1.0 - sq;
+  }
+  return res;
+}
+
 
 // ============================================================================================
 // 12. Closed shadow
@@ -908,7 +975,7 @@ vec4 diagonalStripes(vec2 coord, vec3 B, vec3 D, vec3 E, vec3 F, vec3 H, float d
 // lobe (a blob, not a 1-pixel stroke like a serif)
 bool floorPx(vec3 X, vec3 S, vec3 O, float lS)
 {
-  return dot(X, lumaW) > lS + 0.15 && !alike(X, S) && !alike(X, O);
+  return dot(X, lumaW) > lS + XBRZ_SHADOW_FLOOR && !alike(X, S) && !alike(X, O);
 }
 
 float shadowClose(vec2 coord, vec3 E, vec2 s, vec2 o)
@@ -918,8 +985,8 @@ float shadowClose(vec2 coord, vec3 E, vec2 s, vec2 o)
   vec2 k = o - s;
   vec3 K = P(k.x, k.y);
   float lS = dot(S, lumaW);
-  if (!(lS < XBRZ_SHADOW && dot(K, lumaW) < XBRZ_SHADOW && dot(E, lumaW) > XBRZ_SHADOW + 0.15 && alike(S, K) && !alike(O, S) && !alike(O, E) && !alike(E, S)
-        && lS + 0.15 < dot(E, lumaW) && lS + 0.15 < dot(O, lumaW)))
+  if (!(lS < XBRZ_SHADOW && dot(K, lumaW) < XBRZ_SHADOW && dot(E, lumaW) > XBRZ_SHADOW + XBRZ_SHADOW_FLOOR && alike(S, K) && !alike(O, S) && !alike(O, E) && !alike(E, S)
+        && lS + XBRZ_SHADOW_FLOOR < dot(E, lumaW) && lS + XBRZ_SHADOW_FLOOR < dot(O, lumaW)))
     return 0.0;
   // the floor around the notch is any pixel lighter than the shadow that is neither the shadow nor the
   // object, so a textured floor (grass, tiles) counts the same as a flat one
@@ -934,6 +1001,86 @@ float shadowClose(vec2 coord, vec3 E, vec2 s, vec2 o)
   return float(bg && arm && lobe && obj);
 }
 
+// the notch's corner and, on the shadow's side, the corners next to the notch
+vec4 closedShadow(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 G, vec3 H, vec3 I)
+{
+  if (!CRISP_RULES)
+    return res;
+  float lE = dot(E, lumaW);
+  // cheap gates on the 3x3 before the 7x7 tests (cross order B D F H, diagonal order A C G I):
+  // dS shadow, dA close to a shadow color, nd not a shadow, bg close to a background lighter than the shadow
+  vec4 lX = vec4(dot(B, lumaW), dot(D, lumaW), dot(F, lumaW), dot(H, lumaW));
+  vec4 lY = vec4(dot(A, lumaW), dot(C, lumaW), dot(G, lumaW), dot(I, lumaW));
+  bvec4 dS = lessThan(lX, vec4(XBRZ_SHADOW)), dSd = lessThan(lY, vec4(XBRZ_SHADOW));
+  bvec4 dA = lessThan(lX, vec4(XBRZ_SHADOW + XBRZ_SHADOW_NEAR)), dAd = lessThan(lY, vec4(XBRZ_SHADOW + XBRZ_SHADOW_NEAR));
+  bvec4 nd = not(dS), ndd = not(dSd);
+  bvec4 bg = greaterThan(lX, vec4(XBRZ_SHADOW + XBRZ_SHADOW_BG)), bgd = greaterThan(lY, vec4(XBRZ_SHADOW + XBRZ_SHADOW_BG));
+  bvec4 lt = greaterThan(lX, vec4(XBRZ_SHADOW + XBRZ_SHADOW_FLOOR)), ltd = greaterThan(lY, vec4(XBRZ_SHADOW + XBRZ_SHADOW_FLOOR));
+  // corner k (x, y, z, w) lies between the directions d = L, U, R, Dn and n = d turned 90 degrees (U, R, Dn, L);
+  // the loops run one 7x7 test at a time, so the test is compiled once
+  if (lE > XBRZ_SHADOW + XBRZ_SHADOW_FLOOR && any(dS))
+  {
+    // E is the notch: S = P(s) and K = P(o - s) shadow, O = P(o) not, background at -s, -o and s - o;
+    // first candidate (s, o) = (d, n), second (n, d)
+    vec4 g1 = vec4(dS.y && dSd.y && nd.x && bg.z && bg.w && bgd.z, dS.x && dSd.w && nd.z && bg.w && bg.y && bgd.x,
+                   dS.z && dSd.z && nd.w && bg.y && bg.x && bgd.y, dS.w && dSd.x && nd.y && bg.x && bg.z && bgd.w);
+    vec4 g2 = vec4(dS.x && dSd.z && nd.y && bg.w && bg.z && bgd.y, dS.z && dSd.x && nd.x && bg.y && bg.w && bgd.w,
+                   dS.w && dSd.y && nd.z && bg.x && bg.y && bgd.z, dS.y && dSd.w && nd.w && bg.z && bg.x && bgd.x);
+    vec4 c1 = vec4(0.0), c2 = vec4(0.0);
+    vec2 d = vec2(-1., 0.);
+    for (int i = 0; i < 8; i++)
+    {
+      int k = i / 2;
+      bool second = i - 2 * k == 1;
+      vec2 n = vec2(-d.y, d.x);
+      vec4 m = vec4(equal(vec4(float(k)), vec4(0., 1., 2., 3.)));
+      if (dot(second ? g2 : g1, m) > 0.0)
+      {
+        float r = shadowClose(coord, E, second ? n : d, second ? d : n);
+        if (second) c2 += m * r; else c1 += m * r;
+      }
+      if (second) d = n;
+    }
+    // first candidate as S: x/z with a horizontal arm and y/w with a vertical one take +16; second (+8): +64
+    c2 *= 1.0 - c1;
+    res = mix(res, vec4(1. + 4. + 16.), c1);
+    res = mix(res, vec4(1. + 4. + 8. + 64.), c2);
+  }
+  else if (lE < XBRZ_SHADOW && (any(lt) || any(ltd)))
+  {
+    // E is the shadow next to a notch Y: the arm's tip (Y = E + d, O = Y + o diagonal to E) or the lobe's
+    // corner (Y = E + s - o diagonal to E, O = E + s); E's corner toward the notch stays square.
+    // Candidates for corner k, as (Y, s, o): (d, -d, n), (n, -n, d), (d + n, d, -n), (d + n, n, -d)
+    vec4 gT1 = vec4(lt.y && bg.w && bgd.w && dA.z && ndd.x, lt.x && bg.y && bgd.z && dA.w && ndd.y,
+                    lt.z && bg.x && bgd.x && dA.y && ndd.w, lt.w && bg.z && bgd.y && dA.x && ndd.z);
+    vec4 gT2 = vec4(lt.x && bg.z && bgd.w && dA.w && ndd.x, lt.z && bg.w && bgd.z && dA.y && ndd.y,
+                    lt.w && bg.y && bgd.x && dA.x && ndd.w, lt.y && bg.x && bgd.y && dA.z && ndd.z);
+    vec4 gK1 = vec4(ltd.x && nd.y && bg.x && dA.w && dAd.w, ltd.y && nd.x && bg.z && dA.y && dAd.z,
+                    ltd.w && nd.z && bg.w && dA.x && dAd.x, ltd.z && nd.w && bg.y && dA.z && dAd.y);
+    vec4 gK2 = vec4(ltd.x && nd.x && bg.y && dA.z && dAd.w, ltd.y && nd.z && bg.x && dA.w && dAd.z,
+                    ltd.w && nd.w && bg.z && dA.y && dAd.x, ltd.z && nd.y && bg.w && dA.x && dAd.y);
+    vec4 keepSq = vec4(0.0);
+    vec2 d = vec2(-1., 0.);
+    for (int i = 0; i < 16; i++)
+    {
+      int k = i / 4;
+      int t = i - 4 * k;
+      vec2 n = vec2(-d.y, d.x);
+      vec4 m = vec4(equal(vec4(float(k)), vec4(0., 1., 2., 3.)));
+      vec4 g = t == 0 ? gT1 : (t == 1 ? gT2 : (t == 2 ? gK1 : gK2));
+      if (dot(g, m) > 0.0)
+      {
+        vec2 y = t == 0 ? d : (t == 1 ? n : d + n);
+        vec2 s = t == 0 ? -d : (t == 1 ? -n : (t == 2 ? d : n));
+        vec2 o = t == 0 ? n : (t == 1 ? d : (t == 2 ? -n : -d));
+        keepSq = max(keepSq, m * shadowClose(coord + SRC_SIZE.zw * y, P(y.x, y.y), s, o));
+      }
+      if (t == 3) d = n;
+    }
+    res *= 1.0 - min(keepSq, vec4(1.0));
+  }
+  return res;
+}
 
 // ============================================================================================
 // 13. Tiles between walls
@@ -957,6 +1104,79 @@ float tileStripe(vec2 coord, vec3 E, vec2 a, vec2 w)
   bool wallO = alike(O, P(-w.x - a.x, -w.y - a.y)) || alike(O, P(2. * a.x - w.x, 2. * a.y - w.y));
   bool tiles = !alike(P1, T3) && !alike(T3, Q) && !alike(T3, O) && (alike(T0, P1) || alike(E, T3));
   return float(wallQ && wallO && tiles);
+}
+
+// a blocked corner between two tiles is dropped
+vec4 tilesBetweenWalls(vec4 res, vec2 coord, vec3 E)
+{
+  if (!(CRISP_RULES && max(max(res.x, res.y), max(res.z, res.w)) >= 128.0))
+    return res;
+  vec4 blk = vec4(greaterThanEqual(res, vec4(128.0))) * vec4(greaterThan(BLEND(res), vec4(0.0)));
+  vec4 sc = FLAG(mod(res, 128.0), 8.0);
+  // corner k (x, y, z, w) lies between the directions d = L, U, R, Dn and n = d turned 90 degrees (U, R, Dn, L):
+  // P = E + a is d's pixel, or n's with the second blend color, and Q's side w is the other one. The loop
+  // runs one test at a time, so the test is compiled once
+  vec4 tile = vec4(0.0);
+  vec2 d = vec2(-1., 0.);
+  for (int k = 0; k < 4; k++)
+  {
+    vec2 n = vec2(-d.y, d.x);
+    vec4 m = vec4(equal(vec4(float(k)), vec4(0., 1., 2., 3.)));
+    if (dot(blk, m) > 0.0)
+    {
+      bool second = dot(sc, m) > 0.5;
+      tile += m * tileStripe(coord, E, second ? n : d, second ? d : n);
+    }
+    d = n;
+  }
+  res *= 1.0 - tile;
+  return res;
+}
+
+// ============================================================================================
+// 16 and 18. Line in another color
+// ============================================================================================
+// a corner that draws a line along a pair of one color but is painted with the other candidate (18: also
+// where E is not lone, for a near-black outline); pair is the distance between the two candidates of each corner
+vec4 lineInOtherColor(vec4 res, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 G, vec3 H, vec3 I,
+                      vec4 pair, float dEB, float dED, float dEF, float dEH)
+{
+  if (XBRZ_MINC <= 0.0)
+    return res;
+  bool lone = !(eq(A, E) || eq(B, E) || eq(C, E) || eq(D, E) || eq(E, F) || eq(E, G) || eq(E, H) || eq(E, I));
+  vec4 r = res;
+  vec4 sh = FLAG(r, 16.0), st = FLAG(r, 64.0), sec = FLAG(r, 8.0);
+  // a shallow line is drawn along the first candidate's color and a steep one along the second's; the
+  // corner is painted with the other candidate, which differs from it by more than XBRZ_TINT
+  vec4 tint = vec4(lessThan(r, vec4(128.0))) * vec4(greaterThan(BLEND(r), vec4(0.0))) * FLAG(r, 4.0) *
+              abs(sh - st) * (sh * sec + st * (1.0 - sec)) * vec4(greaterThan(pair * 255.0, vec4(XBRZ_TINT)));
+  // the two pixels that make the line have one color
+  vec4 pSh = vec4(DistYCbCr(C, D), DistYCbCr(B, I), DistYCbCr(F, G), DistYCbCr(A, H));
+  vec4 pSt = vec4(DistYCbCr(B, G), DistYCbCr(A, F), DistYCbCr(C, H), DistYCbCr(D, I));
+  tint *= vec4(lessThan(sh * pSh + st * pSt, vec4(EQUAL_COLOR_TOLERANCE)));
+  // E, the paint color P and the line's color L are not an antialiasing ramp
+  vec4 dE1 = vec4(dED, dEB, dEF, dEH);
+  vec4 dE2 = vec4(dEB, dEF, dEH, dED);
+  vec4 dP = mix(dE1, dE2, sec), dL = mix(dE2, dE1, sec);
+  tint *= vec4(greaterThan(dP + pair, XBRZ_TINT_RAMP * dL));
+  // a line darker than E is drawn at 45 degrees in its own color; a lighter one, or any line through an
+  // E that sits in a straight line of one color (its two opposite neighbors match), leaves the corner square
+  vec4 lumC1 = vec4(dot(D, lumaW), dot(B, lumaW), dot(F, lumaW), dot(H, lumaW));
+  vec4 lumC2 = vec4(dot(B, lumaW), dot(F, lumaW), dot(H, lumaW), dot(D, lumaW));
+  vec4 lumLine = mix(lumC1, lumC2, st);
+  bool straight = DistYCbCr(D, F) < EQUAL_COLOR_TOLERANCE || DistYCbCr(B, H) < EQUAL_COLOR_TOLERANCE;
+  vec4 dark = vec4(lessThan(lumLine, vec4(dot(E, lumaW)))) * (straight ? 0.0 : 1.0);
+  // 18. where E is not lone, only a near-black line (an outline) is drawn in its own color, and no
+  // corner is left square
+  if (!lone)
+  {
+    dark *= vec4(lessThan(lumLine, vec4(XBRZ_TINT_DARK)));
+    tint *= dark;
+  }
+  vec4 flip = st - sec;  // +1: paint the second candidate, -1: the first
+  res -= tint * dark * (16.0 * sh + 64.0 * st + 32.0 * FLAG(r, 32.0) - 8.0 * flip);
+  res *= 1.0 - tint * (1.0 - dark);
+  return res;
 }
 
 
@@ -1097,17 +1317,21 @@ void main()
 
   vec4 res = vec4(blendResult);
 
+  // E's distance to each side neighbor (a corner's edge is the smaller of its two)
+  float dEB = DistYCbCr(B, E);
+  float dED = DistYCbCr(D, E);
+  float dEF = DistYCbCr(E, F);
+  float dEH = DistYCbCr(E, H);
+
   // Pixel Tap Mapping: -|-|-|-|-
   //                    -|-|B|C|-
   //                    -|D|E|F|x
   //                    -|G|H|I|x
   //                    -|-|x|x|-
-  if(blendResult.z == BLEND_DOMINANT || (blendResult.z == BLEND_NORMAL &&
-    !((blendResult.y != BLEND_NONE && !GuardEqual(E, G, min(DistYCbCr(E, F), DistYCbCr(E, H)))) || (blendResult.w != BLEND_NONE && !GuardEqual(C, E, min(DistYCbCr(E, F), DistYCbCr(E, H)))) ||
-     (ShapeEqual(G, H, min(DistYCbCr(E, F), DistYCbCr(E, H))) && ShapeEqual(H, I, min(DistYCbCr(E, F), DistYCbCr(E, H))) && ShapeEqual(F, I, min(DistYCbCr(E, F), DistYCbCr(E, H))) && ShapeEqual(C, F, min(DistYCbCr(E, F), DistYCbCr(E, H))) && !ShapeEqual(E, I, min(DistYCbCr(E, F), DistYCbCr(E, H)))))))
+  if (cornerCut(blendResult.z, blendResult.y, blendResult.w, min(dEF, dEH), E, G, H, I, F, C))
   {
     res.z += 4.0;
-    vec2 line = lineTests(F, G, H, C, E, DistYCbCr(F, H), eq(N_m1_p2, H) && !eq(G, H), eq(N_p2_m1, F) && !eq(C, F));
+    vec2 line = lineTests(F, G, H, C, E, d_F_H, eq(N_m1_p2, H) && !eq(G, H), eq(N_p2_m1, F) && !eq(C, F));
     if (neq(E,G) && neq(D,G)) res.z += line.x;
     if (neq(E,C) && neq(B,C)) res.z += line.y;
   }
@@ -1117,12 +1341,10 @@ void main()
   //                    x|D|E|F|-
   //                    x|G|H|I|-
   //                    -|x|x|-|-
-  if(blendResult.w == BLEND_DOMINANT || (blendResult.w == BLEND_NORMAL &&
-    !((blendResult.z != BLEND_NONE && !GuardEqual(A, E, min(DistYCbCr(D, E), DistYCbCr(E, H)))) || (blendResult.x != BLEND_NONE && !GuardEqual(E, I, min(DistYCbCr(D, E), DistYCbCr(E, H)))) ||
-     (ShapeEqual(A, D, min(DistYCbCr(D, E), DistYCbCr(E, H))) && ShapeEqual(D, G, min(DistYCbCr(D, E), DistYCbCr(E, H))) && ShapeEqual(G, H, min(DistYCbCr(D, E), DistYCbCr(E, H))) && ShapeEqual(H, I, min(DistYCbCr(D, E), DistYCbCr(E, H))) && !ShapeEqual(E, G, min(DistYCbCr(D, E), DistYCbCr(E, H)))))))
+  if (cornerCut(blendResult.w, blendResult.z, blendResult.x, min(dED, dEH), E, A, D, G, H, I))
   {
     res.w += 4.0;
-    vec2 line = lineTests(H, A, D, I, E, DistYCbCr(D, H), eq(N_m2_m1, D) && !eq(A, D), eq(N_p1_p2, H) && !eq(I, H));
+    vec2 line = lineTests(H, A, D, I, E, d_D_H, eq(N_m2_m1, D) && !eq(A, D), eq(N_p1_p2, H) && !eq(I, H));
     if (neq(E,A) && neq(B,A)) res.w += line.x;
     if (neq(E,I) && neq(F,I)) res.w += line.y;
   }
@@ -1132,12 +1354,10 @@ void main()
   //                    -|D|E|F|x
   //                    -|-|H|I|-
   //                    -|-|-|-|-
-  if(blendResult.y == BLEND_DOMINANT || (blendResult.y == BLEND_NORMAL &&
-    !((blendResult.x != BLEND_NONE && !GuardEqual(E, I, min(DistYCbCr(B, E), DistYCbCr(E, F)))) || (blendResult.z != BLEND_NONE && !GuardEqual(A, E, min(DistYCbCr(B, E), DistYCbCr(E, F)))) ||
-     (ShapeEqual(F, I, min(DistYCbCr(B, E), DistYCbCr(E, F))) && ShapeEqual(C, F, min(DistYCbCr(B, E), DistYCbCr(E, F))) && ShapeEqual(B, C, min(DistYCbCr(B, E), DistYCbCr(E, F))) && ShapeEqual(A, B, min(DistYCbCr(B, E), DistYCbCr(E, F))) && !ShapeEqual(C, E, min(DistYCbCr(B, E), DistYCbCr(E, F)))))))
+  if (cornerCut(blendResult.y, blendResult.x, blendResult.z, min(dEB, dEF), E, I, F, C, B, A))
   {
     res.y += 4.0;
-    vec2 line = lineTests(B, I, F, A, E, DistYCbCr(B, F), eq(N_p2_p1, F) && !eq(I, F), eq(N_m1_m2, B) && !eq(A, B));
+    vec2 line = lineTests(B, I, F, A, E, d_B_F, eq(N_p2_p1, F) && !eq(I, F), eq(N_m1_m2, B) && !eq(A, B));
     if (neq(E,I) && neq(H,I)) res.y += line.x;
     if (neq(E,A) && neq(D,A)) res.y += line.y;
   }
@@ -1147,22 +1367,16 @@ void main()
   //                    x|D|E|F|-
   //                    -|G|H|-|-
   //                    -|-|-|-|-
-  if(blendResult.x == BLEND_DOMINANT || (blendResult.x == BLEND_NORMAL &&
-    !((blendResult.w != BLEND_NONE && !GuardEqual(C, E, min(DistYCbCr(B, E), DistYCbCr(D, E)))) || (blendResult.y != BLEND_NONE && !GuardEqual(E, G, min(DistYCbCr(B, E), DistYCbCr(D, E)))) ||
-     (ShapeEqual(B, C, min(DistYCbCr(B, E), DistYCbCr(D, E))) && ShapeEqual(A, B, min(DistYCbCr(B, E), DistYCbCr(D, E))) && ShapeEqual(A, D, min(DistYCbCr(B, E), DistYCbCr(D, E))) && ShapeEqual(D, G, min(DistYCbCr(B, E), DistYCbCr(D, E))) && !ShapeEqual(A, E, min(DistYCbCr(B, E), DistYCbCr(D, E)))))))
+  if (cornerCut(blendResult.x, blendResult.w, blendResult.y, min(dEB, dED), E, C, B, A, D, G))
   {
     res.x += 4.0;
-    vec2 line = lineTests(D, C, B, G, E, DistYCbCr(B, D), eq(N_p1_m2, B) && !eq(C, B), eq(N_m2_p1, D) && !eq(G, D));
+    vec2 line = lineTests(D, C, B, G, E, d_B_D, eq(N_p1_m2, B) && !eq(C, B), eq(N_m2_p1, D) && !eq(G, D));
     if (neq(E,C) && neq(F,C)) res.x += line.x;
     if (neq(E,G) && neq(H,G)) res.x += line.y;
   }
 
   // Decisions for the output pass, made once per input pixel instead of once per output pixel:
   // +8 when a corner blends with its second candidate colour (ties go to the first, as in xBRZ).
-  float dEB = DistYCbCr(B, E);
-  float dED = DistYCbCr(D, E);
-  float dEF = DistYCbCr(E, F);
-  float dEH = DistYCbCr(E, H);
   vec4 second = vec4(dED <= dEB ? 0.0 : 1.0, dEB <= dEF ? 0.0 : 1.0, dEF <= dEH ? 0.0 : 1.0, dEH <= dED ? 0.0 : 1.0);
   res += 8.0 * second;
 
@@ -1170,159 +1384,17 @@ void main()
   // the rules, in order
   // ============================================================================================
   vec4 xbrz = res;
+  // the two colors on each corner's diagonal: top-left D-B, top-right B-F, bottom-right F-H, bottom-left H-D
+  vec4 pair = vec4(d_B_D, d_B_F, d_F_H, d_D_H);
   vec4 contrast, weak;
   res = minimumContrast(res, dEB, dED, dEF, dEH, contrast, weak);              // 1
-  // 11. Lines in a larger window: corners squared by rule 1 on a straight line come back
-  vec4 sq = vec4(lessThan(contrast, vec4(XBRZ_MINC))) * vec4(greaterThan(BLEND(xbrz), vec4(0.0)));
-  if (XBRZ_MINC > 0.0 && dot(sq, vec4(1.0)) > 0.0)
-  {
-    sq *= diagonalStripes(coord, B, D, E, F, H, dEB, dED, dEF, dEH, xbrz, sq);
-    res = mix(res, xbrz, sq);
-    weak *= 1.0 - sq;
-  }
-  res = diagonalRules(res, coord, A, B, C, D, E, F, G, H, I, dEB, dED, dEF, dEH);  // 2 to 7
+  res = largerWindowLines(res, coord, B, D, E, F, H, dEB, dED, dEF, dEH, xbrz, contrast, weak);  // 11
+  res = diagonalRules(res, coord, A, B, C, D, E, F, G, H, I, pair, dEB, dED, dEF, dEH);  // 2 to 7
   res = weakCorners(res, weak);                                                 // 1, weak corners
   res = lineThroughAA(res, xbrz, contrast, B, D, E, F, H);                      // 8
   res = closedPixel(res, A, B, C, D, E, F, G, H, I);                            // 10
-
-  // 12. closed shadow (the notch's corner and, on the shadow's side, the corners next to the notch)
-  if (CRISP_RULES)
-  {
-    float lE = dot(E, lumaW);
-    // cheap gates on the 3x3 before the 7x7 tests (cross order B D F H, diagonal order A C G I):
-    // dS shadow, dA close to a shadow color, nd not a shadow, bg close to a background lighter than the shadow
-    vec4 lX = vec4(dot(B, lumaW), dot(D, lumaW), dot(F, lumaW), dot(H, lumaW));
-    vec4 lY = vec4(dot(A, lumaW), dot(C, lumaW), dot(G, lumaW), dot(I, lumaW));
-    bvec4 dS = lessThan(lX, vec4(XBRZ_SHADOW)), dSd = lessThan(lY, vec4(XBRZ_SHADOW));
-    bvec4 dA = lessThan(lX, vec4(XBRZ_SHADOW + 0.08)), dAd = lessThan(lY, vec4(XBRZ_SHADOW + 0.08));
-    bvec4 nd = not(dS), ndd = not(dSd);
-    bvec4 bg = greaterThan(lX, vec4(XBRZ_SHADOW + 0.07)), bgd = greaterThan(lY, vec4(XBRZ_SHADOW + 0.07));
-    bvec4 lt = greaterThan(lX, vec4(XBRZ_SHADOW + 0.15)), ltd = greaterThan(lY, vec4(XBRZ_SHADOW + 0.15));
-    // corner k (x, y, z, w) lies between the directions d = L, U, R, Dn and n = d turned 90 degrees (U, R, Dn, L);
-    // the loops run one 7x7 test at a time, so the test is compiled once
-    if (lE > XBRZ_SHADOW + 0.15 && any(dS))
-    {
-      // E is the notch: S = P(s) and K = P(o - s) shadow, O = P(o) not, background at -s, -o and s - o;
-      // first candidate (s, o) = (d, n), second (n, d)
-      vec4 g1 = vec4(dS.y && dSd.y && nd.x && bg.z && bg.w && bgd.z, dS.x && dSd.w && nd.z && bg.w && bg.y && bgd.x,
-                     dS.z && dSd.z && nd.w && bg.y && bg.x && bgd.y, dS.w && dSd.x && nd.y && bg.x && bg.z && bgd.w);
-      vec4 g2 = vec4(dS.x && dSd.z && nd.y && bg.w && bg.z && bgd.y, dS.z && dSd.x && nd.x && bg.y && bg.w && bgd.w,
-                     dS.w && dSd.y && nd.z && bg.x && bg.y && bgd.z, dS.y && dSd.w && nd.w && bg.z && bg.x && bgd.x);
-      vec4 c1 = vec4(0.0), c2 = vec4(0.0);
-      vec2 d = vec2(-1., 0.);
-      for (int i = 0; i < 8; i++)
-      {
-        int k = i / 2;
-        bool second = i - 2 * k == 1;
-        vec2 n = vec2(-d.y, d.x);
-        vec4 m = vec4(equal(vec4(float(k)), vec4(0., 1., 2., 3.)));
-        if (dot(second ? g2 : g1, m) > 0.0)
-        {
-          float r = shadowClose(coord, E, second ? n : d, second ? d : n);
-          if (second) c2 += m * r; else c1 += m * r;
-        }
-        if (second) d = n;
-      }
-      // first candidate as S: x/z with a horizontal arm and y/w with a vertical one take +16; second (+8): +64
-      c2 *= 1.0 - c1;
-      res = mix(res, vec4(1. + 4. + 16.), c1);
-      res = mix(res, vec4(1. + 4. + 8. + 64.), c2);
-    }
-    else if (lE < XBRZ_SHADOW && (any(lt) || any(ltd)))
-    {
-      // E is the shadow next to a notch Y: the arm's tip (Y = E + d, O = Y + o diagonal to E) or the lobe's
-      // corner (Y = E + s - o diagonal to E, O = E + s); E's corner toward the notch stays square.
-      // Candidates for corner k, as (Y, s, o): (d, -d, n), (n, -n, d), (d + n, d, -n), (d + n, n, -d)
-      vec4 gT1 = vec4(lt.y && bg.w && bgd.w && dA.z && ndd.x, lt.x && bg.y && bgd.z && dA.w && ndd.y,
-                      lt.z && bg.x && bgd.x && dA.y && ndd.w, lt.w && bg.z && bgd.y && dA.x && ndd.z);
-      vec4 gT2 = vec4(lt.x && bg.z && bgd.w && dA.w && ndd.x, lt.z && bg.w && bgd.z && dA.y && ndd.y,
-                      lt.w && bg.y && bgd.x && dA.x && ndd.w, lt.y && bg.x && bgd.y && dA.z && ndd.z);
-      vec4 gK1 = vec4(ltd.x && nd.y && bg.x && dA.w && dAd.w, ltd.y && nd.x && bg.z && dA.y && dAd.z,
-                      ltd.w && nd.z && bg.w && dA.x && dAd.x, ltd.z && nd.w && bg.y && dA.z && dAd.y);
-      vec4 gK2 = vec4(ltd.x && nd.x && bg.y && dA.z && dAd.w, ltd.y && nd.z && bg.x && dA.w && dAd.z,
-                      ltd.w && nd.w && bg.z && dA.y && dAd.x, ltd.z && nd.y && bg.w && dA.x && dAd.y);
-      vec4 keepSq = vec4(0.0);
-      vec2 d = vec2(-1., 0.);
-      for (int i = 0; i < 16; i++)
-      {
-        int k = i / 4;
-        int t = i - 4 * k;
-        vec2 n = vec2(-d.y, d.x);
-        vec4 m = vec4(equal(vec4(float(k)), vec4(0., 1., 2., 3.)));
-        vec4 g = t == 0 ? gT1 : (t == 1 ? gT2 : (t == 2 ? gK1 : gK2));
-        if (dot(g, m) > 0.0)
-        {
-          vec2 y = t == 0 ? d : (t == 1 ? n : d + n);
-          vec2 s = t == 0 ? -d : (t == 1 ? -n : (t == 2 ? d : n));
-          vec2 o = t == 0 ? n : (t == 1 ? d : (t == 2 ? -n : -d));
-          keepSq = max(keepSq, m * shadowClose(coord + SRC_SIZE.zw * y, P(y.x, y.y), s, o));
-        }
-        if (t == 3) d = n;
-      }
-      res *= 1.0 - min(keepSq, vec4(1.0));
-    }
-  }
-  // 13. tiles between walls: a blocked corner between two tiles is dropped
-  if (CRISP_RULES && max(max(res.x, res.y), max(res.z, res.w)) >= 128.0)
-  {
-    vec4 blk = vec4(greaterThanEqual(res, vec4(128.0))) * vec4(greaterThan(BLEND(res), vec4(0.0)));
-    vec4 sc = FLAG(mod(res, 128.0), 8.0);
-    // corner k (x, y, z, w) lies between the directions d = L, U, R, Dn and n = d turned 90 degrees (U, R, Dn, L):
-    // P = E + a is d's pixel, or n's with the second blend color, and Q's side w is the other one. The loop
-    // runs one test at a time, so the test is compiled once
-    vec4 tile = vec4(0.0);
-    vec2 d = vec2(-1., 0.);
-    for (int k = 0; k < 4; k++)
-    {
-      vec2 n = vec2(-d.y, d.x);
-      vec4 m = vec4(equal(vec4(float(k)), vec4(0., 1., 2., 3.)));
-      if (dot(blk, m) > 0.0)
-      {
-        bool second = dot(sc, m) > 0.5;
-        tile += m * tileStripe(coord, E, second ? n : d, second ? d : n);
-      }
-      d = n;
-    }
-    res *= 1.0 - tile;
-  }
-  // 16. Line in another color: a corner that draws a line along a pair of one color but is painted with
-  // the other candidate (18: also where E is not lone, for a near-black outline)
-  if (XBRZ_MINC > 0.0)
-  {
-    bool lone = !(eq(A, E) || eq(B, E) || eq(C, E) || eq(D, E) || eq(E, F) || eq(E, G) || eq(E, H) || eq(E, I));
-    vec4 r = res;
-    vec4 sh = FLAG(r, 16.0), st = FLAG(r, 64.0), sec = FLAG(r, 8.0);
-    // a shallow line is drawn along the first candidate's color and a steep one along the second's; the
-    // corner is painted with the other candidate, which differs from it by more than XBRZ_TINT
-    vec4 cand = vec4(DistYCbCr(B, D), DistYCbCr(B, F), DistYCbCr(F, H), DistYCbCr(D, H));
-    vec4 tint = vec4(lessThan(r, vec4(128.0))) * vec4(greaterThan(BLEND(r), vec4(0.0))) * FLAG(r, 4.0) *
-                abs(sh - st) * (sh * sec + st * (1.0 - sec)) * vec4(greaterThan(cand * 255.0, vec4(XBRZ_TINT)));
-    // the two pixels that make the line have one color
-    vec4 pSh = vec4(DistYCbCr(C, D), DistYCbCr(B, I), DistYCbCr(F, G), DistYCbCr(A, H));
-    vec4 pSt = vec4(DistYCbCr(B, G), DistYCbCr(A, F), DistYCbCr(C, H), DistYCbCr(D, I));
-    tint *= vec4(lessThan(sh * pSh + st * pSt, vec4(EQUAL_COLOR_TOLERANCE)));
-    // E, the paint color P and the line's color L are not an antialiasing ramp
-    vec4 dE1 = vec4(DistYCbCr(D, E), DistYCbCr(B, E), DistYCbCr(E, F), DistYCbCr(E, H));
-    vec4 dE2 = vec4(DistYCbCr(B, E), DistYCbCr(E, F), DistYCbCr(E, H), DistYCbCr(D, E));
-    vec4 dP = mix(dE1, dE2, sec), dL = mix(dE2, dE1, sec);
-    tint *= vec4(greaterThan(dP + cand, XBRZ_TINT_RAMP * dL));
-    // a line darker than E is drawn at 45 degrees in its own color; a lighter one, or any line through an
-    // E that sits in a straight line of one color (its two opposite neighbors match), leaves the corner square
-    vec4 lumC1 = vec4(dot(D, lumaW), dot(B, lumaW), dot(F, lumaW), dot(H, lumaW));
-    vec4 lumC2 = vec4(dot(B, lumaW), dot(F, lumaW), dot(H, lumaW), dot(D, lumaW));
-    vec4 lumLine = mix(lumC1, lumC2, st);
-    bool straight = DistYCbCr(D, F) < EQUAL_COLOR_TOLERANCE || DistYCbCr(B, H) < EQUAL_COLOR_TOLERANCE;
-    vec4 dark = vec4(lessThan(lumLine, vec4(dot(E, lumaW)))) * (straight ? 0.0 : 1.0);
-    // 18. where E is not lone, only a near-black line (an outline) is drawn in its own color, and no
-    // corner is left square
-    if (!lone)
-    {
-      dark *= vec4(lessThan(lumLine, vec4(XBRZ_TINT_DARK)));
-      tint *= dark;
-    }
-    vec4 flip = st - sec;  // +1: paint the second candidate, -1: the first
-    res -= tint * dark * (16.0 * sh + 64.0 * st + 32.0 * FLAG(r, 32.0) - 8.0 * flip);
-    res *= 1.0 - tint * (1.0 - dark);
-  }
+  res = closedShadow(res, coord, A, B, C, D, E, F, G, H, I);                    // 12
+  res = tilesBetweenWalls(res, coord, E);                                       // 13
+  res = lineInOtherColor(res, A, B, C, D, E, F, G, H, I, pair, dEB, dED, dEF, dEH);  // 16, 18
   FRAG_OUT = res / 255.0;
 }
