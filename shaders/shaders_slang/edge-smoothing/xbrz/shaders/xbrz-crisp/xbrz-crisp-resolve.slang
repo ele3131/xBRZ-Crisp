@@ -134,7 +134,10 @@
 //     antialiased curves, whose cuts run on, stay round. A corner on a dark outline with an
 //     antialiasing pixel is still cut: the pixel and its two neighbors form a ramp (XBRZ_JUNC_RAMP),
 //     the darkest of them is dark, and one neighbor's color goes on just past the other along the cut,
-//     like the outline of a neck that runs on behind its transition pixel.
+//     like the outline of a neck that runs on behind its transition pixel. On a looser ramp
+//     (XBRZ_JUNC_RAMP2) a corner also stays round where another pixel cuts the same corner along the
+//     line, or where the opposite corner of the pixel stays cut, so a pixel on an antialiased curve
+//     is not cut at one end and square at the other, like the corner of a trunk in Minish Cap.
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
 //     straight line of three of its color along the pixel's side, where the corner's other neighbor
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
@@ -288,6 +291,7 @@ float distYCbCr(vec3 pixA, vec3 pixB)
 #define XBRZ_JUNCTION 40.0   // 20. two neighbors this far apart do not make one edge across a corner
 #define XBRZ_JUNC_NEAR 20.0  // 20. a color this close to the next pixel goes on along the cut
 #define XBRZ_JUNC_RAMP 1.06  // 20. not a junction but a ramp: the two shorter distances of E and its two neighbors add up to less than this times the longest
+#define XBRZ_JUNC_RAMP2 1.12 // 20. a looser ramp, for the corners kept round where a cut goes on or E is a strip
 #define XBRZ_LINE_SIDE 25.0  // 21. the other neighbor of a corner differs from a straight line by this
 #define XBRZ_LOOSE 60.0      // 23. a pixel this far from each of its 4 side neighbors is loose
 #define XBRZ_HOOK 90.0       // 24. a line between two colors this far apart needs a corner to go on to
@@ -714,6 +718,11 @@ void main()
         vec4 on20 = isCut(blendResult) * vec4(greaterThan(cand20, vec4(XBRZ_JUNCTION)))
                   * (1.0 - ramp20 * cr20 * vec4(greaterThan(min(dE1, dE2), vec4(40.0))) * vec4(lessThan(min(dE1, dE2), vec4(70.0))) * vec4(lessThan(lmin20, vec4(0.35))))
                   * (1.0 - ext1) * (1.0 - ext2) * (1.0 - extE) * vec4(lessThan(1.0 + runA + runB, vec4(3.0)));
+        // on an antialiasing ramp (E and its two neighbors on one line in color), a corner stays round where another
+        // pixel cuts the same corner along the line, or where the opposite corner of E stays cut (E is then a strip)
+        vec4 wide20 = vec4(lessThan(dE1 + dE2 + cand20, (1.0 + XBRZ_JUNC_RAMP2) * max(cand20, max(dE1, dE2))));
+        vec4 keep20 = max(vec4(greaterThan(runA + runB, vec4(0.5))), (isCut(blendResult) * (1.0 - on20)).zwxy);
+        on20 *= 1.0 - keep20 * wide20;
         blendResult *= 1.0 - on20;
       }
 
