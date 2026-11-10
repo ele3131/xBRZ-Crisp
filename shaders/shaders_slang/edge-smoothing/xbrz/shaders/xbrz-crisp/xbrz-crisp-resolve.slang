@@ -363,13 +363,11 @@ vec2 stepSide(vec3 X, vec3 Y, vec2 row1, vec2 row2, vec2 a, vec2 n)
   bool dark = w.dk && w.nt < 2.5 && luma(X) <= XBRZ_DARK;
   return vec2((w.thin && (w.nu || w.fu || dark)) ? run : 0.0, w.nu ? run : 0.0);
 }
-// A step at the pixel s: the line runs along a (past the step) and the cut crosses b. Returns x: the
+// A step at the pixel s, whose colors X = at(s) and Y = at(s + a) are already known to differ by
+// XBRZ_STRAIGHT or more: the line runs along a (past the step) and the cut crosses b. Returns x: the
 // run of the stroke (see stepSide) for either of the two colors, y: the run of a plain edge.
-vec2 stepRun(vec2 s, vec2 a, vec2 b)
+vec2 stepRun(vec3 X, vec3 Y, vec2 s, vec2 a, vec2 b)
 {
-  vec3 X = at(s);
-  vec3 Y = at(s + a);
-  if (dist255(X, Y) < XBRZ_STRAIGHT) return vec2(0.0);
   vec2 rx = stepSide(X, Y, s, s - b, a, b);      // X at s - k a and at s + k a - b
   vec2 ry = stepSide(Y, X, s + b, s, a, -b);     // Y at s - k a + b and at s + k a
   return vec2(max(rx.x, ry.x), max(rx.y, ry.y));
@@ -384,29 +382,14 @@ vec2 stepSlope(vec2 st, vec2 sh, float xs, float xh)
   if (xh > 0.0 && sh.y >= 3.0 && st.x < 2.0) return vec2(sh.y, 2.0);
   return vec2(0.0);
 }
-// The slope and line type of a corner with a line, from the step runs at E in its frame (v, h).
-vec2 cornerStep(vec2 v, vec2 h, float xs, float xh)
+// The thin end of a step of 3 or more, from the runs r of the step pixel along its own side and other
+// along the other one (steep: the step pixel is v and r is the steep run; shallow: it is h): its slope
+// when the step there is a steep or shallow line of that length, else 0. xLine is the neighbor's line flag.
+float thinEnd(vec2 r, vec2 other, bool steep, float xLine)
 {
-  return stepSlope(stepRun(vec2(0.), v, h), stepRun(vec2(0.), h, v), xs, xh);
-}
-// The thin end of a step of 3 or more at the step pixel s (= v or h from E, in the corner's frame v, h):
-// its slope when the step there is a steep (steep = true) or shallow line of that length, else 0.
-float thinEnd(vec2 v, vec2 h, bool steep, float xLine)
-{
-  vec2 s = steep ? v : h;
-  vec2 r = steep ? stepRun(s, v, h) : stepRun(s, h, v);
   if (max(r.x, r.y * xLine) < 3.0) return 0.0;
-  r = steep ? stepSlope(r, stepRun(s, h, v), xLine, 0.0) : stepSlope(stepRun(s, v, h), r, 0.0, xLine);
+  r = steep ? stepSlope(r, other, xLine, 0.0) : stepSlope(other, r, 0.0, xLine);
   return (r.x >= 3.0 && r.y == (steep ? 1.0 : 2.0)) ? r.x : 0.0;
-}
-// The thin end that a free corner takes: x: its slope (0: none), y: 1.0 when it is a steep line. cSt and cSh
-// say that the neighbor along v (steep) or along h (shallow) draws a line; xSt and xSh are that line's flags.
-vec2 thinCorner(vec2 v, vec2 h, vec3 E, float cSt, float cSh, float xSt, float xSh)
-{
-  vec2 t = vec2(0.0);
-  if (cSt > 0.0 && sameTone(at(v), E)) t = vec2(thinEnd(v, h, true, xSt), 1.0);
-  if (t.x == 0.0 && cSh > 0.0 && sameTone(at(h), E)) t = vec2(thinEnd(v, h, false, xSh), 0.0);
-  return t;
 }
 float drawsLine(float r) { return float(r < 128.0 && BLEND(r) > 0.0 && BLEND(r) < 3.0 && FLAG(r, 4.0) > 0.0); }
 
@@ -460,6 +443,12 @@ Roles roles(Frame f, float s)
   r.uw2 = sv ? f.cvp2h : f.chp2v;
   r.ru = sv ? f.rv : f.rh;         r.rumw = sv ? f.rvmh : f.rhmv;
   return r;
+}
+
+// 1.0 when one of the decision words around a corner has the blocked bit (128), which rule 22 needs.
+float hasBlocked(Frame f)
+{
+  return max(max(FLAG(f.rv, 128.0), FLAG(f.rh, 128.0)), max(FLAG(f.rvmh, 128.0), FLAG(f.rhmv, 128.0)));
 }
 
 // ---- 21. A straight line does not bend ----
@@ -747,22 +736,24 @@ void main()
       // their shared side cuts back into E (the two cuts cross along that side), E and n are close shades
       // (under 64 apart), and the lighter of the two ends a 45-degree stripe of its color next to a darker pixel
       // that differs from its 4 neighbors (see back22); n's corner stays square the same way, so the side
-      // between them is straight and the darker shade does not bulge into the stripe
-      if (anyCut(blendResult))
+      // between them is straight and the darker shade does not bulge into the stripe.
+      // Both back22 and tip22 need a blocked corner (bit 128) in E or in a word around the corner.
+      vec4 bk = max(blockedBit, vec4(hasBlocked(fX), hasBlocked(fY), hasBlocked(fZ), hasBlocked(fW)));
+      if (anyCut(blendResult) && dot(bk, vec4(1.0)) > 0.0)
       {
         Roles rX = roles(fX, sec.x), rY = roles(fY, sec.y), rZ = roles(fZ, sec.z), rW = roles(fW, sec.w);
-                float loneE = apartFrom4(E, B, D, F, H);
-        if (blendResult.x > 0.0) x22.x = back22(rX, E, info.x, blockedBit.x, loneE);
-        if (blendResult.y > 0.0) x22.y = back22(rY, E, info.y, blockedBit.y, loneE);
-        if (blendResult.z > 0.0) x22.z = back22(rZ, E, info.z, blockedBit.z, loneE);
-        if (blendResult.w > 0.0) x22.w = back22(rW, E, info.w, blockedBit.w, loneE);
+        float loneE = apartFrom4(E, B, D, F, H);
+        if (blendResult.x > 0.0 && bk.x > 0.0) x22.x = back22(rX, E, info.x, blockedBit.x, loneE);
+        if (blendResult.y > 0.0 && bk.y > 0.0) x22.y = back22(rY, E, info.y, blockedBit.y, loneE);
+        if (blendResult.z > 0.0 && bk.z > 0.0) x22.z = back22(rZ, E, info.z, blockedBit.z, loneE);
+        if (blendResult.w > 0.0 && bk.w > 0.0) x22.w = back22(rW, E, info.w, blockedBit.w, loneE);
         blendResult *= 1.0 - x22;
         // and a round corner at the far end of such a lone darker pixel takes no tip of it (see tip22)
         vec4 t22 = vec4(0.0);
-        if (blendResult.x > 0.0 && line.x < 0.5) t22.x = tip22(rX, E);
-        if (blendResult.y > 0.0 && line.y < 0.5) t22.y = tip22(rY, E);
-        if (blendResult.z > 0.0 && line.z < 0.5) t22.z = tip22(rZ, E);
-        if (blendResult.w > 0.0 && line.w < 0.5) t22.w = tip22(rW, E);
+        if (blendResult.x > 0.0 && bk.x > 0.0 && line.x < 0.5) t22.x = tip22(rX, E);
+        if (blendResult.y > 0.0 && bk.y > 0.0 && line.y < 0.5) t22.y = tip22(rY, E);
+        if (blendResult.z > 0.0 && bk.z > 0.0 && line.z < 0.5) t22.z = tip22(rZ, E);
+        if (blendResult.w > 0.0 && bk.w > 0.0 && line.w < 0.5) t22.w = tip22(rW, E);
         blendResult *= 1.0 - t22;
         x22 = max(x22, t22);
       }
@@ -772,24 +763,62 @@ void main()
     // nn: the slope of a cut corner's line (0: xBRZ's), ty: its type (1 steep, 2 shallow); a free corner
     // next to the step pixel along the line (steep: E + v, shallow: E + h) takes that line's thin end
     vec4 lineOn = line * isCut(blendResult);
-    vec2 r;
-    if (lineOn.x > 0.0) { r = cornerStep(vX, hX, haveSteepLine.x, haveShallowLine.x); nn.x = r.x; ty.x = r.y; }
-    if (lineOn.y > 0.0) { r = cornerStep(vY, hY, haveSteepLine.y, haveShallowLine.y); nn.y = r.x; ty.y = r.y; }
-    if (lineOn.z > 0.0) { r = cornerStep(vZ, hZ, haveSteepLine.z, haveShallowLine.z); nn.z = r.x; ty.z = r.y; }
-    if (lineOn.w > 0.0) { r = cornerStep(vW, hW, haveSteepLine.w, haveShallowLine.w); nn.w = r.x; ty.w = r.y; }
     vec4 free = vec4(equal(blendResult, vec4(0.0)));
-    if (dot(free, vec4(1.0)) > 0.0)
+    vec4 cSt = free * vec4(drawsLine(iB.x), drawsLine(iF.y), drawsLine(iH.z), drawsLine(iD.w));
+    vec4 cSh = free * vec4(drawsLine(iD.x), drawsLine(iB.y), drawsLine(iF.z), drawsLine(iH.w));
+    if (dot(lineOn + cSt + cSh, vec4(1.0)) > 0.0)
     {
-      vec4 cSt = free * vec4(drawsLine(iB.x), drawsLine(iF.y), drawsLine(iH.z), drawsLine(iD.w));
-      vec4 cSh = free * vec4(drawsLine(iD.x), drawsLine(iB.y), drawsLine(iF.z), drawsLine(iH.w));
-      if (dot(cSt + cSh, vec4(1.0)) > 0.0)
+      // the line flags of the neighbors that draw a line beside each free corner (steep: along v, shallow: along h)
+      vec4 xSt = vec4(FLAG(iB.x, 64.0), FLAG(iF.y, 64.0), FLAG(iH.z, 64.0), FLAG(iD.w, 64.0));
+      vec4 xSh = vec4(FLAG(iD.x, 16.0), FLAG(iB.y, 16.0), FLAG(iF.z, 16.0), FLAG(iH.w, 16.0));
+      vec3 E0 = vec3(0.0);
+      if (dot(cSt + cSh, vec4(1.0)) > 0.0) E0 = P(0., 0.);
+      // one corner at a time, so that stepRun is compiled once (k picks the corner, as in pass 0)
+      for (int k = 0; k < 4; k++)
       {
-        vec3 E0 = P(0., 0.);
-        vec2 t;
-        t = thinCorner(vX, hX, E0, cSt.x, cSh.x, FLAG(iB.x, 64.0), FLAG(iD.x, 16.0)); thinN.x = t.x; thinSteep.x = t.y;
-        t = thinCorner(vY, hY, E0, cSt.y, cSh.y, FLAG(iF.y, 64.0), FLAG(iB.y, 16.0)); thinN.y = t.x; thinSteep.y = t.y;
-        t = thinCorner(vZ, hZ, E0, cSt.z, cSh.z, FLAG(iH.z, 64.0), FLAG(iF.z, 16.0)); thinN.z = t.x; thinSteep.z = t.y;
-        t = thinCorner(vW, hW, E0, cSt.w, cSh.w, FLAG(iD.w, 64.0), FLAG(iH.w, 16.0)); thinN.w = t.x; thinSteep.w = t.y;
+        vec4 m = vec4(float(k == 0), float(k == 1), float(k == 2), float(k == 3));
+        if (dot(m, lineOn + cSt + cSh) > 0.0)
+        {
+          vec2 v = k == 0 ? vX : (k == 1 ? vY : (k == 2 ? vZ : vW));
+          vec2 h = k == 0 ? hX : (k == 1 ? hY : (k == 2 ? hZ : hW));
+          float lo = dot(m, lineOn), xs = dot(m, xSt), xh = dot(m, xSh);
+          bool steepOk = dot(m, cSt) > 0.0 && sameTone(at(v), E0);
+          bool shallowOk = false;
+          float thinS = 0.0;
+          // The step runs of the corner, in the order they are needed. j 0 and 1: the steep and the shallow
+          // run at E, for a corner with a line. j 2 and 3: the runs at the step pixel v (the thin end along v).
+          // j 4 and 5: the runs at the step pixel h, only when there is no thin end along v.
+          vec2 r0 = vec2(0.0), r1 = vec2(0.0), r2 = vec2(0.0), r3 = vec2(0.0), r4 = vec2(0.0), r5 = vec2(0.0);
+          for (int j = 0; j < 6; j++)
+          {
+            if (j == 4)
+            {
+              if (steepOk) thinS = thinEnd(r2, r3, true, xs);
+              shallowOk = thinS == 0.0 && dot(m, cSh) > 0.0 && sameTone(at(h), E0);
+            }
+            vec2 s = vec2(0.), a = v, b = h;
+            bool need = lo > 0.0;
+            if (j == 1) { a = h; b = v; }
+            else if (j == 2) { s = v; need = steepOk; }
+            else if (j == 3) { s = v; a = h; b = v; need = steepOk && max(r2.x, r2.y * xs) >= 3.0; }
+            else if (j == 4) { s = h; a = h; b = v; need = shallowOk; }
+            else if (j == 5) { s = h; need = shallowOk && max(r4.x, r4.y * xh) >= 3.0; }
+            vec2 rr = vec2(0.0);
+            if (need)
+            {
+              vec3 X = at(s), Y = at(s + a);
+              if (dist255(X, Y) >= XBRZ_STRAIGHT) rr = stepRun(X, Y, s, a, b);
+            }
+            if (j == 0) r0 = rr; else if (j == 1) r1 = rr; else if (j == 2) r2 = rr;
+            else if (j == 3) r3 = rr; else if (j == 4) r4 = rr; else r5 = rr;
+          }
+          float thinSh = shallowOk ? thinEnd(r4, r5, false, xh) : 0.0;
+          vec2 sl = stepSlope(r0, r1, dot(m, haveSteepLine), dot(m, haveShallowLine));
+          nn += m * sl.x;
+          ty += m * sl.y;
+          thinN += m * (thinS + thinSh);
+          thinSteep += m * (thinS > 0.0 ? 1.0 : 0.0);
+        }
       }
     }
   }
