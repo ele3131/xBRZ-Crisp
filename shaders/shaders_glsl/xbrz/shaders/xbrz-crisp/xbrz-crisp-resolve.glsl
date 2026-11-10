@@ -123,8 +123,20 @@
 //     lone, where that line is a near-black outline (XBRZ_TINT_DARK) darker than the pixel, so an
 //     outline that steps by a knight's move stays closed instead of letting the colors on both sides
 //     touch, like a black outline between yellow and pink on a fighter's sprite.
+// 19. A pixel apart keeps to itself: a corner is not painted with the color of a pixel that differs from
+//     all 8 of its neighbors by XBRZ_ISO or more and keeps its own corners square, so a lone dot of
+//     color, like the bead of a bracelet in Golden Sun's village, does not leak into the pixels around it.
+// 20. A corner where no edge runs: a corner between two neighbors of clearly different colors
+//     (XBRZ_JUNCTION) stays square where no line goes on through it (neither color continues past the
+//     corner, the pixel's own color does not continue along the cut, and fewer than three pixels in a
+//     row cut that corner), so a pixel at a junction of several colors keeps its square shape, while
+//     antialiased curves, whose cuts run on, stay round.
+// 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
+//     straight line of three of its color along the pixel's side, where the corner's other neighbor
+//     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
+//     bending into the pixel, and checkered patterns keep their squares.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 18 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 21 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -289,6 +301,17 @@ vec3 PS(vec2 v) { return COMPAT_TEXTURE(PassPrev2Texture, stepBase + ORIG_SIZE.z
 bool sameTone(vec3 a, vec3 b) { return distYCbCr(a, b) * 255.0 <= 20.0; }
 #define XBRZ_DARK 0.3       // 14. a stroke this dark (luma) or darker may have two lighter side colors
 #define XBRZ_LONE_RAMP 1.4 // 17. not a ramp: d(L,E) + d(E,O) above this times d(L,O)
+#define XBRZ_ISO 40.0      // 19. a pixel this far (x/255) from all 8 of its neighbors keeps out of their corners
+#define XBRZ_JUNCTION 40.0 // 20. two neighbors this far apart (x/255) do not make one edge across a corner
+#define XBRZ_JUNC_NEAR 20.0 // 20. a color this close (x/255) to the next pixel goes on along the cut
+#define XBRZ_LINE_SIDE 25.0 // 21. the other neighbor of a corner differs from a straight line by this (x/255)
+// 19. 1.0 when the pixel c differs from all 8 of its neighbors by XBRZ_ISO or more
+float isoOf(vec3 c, vec3 n0, vec3 n1, vec3 n2, vec3 n3, vec3 n4, vec3 n5, vec3 n6, vec3 n7)
+{
+  float m = min(min(min(distYCbCr(c, n0), distYCbCr(c, n1)), min(distYCbCr(c, n2), distYCbCr(c, n3))),
+                min(min(distYCbCr(c, n4), distYCbCr(c, n5)), min(distYCbCr(c, n6), distYCbCr(c, n7))));
+  return m * 255.0 >= XBRZ_ISO ? 1.0 : 0.0;
+}
 // a side pixel clearly lighter than a dark stroke
 bool lighterSide(vec3 side, vec3 stroke) { return distYCbCr(side, stroke) * 255.0 >= XBRZ_STRAIGHT && dot(side - stroke, vec3(0.2627, 0.6780, 0.0593)) > 0.0; }
 // counts the colors on the sides of a dark stroke (up to 3): a letter's shadow has two, the letter and
@@ -518,6 +541,73 @@ void main()
       oDraw *= vec4(greaterThan(dLE + dOE, XBRZ_LONE_RAMP * dLO));
       blendResult *= 1.0 - on * oDraw;
     }
+  }
+
+  // ---- 19. A pixel apart keeps to itself ----
+  // a cut corner whose color comes from a pixel that differs from all 8 of its neighbors by XBRZ_ISO or
+  // more, and keeps its own four corners square, stays square: the pixel does not leak into its neighbors
+  if (XBRZ_MINC > 0.0 && dot(vec4(greaterThan(blendResult, vec4(0.0))), vec4(1.0)) > 0.0)
+  {
+    vec4 sec19 = FLAG(info, 8.0);
+    // the pixel each corner paints from: x: D or B, y: B or F, z: F or H, w: H or D
+    vec2 pX = sec19.x > 0.5 ? vec2(0., -1.) : vec2(-1., 0.);
+    vec2 pY = sec19.y > 0.5 ? vec2(1., 0.) : vec2(0., -1.);
+    vec2 pZ = sec19.z > 0.5 ? vec2(0., 1.) : vec2(1., 0.);
+    vec2 pW = sec19.w > 0.5 ? vec2(-1., 0.) : vec2(0., 1.);
+    #define ISO19(p) isoOf(P(p.x, p.y), P(p.x - 1., p.y - 1.), P(p.x, p.y - 1.), P(p.x + 1., p.y - 1.), P(p.x - 1., p.y), P(p.x + 1., p.y), P(p.x - 1., p.y + 1.), P(p.x, p.y + 1.), P(p.x + 1., p.y + 1.))
+    vec4 iso = vec4(blendResult.x > 0.0 ? ISO19(pX) : 0.0, blendResult.y > 0.0 ? ISO19(pY) : 0.0,
+                    blendResult.z > 0.0 ? ISO19(pZ) : 0.0, blendResult.w > 0.0 ? ISO19(pW) : 0.0);
+    #define SQ19(p) (dot(BLEND(INFO_AT(p.x, p.y)), vec4(1.0)) == 0.0 ? 1.0 : 0.0)
+    vec4 sq = vec4(SQ19(pX), SQ19(pY), SQ19(pZ), SQ19(pW));
+    blendResult *= 1.0 - iso * sq;
+  }
+
+  // ---- 20. A corner where no edge runs ----
+  // a cut corner between two neighbors of clearly different colors (XBRZ_JUNCTION) stays square where
+  // nothing goes on along the cut: neither neighbor's color continues past the corner, E's color does
+  // not continue along the cut, and fewer than three pixels in a row cut that corner along the line
+  if (XBRZ_MINC > 0.0 && dot(vec4(greaterThan(blendResult, vec4(0.0))), vec4(1.0)) > 0.0)
+  {
+    vec3 qA = P(-1., -1.), qB = P(0., -1.), qC = P(1., -1.), qD = P(-1., 0.), qE = P(0., 0.);
+    vec3 qF = P(1., 0.), qG = P(-1., 1.), qH = P(0., 1.), qI = P(1., 1.);
+    #define DD20(a, b) (distYCbCr(a, b) * 255.0)
+    #define NEAR20(a, b) (DD20(a, b) < XBRZ_JUNC_NEAR ? 1.0 : 0.0)
+    vec4 cand20 = vec4(DD20(qB, qD), DD20(qB, qF), DD20(qF, qH), DD20(qD, qH));
+    // each neighbor's color past the corner, along the cut (x: D and B, y: B and F, z: F and H, w: H and D)
+    vec4 ext1 = vec4(NEAR20(qD, P(-2., 1.)), NEAR20(qB, P(-1., -2.)), NEAR20(qF, P(2., -1.)), NEAR20(qH, P(1., 2.)));
+    vec4 ext2 = vec4(NEAR20(qB, P(1., -2.)), NEAR20(qF, P(2., 1.)), NEAR20(qH, P(-1., 2.)), NEAR20(qD, P(-2., -1.)));
+    // E's color on the pixels beside it along the cut
+    vec4 extE = vec4(max(NEAR20(qE, qG), NEAR20(qE, qC)), max(NEAR20(qE, qA), NEAR20(qE, qI)),
+                     max(NEAR20(qE, qC), NEAR20(qE, qG)), max(NEAR20(qE, qA), NEAR20(qE, qI)));
+    // the run of pixels that cut the same corner along the cut's line (E included, up to 2 on each side)
+    #define CUT20(x, y) vec4(greaterThan(BLEND(INFO_AT(x, y)), vec4(0.0)))
+    vec4 m1 = CUT20(-1., -1.), m2 = CUT20(-2., -2.), p1 = CUT20(1., 1.), p2 = CUT20(2., 2.);
+    vec4 u1 = CUT20(1., -1.), u2 = CUT20(2., -2.), d1 = CUT20(-1., 1.), d2 = CUT20(-2., 2.);
+    vec4 runA = vec4(u1.x + u1.x * u2.x, m1.y + m1.y * m2.y, u1.z + u1.z * u2.z, m1.w + m1.w * m2.w);
+    vec4 runB = vec4(d1.x + d1.x * d2.x, p1.y + p1.y * p2.y, d1.z + d1.z * d2.z, p1.w + p1.w * p2.w);
+    vec4 on20 = vec4(greaterThan(blendResult, vec4(0.0))) * vec4(greaterThan(cand20, vec4(XBRZ_JUNCTION))) *
+                (1.0 - ext1) * (1.0 - ext2) * (1.0 - extE) * vec4(lessThan(1.0 + runA + runB, vec4(3.0)));
+    blendResult *= 1.0 - on20;
+  }
+
+  // ---- 21. A straight line does not bend ----
+  // a cut corner whose color comes from a pixel in a straight line of three of its color along E's side
+  // (the pixel and its two neighbors along that side), where the corner's other neighbor differs from it
+  // by more than XBRZ_LINE_SIDE, stays square: the line goes on straight past E instead of bending into it
+  if (XBRZ_MINC > 0.0 && dot(vec4(greaterThan(blendResult, vec4(0.0))), vec4(1.0)) > 0.0)
+  {
+    vec4 s21 = FLAG(info, 8.0);
+    // the pixel each corner paints from (p) and the corner's other neighbor (q)
+    vec2 pX = s21.x > 0.5 ? vec2(0., -1.) : vec2(-1., 0.), qX = s21.x > 0.5 ? vec2(-1., 0.) : vec2(0., -1.);
+    vec2 pY = s21.y > 0.5 ? vec2(1., 0.) : vec2(0., -1.), qY = s21.y > 0.5 ? vec2(0., -1.) : vec2(1., 0.);
+    vec2 pZ = s21.z > 0.5 ? vec2(0., 1.) : vec2(1., 0.), qZ = s21.z > 0.5 ? vec2(1., 0.) : vec2(0., 1.);
+    vec2 pW = s21.w > 0.5 ? vec2(-1., 0.) : vec2(0., 1.), qW = s21.w > 0.5 ? vec2(0., 1.) : vec2(-1., 0.);
+    // the direction of E's side next to p: horizontal for B and H, vertical for D and F
+    #define ALONG21(p) (abs(p.y) > 0.5 ? vec2(1., 0.) : vec2(0., 1.))
+    #define LINE21(p, q) ((distYCbCr(P(p.x, p.y), P(p.x + ALONG21(p).x, p.y + ALONG21(p).y)) * 255.0 < 15.0 && distYCbCr(P(p.x, p.y), P(p.x - ALONG21(p).x, p.y - ALONG21(p).y)) * 255.0 < 15.0 && distYCbCr(P(p.x, p.y), P(q.x, q.y)) * 255.0 > XBRZ_LINE_SIDE) ? 1.0 : 0.0)
+    vec4 line21 = vec4(blendResult.x > 0.0 ? LINE21(pX, qX) : 0.0, blendResult.y > 0.0 ? LINE21(pY, qY) : 0.0,
+                       blendResult.z > 0.0 ? LINE21(pZ, qZ) : 0.0, blendResult.w > 0.0 ? LINE21(pW, qW) : 0.0);
+    blendResult *= 1.0 - line21;
   }
 
   // ---- 14. Straight steps ----

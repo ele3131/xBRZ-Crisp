@@ -124,8 +124,20 @@
 //     lone, where that line is a near-black outline (XBRZ_TINT_DARK) darker than the pixel, so an
 //     outline that steps by a knight's move stays closed instead of letting the colors on both sides
 //     touch, like a black outline between yellow and pink on a fighter's sprite.
+// 19. A pixel apart keeps to itself: a corner is not painted with the color of a pixel that differs from
+//     all 8 of its neighbors by XBRZ_ISO or more and keeps its own corners square, so a lone dot of
+//     color, like the bead of a bracelet in Golden Sun's village, does not leak into the pixels around it.
+// 20. A corner where no edge runs: a corner between two neighbors of clearly different colors
+//     (XBRZ_JUNCTION) stays square where no line goes on through it (neither color continues past the
+//     corner, the pixel's own color does not continue along the cut, and fewer than three pixels in a
+//     row cut that corner), so a pixel at a junction of several colors keeps its square shape, while
+//     antialiased curves, whose cuts run on, stay round.
+// 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
+//     straight line of three of its color along the pixel's side, where the corner's other neighbor
+//     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
+//     bending into the pixel, and checkered patterns keep their squares.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 18 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 21 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
