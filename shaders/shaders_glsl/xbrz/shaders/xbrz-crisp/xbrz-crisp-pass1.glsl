@@ -145,8 +145,12 @@
 //     stands apart from its other neighbors, both corners stay square, so the darker shade does not
 //     bulge into the stripe and the side between them is straight; the darker pixel then leaks no
 //     round tip into the pixel past the stripe's end either.
+// 23. A loose pixel is a square with rounded corners: where a pixel differs from each of its 4 side neighbors by
+//     XBRZ_LOOSE or more and from all 4 diagonal neighbors, and xBRZ cuts all 4 of its corners (a dot, an eye, a
+//     highlight), the corners take a plain tip with no line and the output pass draws that tip smaller than a
+//     normal one, so the pixel stays a square with softened corners instead of a circle.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 22 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 23 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -333,6 +337,11 @@ void main()
     return;
   }
 
+//#crisp{
+  // BLEND 3 (a loose pixel, rule 23): a plain corner with a smaller tip (the cut line moves out by XBRZ_TIPK)
+  const float XBRZ_TIPK = 0.1;
+  vec4 tip = 1.0 + XBRZ_TIPK * vec4(equal(BLEND(info), vec4(3.0)));
+//#crisp}
   vec4 doLineBlend = FLAG(info, 4.0);
   vec4 secondPix = FLAG(info, 8.0);
   vec4 haveShallowLine = FLAG(info, 16.0);
@@ -356,6 +365,9 @@ void main()
   if(blendResult.z > 0.0)
   {
     vec2 origin = vec2(0.0, 1.0 / sqrt(2.0));
+//#crisp{
+    origin *= tip.z;
+//#crisp}
     vec2 direction = vec2(1.0, -1.0);
     if(doLineBlend.z > 0.0)
     {
@@ -383,6 +395,9 @@ void main()
   if(blendResult.y > 0.0)
   {
     vec2 origin = vec2(1.0 / sqrt(2.0), 0.0);
+//#crisp{
+    origin *= tip.y;
+//#crisp}
     vec2 direction = vec2(-1.0, -1.0);
     if(doLineBlend.y > 0.0)
     {
@@ -410,6 +425,9 @@ void main()
   if(blendResult.x > 0.0)
   {
     vec2 origin = vec2(0.0, -1.0 / sqrt(2.0));
+//#crisp{
+    origin *= tip.x;
+//#crisp}
     vec2 direction = vec2(-1.0, 1.0);
     if(doLineBlend.x > 0.0)
     {
@@ -437,6 +455,9 @@ void main()
   if(blendResult.w > 0.0)
   {
     vec2 origin = vec2(-1.0 / sqrt(2.0), 0.0);
+//#crisp{
+    origin *= tip.w;
+//#crisp}
     vec2 direction = vec2(1.0, 1.0);
     if(doLineBlend.w > 0.0)
     {

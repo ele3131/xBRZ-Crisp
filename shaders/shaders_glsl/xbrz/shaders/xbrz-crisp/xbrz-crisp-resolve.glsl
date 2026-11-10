@@ -145,8 +145,12 @@
 //     stands apart from its other neighbors, both corners stay square, so the darker shade does not
 //     bulge into the stripe and the side between them is straight; the darker pixel then leaks no
 //     round tip into the pixel past the stripe's end either.
+// 23. A loose pixel is a square with rounded corners: where a pixel differs from each of its 4 side neighbors by
+//     XBRZ_LOOSE or more and from all 4 diagonal neighbors, and xBRZ cuts all 4 of its corners (a dot, an eye, a
+//     highlight), the corners take a plain tip with no line and the output pass draws that tip smaller than a
+//     normal one, so the pixel stays a square with softened corners instead of a circle.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 22 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 23 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -304,7 +308,7 @@ float distYCbCr(vec3 pixA, vec3 pixB)
 #define FLAG(r, f) mod(floor((r) / (f)), 2.0)
 
 //#crisp{
-// ---- Tunables of rules 14 and 17 to 22 (distances in x/255, like XBRZ_MINC), in rule order ----
+// ---- Tunables of rules 14 and 17 to 23 (distances in x/255, like XBRZ_MINC), in rule order ----
 #define XBRZ_STRAIGHT 64.0   // 14. minimum contrast of a straightened edge
 #define XBRZ_DARK 0.3        // 14. a stroke this dark (luma) or darker may have two lighter side colors
 #define XBRZ_LONE_RAMP 1.4   // 17. not a ramp: d(L,E) + d(E,O) above this times d(L,O)
@@ -313,6 +317,7 @@ float distYCbCr(vec3 pixA, vec3 pixB)
 #define XBRZ_JUNC_NEAR 20.0  // 20. a color this close to the next pixel goes on along the cut
 #define XBRZ_JUNC_RAMP 1.06  // 20. not a junction but a ramp: the two shorter distances of E and its two neighbors add up to less than this times the longest
 #define XBRZ_LINE_SIDE 25.0  // 21. the other neighbor of a corner differs from a straight line by this
+#define XBRZ_LOOSE 60.0      // 23. a pixel this far from each of its 4 side neighbors is loose
 
 // ---- Helpers of the Crisp rules ----
 // The center of E in the original image, set once in main. It is the one place the original is read from
@@ -641,6 +646,7 @@ void main()
   vec4 line = FLAG(info, 4.0);
   vec4 sec = FLAG(info, 8.0);
   vec4 x22 = vec4(0.0);
+  vec4 small23 = vec4(0.0); // 23. the corners of a loose pixel, which take a smaller tip
   vec4 nn = vec4(0.0), ty = vec4(0.0), thinN = vec4(0.0), thinSteep = vec4(0.0);
   if (XBRZ_MINC > 0.0)
   {
@@ -791,6 +797,18 @@ void main()
         blendResult *= 1.0 - t22;
         x22 = max(x22, t22);
       }
+
+      // ---- 23. A loose pixel is a square with rounded corners ----
+      // a pixel that differs from each of its 4 side neighbors by XBRZ_LOOSE or more and from all 4 diagonal
+      // neighbors (E's color is on none), with all 4 corners cut, takes a plain tip with no line on each corner, and
+      // the output pass draws that tip smaller (BLEND 3): the pixel stays a square with softened corners instead of
+      // a circle. A pixel with 3 corners cut is left as xBRZ draws it.
+      if (dot(isCut(blendResult), vec4(1.0)) > 3.5 && min(min(dist255(E, B), dist255(E, D)), min(dist255(E, F), dist255(E, H))) >= XBRZ_LOOSE
+          && sameF(E, A) + sameF(E, C) + sameF(E, G) + sameF(E, I) < 0.5)
+      {
+        line = vec4(0.0); haveShallowLine = vec4(0.0); haveSteepLine = vec4(0.0);
+        small23 = vec4(1.0);
+      }
     }
 
     // ---- 14. Straight steps ----
@@ -863,8 +881,8 @@ void main()
   vec4 isThin = vec4(greaterThan(thinN, vec4(0.0)));
   vec4 slope = mix(nn, thinN, isThin);
   // the output word: BLEND 1 cut, 2 the thin end of a straight step (its line starts 1 pixel further
-  // along); +32 a 3:1 line, +128 a 4:1 line
-  vec4 res = min(blendResult, vec4(1.0)) + 4.0 * line + 8.0 * sec + 16.0 * haveShallowLine + 64.0 * haveSteepLine;
+  // along), 3 a cut with a smaller tip (rule 23); +32 a 3:1 line, +128 a 4:1 line
+  vec4 res = min(blendResult, vec4(1.0)) + 2.0 * small23 + 4.0 * line + 8.0 * sec + 16.0 * haveShallowLine + 64.0 * haveSteepLine;
   res = mix(res, 2.0 + 4.0 + 24.0 * (1.0 - thinSteep) + 64.0 * thinSteep, isThin);
   res += 32.0 * vec4(equal(slope, vec4(3.0))) + 128.0 * vec4(equal(slope, vec4(4.0)));
 //#crisp}
