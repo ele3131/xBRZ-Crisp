@@ -120,8 +120,12 @@
 //     pixel across the line draws the same line in the first pixel's color, and the three colors are
 //     not an antialiasing ramp, the corner stays square, so the line does not stick a spike into the
 //     pixel, like the light gray pixel under the pot in Golden Sun's village.
+// 18. Outlines closed: the line of rule 16 is also drawn in its own color through a pixel that is not
+//     lone, where that line is a near-black outline (XBRZ_TINT_DARK) darker than the pixel, so an
+//     outline that steps by a knight's move stays closed instead of letting the colors on both sides
+//     touch, like a black outline between yellow and pink on a fighter's sprite.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 17 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 18 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.

@@ -120,8 +120,12 @@
 //     pixel across the line draws the same line in the first pixel's color, and the three colors are
 //     not an antialiasing ramp, the corner stays square, so the line does not stick a spike into the
 //     pixel, like the light gray pixel under the pot in Golden Sun's village.
+// 18. Outlines closed: the line of rule 16 is also drawn in its own color through a pixel that is not
+//     lone, where that line is a near-black outline (XBRZ_TINT_DARK) darker than the pixel, so an
+//     outline that steps by a knight's move stays closed instead of letting the colors on both sides
+//     touch, like a black outline between yellow and pink on a fighter's sprite.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 17 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 18 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -260,6 +264,7 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 #define XBRZ_GUARD_EDGE_L 54.0 // 15. the same for the L-shape test
 #define XBRZ_TINT 20.0      // 16. the two colors beside the line differ by more than this
 #define XBRZ_TINT_RAMP 1.2  // 16. not a ramp: d(E,P) + d(P,L) above this times d(E,L)
+#define XBRZ_TINT_DARK 0.25 // 18. a near-black outline is darker than this (luma)
 #define XBRZ_DIAG_AA 92.0   // 2. diagonal limit on antialiasing ramps
 #define XBRZ_RAMP 1.15      // 2, 6. a ramp: (d(E,P) + d(P,Q)) / d(E,Q) up to this
 #define XBRZ_STRIPE 64.0    // 2, 3. a diagonal stripe keeps a close color (within this) along its length
@@ -1258,10 +1263,11 @@ void main()
     }
     res *= 1.0 - tile;
   }
-  // 16. Line in another color: a lone E whose corner draws a line along a pair of one color but is
-  // painted with the other candidate
-  if (XBRZ_MINC > 0.0 && !(eq(A, E) || eq(B, E) || eq(C, E) || eq(D, E) || eq(E, F) || eq(E, G) || eq(E, H) || eq(E, I)))
+  // 16. Line in another color: a corner that draws a line along a pair of one color but is painted with
+  // the other candidate (18: also where E is not lone, for a near-black outline)
+  if (XBRZ_MINC > 0.0)
   {
+    bool lone = !(eq(A, E) || eq(B, E) || eq(C, E) || eq(D, E) || eq(E, F) || eq(E, G) || eq(E, H) || eq(E, I));
     vec4 r = res;
     vec4 sh = FLAG(r, 16.0), st = FLAG(r, 64.0), sec = FLAG(r, 8.0);
     // a shallow line is drawn along the first candidate's color and a steep one along the second's; the
@@ -1285,6 +1291,13 @@ void main()
     vec4 lumLine = mix(lumC1, lumC2, st);
     bool straight = DistYCbCr(D, F) < EQUAL_COLOR_TOLERANCE || DistYCbCr(B, H) < EQUAL_COLOR_TOLERANCE;
     vec4 dark = vec4(lessThan(lumLine, vec4(dot(E, lumaW)))) * (straight ? 0.0 : 1.0);
+    // 18. where E is not lone, only a near-black line (an outline) is drawn in its own color, and no
+    // corner is left square
+    if (!lone)
+    {
+      dark *= vec4(lessThan(lumLine, vec4(XBRZ_TINT_DARK)));
+      tint *= dark;
+    }
     vec4 flip = st - sec;  // +1: paint the second candidate, -1: the first
     res -= tint * dark * (16.0 * sh + 64.0 * st + 32.0 * FLAG(r, 32.0) - 8.0 * flip);
     res *= 1.0 - tint * (1.0 - dark);
