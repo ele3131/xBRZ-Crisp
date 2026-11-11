@@ -137,7 +137,10 @@
 //     like the outline of a neck that runs on behind its transition pixel. On a looser ramp
 //     (XBRZ_JUNC_RAMP2) a corner also stays round where another pixel cuts the same corner along the
 //     line, or where the opposite corner of the pixel stays cut, so a pixel on an antialiased curve
-//     is not cut at one end and square at the other, like the corner of a trunk in Minish Cap.
+//     is not cut at one end and square at the other, like the corner of a trunk in Minish Cap. At a
+//     crossing of four clearly different colors, where the pixel is dark and darker than both neighbors and
+//     the cut's color comes from a pixel that stands alone, a color that goes on only inside a flat area
+//     is no line, so a dark outline pixel is not nibbled by a small detail beside it.
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
 //     straight line of three of its color along the pixel's side, where the corner's other neighbor
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
@@ -158,8 +161,13 @@
 //     XBRZ_LOOSE or more and from all 4 diagonal neighbors, and xBRZ cuts all 4 of its corners (a dot, an eye, a
 //     highlight), the corners take a plain tip with no line and the output pass draws that tip smaller than a
 //     normal one, so the pixel stays a square with softened corners instead of a circle.
+// 25. A point on a shared edge: where both corners of a pixel at one edge are cut with a 45-degree line in
+//     the color across that edge (the two lines meet in a point), the pixel is the vertex of a V of its color
+//     with no further arms, and the edge is straight and shared by three colors (XBRZ_POINT), both corners
+//     stay square, so a small detail keeps its whole edge instead of an arrow tip, like the lower khaki pixel
+//     of Isaac's sword hilt in Golden Sun's village.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 24 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 25 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -295,6 +303,7 @@ float distYCbCr(vec3 pixA, vec3 pixB)
 #define XBRZ_LINE_SIDE 25.0  // 21. the other neighbor of a corner differs from a straight line by this
 #define XBRZ_LOOSE 60.0      // 23. a pixel this far from each of its 4 side neighbors is loose
 #define XBRZ_HOOK 90.0       // 24. a line between two colors this far apart needs a corner to go on to
+#define XBRZ_POINT 60.0      // 25. the two pixels beside a pointed pixel differ by this
 
 // ---- Helpers of the Crisp rules ----
 // The center of E in the original image, set once in main. It is the one place the original is read from
@@ -330,6 +339,22 @@ float apartFrom4(vec3 c, vec3 a, vec3 b, vec3 d, vec3 e)
 float sameAsOne(vec3 c, vec3 a, vec3 b) { return (sameColor(c, a) || sameColor(c, b)) ? 1.0 : 0.0; }
 
 // ---- 14. Straight steps ----
+// ---- 25. A point on a shared edge ----
+// 1.0 for the pixel E whose two corners at its edge with N are both cut with a 45-degree line in N's color (they
+// meet in a point at the middle of the edge) where E is the vertex of a V that has no further arms, and the edge
+// is a boundary of three colors: a is the pair of pixels on the far side of E (diagonals), notch the pixel between
+// them, f the pixels one step further along the arms, s the two pixels beside E along the edge, b the pixels
+// beyond them away from E.
+float point25(vec3 E, vec3 N, vec3 s1, vec3 s2, vec3 a1, vec3 a2, vec3 notch, vec3 f1, vec3 f2, vec3 b1, vec3 b2)
+{
+  // a V of three pixels: E and the two diagonal pixels share a color, the pixel between them has another, and the arms end there
+  if (!(sameColor(E, a1) && sameColor(E, a2) && !sameColor(E, notch) && !sameColor(E, f1) && !sameColor(E, f2))) return 0.0;
+  // the edge is clear: E differs from N by XBRZ_JUNCTION, the two pixels beside E from N by XBRZ_JUNC_NEAR and from each other by XBRZ_POINT
+  if (dist255(E, N) < XBRZ_JUNCTION || min(dist255(s1, N), dist255(s2, N)) < XBRZ_JUNC_NEAR || dist255(s1, s2) < XBRZ_POINT) return 0.0;
+  // N runs on straight beside E: it is also the pixel beyond one of the pixels beside E
+  return (sameColor(N, b1) || sameColor(N, b2)) ? 1.0 : 0.0;
+}
+
 // A side pixel clearly lighter than a dark stroke.
 bool lighterSide(vec3 side, vec3 stroke) { return dist255(side, stroke) >= XBRZ_STRAIGHT && luma(side - stroke) > 0.0; }
 // Counts the colors on the sides of a dark stroke (up to 3): a letter's shadow has two, the letter and
@@ -707,6 +732,19 @@ void main()
         // each neighbor's color past the corner, along the cut (x: D and B, y: B and F, z: F and H, w: H and D)
         vec4 ext1 = vec4(junctionNear(D, lld), junctionNear(B, luu), junctionNear(F, rru), junctionNear(H, rdd));
         vec4 ext2 = vec4(junctionNear(B, ruu), junctionNear(F, rrd), junctionNear(H, ldd), junctionNear(D, llu));
+        // at a crossing of four clearly different colors (E, its two neighbors and the corner pixel), a color that goes
+        // on only inside a flat area (the pixels beside it on both sides have its color) is no line
+        vec4 nbA = vec4(distYCbCr(D, A), distYCbCr(B, C), distYCbCr(F, I), distYCbCr(H, G)) * 255.0;
+        vec4 nbB = vec4(distYCbCr(B, A), distYCbCr(F, C), distYCbCr(H, I), distYCbCr(D, G)) * 255.0;
+        vec4 dgE = vec4(dist255(E, A), dist255(E, C), dist255(E, I), dist255(E, G));
+        vec4 cross20 = vec4(greaterThan(min(min(nbA, nbB), min(dgE, min(dE1, dE2))), vec4(XBRZ_JUNCTION)));
+        cross20 *= vec4(lessThan(vec4(luma(E)), min(lu20, lu20.yzwx))) * float(luma(E) <= XBRZ_DARK) * line;
+        // and the color of the cut comes from a pixel that stands alone (its other three sides have other colors)
+        float loD = 1.0 - max(sameF(D, A), max(sameF(D, G), sameF(D, ll))), loB = 1.0 - max(sameF(B, A), max(sameF(B, C), sameF(B, uu)));
+        float loF = 1.0 - max(sameF(F, C), max(sameF(F, I), sameF(F, rr))), loH = 1.0 - max(sameF(H, G), max(sameF(H, I), sameF(H, dd)));
+        cross20 *= vec4(mix(loD, loB, sec.x), mix(loB, loF, sec.y), mix(loF, loH, sec.z), mix(loH, loD, sec.w));
+        ext1 *= 1.0 - cross20 * vec4(sameF(D, G) * sameF(D, ll), sameF(B, A) * sameF(B, uu), sameF(F, C) * sameF(F, rr), sameF(H, I) * sameF(H, dd));
+        ext2 *= 1.0 - cross20 * vec4(sameF(B, C) * sameF(B, uu), sameF(F, I) * sameF(F, rr), sameF(H, G) * sameF(H, dd), sameF(D, A) * sameF(D, ll));
         // E's color on the pixels beside it along the cut
         float eAcross = max(junctionNear(E, G), junctionNear(E, C)), eAlong = max(junctionNear(E, A), junctionNear(E, I));
         vec4 extE = vec4(eAcross, eAlong, eAcross, eAlong);
@@ -802,6 +840,27 @@ void main()
         if (blendResult.w > 0.0 && bk.w > 0.0 && line.w < 0.5) t22.w = tip22(rW, E);
         blendResult *= 1.0 - t22;
         x22 = max(x22, t22);
+      }
+
+      // ---- 25. A point on a shared edge ----
+      // a pixel whose two corners at one edge are both cut with a 45-degree line in the color of the pixel across
+      // that edge (the lines meet in a point at the middle of the edge) stays square at both corners where it is the
+      // vertex of a V with no further arms and the edge is straight and shared by three colors (see point25), so a
+      // pixel in a row of different colors keeps its whole edge instead of an arrow tip, like the lower khaki pixel
+      // of Isaac's sword hilt in Golden Sun's village
+      {
+        vec4 pl = isCut(blendResult) * line * (1.0 - haveShallowLine) * (1.0 - haveSteepLine);
+        if (pl.x + pl.y + pl.z + pl.w > 1.5)
+        {
+          vec3 a2 = P(-2., -2.), c2 = P(2., -2.), g2 = P(-2., 2.), i2 = P(2., 2.);
+          float pB = pl.x * pl.y * sec.x * (1.0 - sec.y), pF = pl.y * pl.z * sec.y * (1.0 - sec.z);
+          float pH = pl.z * pl.w * sec.z * (1.0 - sec.w), pD = pl.w * pl.x * sec.w * (1.0 - sec.x);
+          if (pB > 0.0) pB = point25(E, B, D, F, G, I, H, g2, i2, A, C);
+          if (pF > 0.0) pF = point25(E, F, B, H, A, G, D, a2, g2, C, I);
+          if (pH > 0.0) pH = point25(E, H, F, D, A, C, B, a2, c2, G, I);
+          if (pD > 0.0) pD = point25(E, D, H, B, C, I, F, c2, i2, A, G);
+          blendResult *= 1.0 - min(vec4(pB + pD, pB + pF, pF + pH, pH + pD), vec4(1.0));
+        }
       }
 
       // ---- 23. A loose pixel is a square with rounded corners ----

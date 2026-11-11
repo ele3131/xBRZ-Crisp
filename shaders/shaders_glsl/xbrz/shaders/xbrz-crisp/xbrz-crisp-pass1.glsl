@@ -136,7 +136,10 @@
 //     like the outline of a neck that runs on behind its transition pixel. On a looser ramp
 //     (XBRZ_JUNC_RAMP2) a corner also stays round where another pixel cuts the same corner along the
 //     line, or where the opposite corner of the pixel stays cut, so a pixel on an antialiased curve
-//     is not cut at one end and square at the other, like the corner of a trunk in Minish Cap.
+//     is not cut at one end and square at the other, like the corner of a trunk in Minish Cap. At a
+//     crossing of four clearly different colors, where the pixel is dark and darker than both neighbors and
+//     the cut's color comes from a pixel that stands alone, a color that goes on only inside a flat area
+//     is no line, so a dark outline pixel is not nibbled by a small detail beside it.
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
 //     straight line of three of its color along the pixel's side, where the corner's other neighbor
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
@@ -157,8 +160,13 @@
 //     XBRZ_LOOSE or more and from all 4 diagonal neighbors, and xBRZ cuts all 4 of its corners (a dot, an eye, a
 //     highlight), the corners take a plain tip with no line and the output pass draws that tip smaller than a
 //     normal one, so the pixel stays a square with softened corners instead of a circle.
+// 25. A point on a shared edge: where both corners of a pixel at one edge are cut with a 45-degree line in
+//     the color across that edge (the two lines meet in a point), the pixel is the vertex of a V of its color
+//     with no further arms, and the edge is straight and shared by three colors (XBRZ_POINT), both corners
+//     stay square, so a small detail keeps its whole edge instead of an arrow tip, like the lower khaki pixel
+//     of Isaac's sword hilt in Golden Sun's village.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 24 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 25 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
