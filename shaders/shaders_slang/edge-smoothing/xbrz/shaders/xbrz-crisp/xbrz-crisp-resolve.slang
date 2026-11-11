@@ -146,7 +146,8 @@
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
 //     bending into the pixel, and checkered patterns keep their squares. A strong thin line of four that
 //     starts beside the pixel and runs toward the corner counts too, and where the other neighbor is darker
-//     and goes on along the cut, the corner takes that neighbor's color instead of staying square.
+//     and goes on along the cut, the corner takes that neighbor's color instead of staying square. On a
+//     ramp (the two neighbors are close shades far from the pixel, and the cut goes on) the corner is cut.
 // 22. Crossed cuts: where two neighboring pixels of close but distinct shades cut into each other from the two ends
 //     of their shared side, the lighter one ends a 45-degree stripe of its color and the darker one
 //     stands apart from its other neighbors, both corners stay square, so the darker shade does not
@@ -301,6 +302,7 @@ float distYCbCr(vec3 pixA, vec3 pixB)
 #define XBRZ_JUNC_RAMP 1.06  // 20. not a junction but a ramp: the two shorter distances of E and its two neighbors add up to less than this times the longest
 #define XBRZ_JUNC_RAMP2 1.12 // 20. a looser ramp, for the corners kept round where a cut goes on or E is a strip
 #define XBRZ_LINE_SIDE 25.0  // 21. the other neighbor of a corner differs from a straight line by this
+#define XBRZ_LINE_TONE 0.4   // 21. p and q are close shades when they differ by less than this times E's difference to either
 #define XBRZ_LOOSE 60.0      // 23. a pixel this far from each of its 4 side neighbors is loose
 #define XBRZ_HOOK 90.0       // 24. a line between two colors this far apart needs a corner to go on to
 #define XBRZ_POINT 60.0      // 25. the two pixels beside a pointed pixel differ by this
@@ -497,10 +499,14 @@ float hasBlocked(Frame f)
 // line of four that starts at p and runs toward the corner) and q differs from p by more than XBRZ_LINE_SIDE,
 // so the corner does not take p's color; y: 1.0 when, besides, q takes the corner instead (q's color goes on
 // away from E and along the cut, the line differs from E by 64 or more, the pixel beside q toward E is closer
-// to E than to q, and q is darker than E).
-vec2 straight21(Roles r, vec3 E)
+// to E than to q, and q is darker than E). Neither holds where p and q are close shades next to a far E whose
+// color goes on past p, and the cut goes on (ln: a 2:1 partner or the same corner of a diagonal neighbor is
+// cut) or E is a tip of 1 pixel (q's color on the far side of E too): that is a ramp, not a line.
+vec2 straight21(Roles r, vec3 E, float ln)
 {
   if (dist255(r.u, r.w) <= XBRZ_LINE_SIDE) return vec2(0.0);
+  if ((ln > 0.5 || sameColor(r.w, at(-r.q))) && sameColor(r.mu, E)
+      && dist255(r.u, r.w) < XBRZ_LINE_TONE * min(dist255(E, r.u), dist255(E, r.w))) return vec2(0.0);
   // p in the middle of three of its color along E's side
   bool middle = sameColor(r.u, r.uw) && sameColor(r.u, r.umw);
   // or a line of four from p toward the corner: it differs from E by 64 or more and is thin (the pixel
@@ -779,11 +785,18 @@ void main()
       {
         Roles rX = roles(fX, sec.x), rY = roles(fY, sec.y), rZ = roles(fZ, sec.z), rW = roles(fW, sec.w);
         vec4 line21 = vec4(0.0), on21 = vec4(0.0);
+        // the cut goes on: a 2:1 partner (as in rule 24) or the same corner of a diagonal neighbor is cut
+        vec4 cB = cutOf(iB), cD = cutOf(iD), cF = cutOf(iF), cH = cutOf(iH), cA = cutOf(iA), cC = cutOf(iC), cG = cutOf(iG), cI = cutOf(iI);
+        vec4 partSh = vec4(max(cD.z, cC.z), max(cF.w, cA.w), max(cF.x, cG.x), max(cD.y, cI.y));
+        vec4 partSt = vec4(max(cB.z, cG.z), max(cB.w, cI.w), max(cH.x, cC.x), max(cH.y, cA.y));
+        vec4 steepOn = vec4(haveSteepLine.x, haveShallowLine.y, haveSteepLine.z, haveShallowLine.w);
+        vec4 run21 = max(mix(partSh, partSt, steepOn),
+                         vec4(max(cC.x, cG.x), max(cA.y, cI.y), max(cC.z, cG.z), max(cA.w, cI.w)));
         vec2 t;
-        if (blendResult.x > 0.0) { t = straight21(rX, E); line21.x = t.x; on21.x = t.y; }
-        if (blendResult.y > 0.0) { t = straight21(rY, E); line21.y = t.x; on21.y = t.y; }
-        if (blendResult.z > 0.0) { t = straight21(rZ, E); line21.z = t.x; on21.z = t.y; }
-        if (blendResult.w > 0.0) { t = straight21(rW, E); line21.w = t.x; on21.w = t.y; }
+        if (blendResult.x > 0.0) { t = straight21(rX, E, run21.x); line21.x = t.x; on21.x = t.y; }
+        if (blendResult.y > 0.0) { t = straight21(rY, E, run21.y); line21.y = t.x; on21.y = t.y; }
+        if (blendResult.z > 0.0) { t = straight21(rZ, E, run21.z); line21.z = t.x; on21.z = t.y; }
+        if (blendResult.w > 0.0) { t = straight21(rW, E, run21.w); line21.w = t.x; on21.w = t.y; }
         // a corner that takes q's color becomes a plain corner (no line) in that color
         sec = abs(sec - on21);
         haveShallowLine *= 1.0 - on21;

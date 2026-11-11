@@ -145,7 +145,8 @@
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
 //     bending into the pixel, and checkered patterns keep their squares. A strong thin line of four that
 //     starts beside the pixel and runs toward the corner counts too, and where the other neighbor is darker
-//     and goes on along the cut, the corner takes that neighbor's color instead of staying square.
+//     and goes on along the cut, the corner takes that neighbor's color instead of staying square. On a
+//     ramp (the two neighbors are close shades far from the pixel, and the cut goes on) the corner is cut.
 // 22. Crossed cuts: where two neighboring pixels of close but distinct shades cut into each other from the two ends
 //     of their shared side, the lighter one ends a 45-degree stripe of its color and the darker one
 //     stands apart from its other neighbors, both corners stay square, so the darker shade does not
