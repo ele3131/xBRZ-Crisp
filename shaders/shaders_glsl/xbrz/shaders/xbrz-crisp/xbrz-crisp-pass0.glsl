@@ -660,22 +660,27 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
   // dropped, so the two strokes are not joined into a diagonal
   if (CRISP_RULES)
   {
-    vec4 eye = vec4(float(!alike(Px, Qx) && alike(Qx, A) && !alike(Px, A) && !alike(Px, Rx) && !alike(E, sec.x > 0.5 ? H : F)),
-                    float(!alike(Py, Qy) && alike(Qy, C) && !alike(Py, C) && !alike(Py, Ry) && !alike(E, sec.y > 0.5 ? D : H)),
-                    float(!alike(Pz, Qz) && alike(Qz, I) && !alike(Pz, I) && !alike(Pz, Rz) && !alike(E, sec.z > 0.5 ? B : D)),
-                    float(!alike(Pw, Qw) && alike(Qw, G) && !alike(Pw, G) && !alike(Pw, Rw) && !alike(E, sec.w > 0.5 ? F : B)))
-            * straight * cut * vec4(lessThan(max(lP, lQ), vec4(lE - XBRZ_OUTLINE)));
-    // E is not part of a diagonal stripe along the cut
-    float stripeCG = float(min(DistYCbCr(C, E), DistYCbCr(E, G)) * 255.0 <= XBRZ_STRIPE);
-    float stripeAI = float(min(DistYCbCr(A, E), DistYCbCr(E, I)) * 255.0 <= XBRZ_STRIPE);
-    eye *= 1.0 - vec4(stripeCG, stripeAI, stripeCG, stripeAI);
-    if (dot(eye, vec4(1.0)) > 0.0)
+    // the cheap factors first: the many alike() tests run only where one of them is nonzero
+    vec4 gate = straight * cut * vec4(lessThan(max(lP, lQ), vec4(lE - XBRZ_OUTLINE)));
+    if (dot(gate, vec4(1.0)) > 0.0)
     {
-      eye *= vec4(sec.x > 0.5 ? strokeEnds(Px, Qx, coord, vec2(2.,-1.), vec2(0.,1.)) : strokeEnds(Px, Qx, coord, vec2(-1.,2.), vec2(1.,0.)),
-                  sec.y > 0.5 ? strokeEnds(Py, Qy, coord, vec2(1.,2.), vec2(1.,0.)) : strokeEnds(Py, Qy, coord, vec2(-2.,-1.), vec2(0.,1.)),
-                  sec.z > 0.5 ? strokeEnds(Pz, Qz, coord, vec2(-2.,1.), vec2(0.,1.)) : strokeEnds(Pz, Qz, coord, vec2(1.,-2.), vec2(1.,0.)),
-                  sec.w > 0.5 ? strokeEnds(Pw, Qw, coord, vec2(-1.,-2.), vec2(1.,0.)) : strokeEnds(Pw, Qw, coord, vec2(2.,1.), vec2(0.,1.)));
-      res *= 1.0 - eye;
+      vec4 eye = vec4(float(!alike(Px, Qx) && alike(Qx, A) && !alike(Px, A) && !alike(Px, Rx) && !alike(E, sec.x > 0.5 ? H : F)),
+                      float(!alike(Py, Qy) && alike(Qy, C) && !alike(Py, C) && !alike(Py, Ry) && !alike(E, sec.y > 0.5 ? D : H)),
+                      float(!alike(Pz, Qz) && alike(Qz, I) && !alike(Pz, I) && !alike(Pz, Rz) && !alike(E, sec.z > 0.5 ? B : D)),
+                      float(!alike(Pw, Qw) && alike(Qw, G) && !alike(Pw, G) && !alike(Pw, Rw) && !alike(E, sec.w > 0.5 ? F : B)))
+                * gate;
+      // E is not part of a diagonal stripe along the cut
+      float stripeCG = float(min(DistYCbCr(C, E), DistYCbCr(E, G)) * 255.0 <= XBRZ_STRIPE);
+      float stripeAI = float(min(DistYCbCr(A, E), DistYCbCr(E, I)) * 255.0 <= XBRZ_STRIPE);
+      eye *= 1.0 - vec4(stripeCG, stripeAI, stripeCG, stripeAI);
+      if (dot(eye, vec4(1.0)) > 0.0)
+      {
+        eye *= vec4(sec.x > 0.5 ? strokeEnds(Px, Qx, coord, vec2(2.,-1.), vec2(0.,1.)) : strokeEnds(Px, Qx, coord, vec2(-1.,2.), vec2(1.,0.)),
+                    sec.y > 0.5 ? strokeEnds(Py, Qy, coord, vec2(1.,2.), vec2(1.,0.)) : strokeEnds(Py, Qy, coord, vec2(-2.,-1.), vec2(0.,1.)),
+                    sec.z > 0.5 ? strokeEnds(Pz, Qz, coord, vec2(-2.,1.), vec2(0.,1.)) : strokeEnds(Pz, Qz, coord, vec2(1.,-2.), vec2(1.,0.)),
+                    sec.w > 0.5 ? strokeEnds(Pw, Qw, coord, vec2(-1.,-2.), vec2(1.,0.)) : strokeEnds(Pw, Qw, coord, vec2(2.,1.), vec2(0.,1.)));
+        res *= 1.0 - eye;
+      }
     }
   }
 
@@ -984,7 +989,18 @@ float stripeLine(vec2 coord, mat2 rot, vec3 E, vec3 Pc, float shape)
   return max(eNarrow, pNarrow);
 }
 
-vec4 diagonalStripes(vec2 coord, vec3 B, vec3 D, vec3 E, vec3 F, vec3 H, float dEB, float dED, float dEF, float dEH, vec4 xb, vec4 sq)
+// the pixel at offset o (components -1, 0 or 1) of the 3x3
+vec3 at3x3(vec2 o, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 G, vec3 H, vec3 I)
+{
+  if (o.y < -0.5)
+    return o.x < -0.5 ? A : (o.x > 0.5 ? C : B);
+  if (o.y > 0.5)
+    return o.x < -0.5 ? G : (o.x > 0.5 ? I : H);
+  return o.x < -0.5 ? D : (o.x > 0.5 ? F : E);
+}
+
+vec4 diagonalStripes(vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 G, vec3 H, vec3 I,
+                     float dEB, float dED, float dEF, float dEH, vec4 xb, vec4 sq)
 {
   // the slope xBRZ found for each corner (+16 shallow, +64 steep, in the corner's own frame)
   vec4 shape = FLAG(xb, 4.0) * (FLAG(xb, 16.0) + 2.0 * FLAG(xb, 64.0));
@@ -996,6 +1012,25 @@ vec4 diagonalStripes(vec2 coord, vec3 B, vec3 D, vec3 E, vec3 F, vec3 H, float d
   sq *= vec4(lessThan(shape, vec4(2.5))) * vec4(onTone(Qx, Px, E), onTone(Qy, Py, E), onTone(Qz, Pz, E), onTone(Qw, Pw, E));
   // one corner at a time, so the test is compiled once (corner z is the canonical frame, the others turned)
   vec4 r = vec4(0.0);
+  // first the cheap strong-contour test of stripeLine, read from the 3x3, so the loop below only runs the
+  // long test on the corners that pass it
+  for (int k = 0; k < 4; k++)
+  {
+    vec4 m = vec4(equal(vec4(float(k)), vec4(0., 1., 2., 3.)));
+    if (dot(sq, m) > 0.0)
+    {
+      mat2 rot = k == 0 ? mat2(-1., 0., 0., -1.) : (k == 1 ? mat2(0., -1., 1., 0.) : (k == 2 ? mat2(1., 0., 0., 1.) : mat2(0., 1., -1., 0.)));
+      vec3 Pc = k == 0 ? Px : (k == 1 ? Py : (k == 2 ? Pz : Pw));
+      float sh = dot(shape, m);
+      // the same f1, f2 and o1 as in stripeLine
+      vec3 Fa = at3x3(rot * (sh > 1.5 ? vec2(-1., 0.) : vec2(0., -1.)), A, B, C, D, E, F, G, H, I);
+      vec3 Fb = at3x3(rot * (sh < 0.5 ? vec2(-1., 0.) : vec2(-1., -1.)), A, B, C, D, E, F, G, H, I);
+      vec3 O1 = at3x3(rot * vec2(1., 1.), A, B, C, D, E, F, G, H, I);
+      float strong = float(min(DistYCbCr(Fa, E), DistYCbCr(Fb, E)) * 255.0 >= XBRZ_STRONG)
+                   + float(DistYCbCr(O1, Pc) * 255.0 >= XBRZ_STRONG);
+      sq *= 1.0 - m * float(strong <= 0.0);
+    }
+  }
   for (int k = 0; k < 4; k++)
   {
     vec4 m = vec4(equal(vec4(float(k)), vec4(0., 1., 2., 3.)));
@@ -1011,13 +1046,13 @@ vec4 diagonalStripes(vec2 coord, vec3 B, vec3 D, vec3 E, vec3 F, vec3 H, float d
 
 // rule 11: a corner that rule 1 squared comes back where it lies on a straight line (diagonalStripes);
 // a corner that comes back is no longer weak
-vec4 largerWindowLines(vec4 res, vec2 coord, vec3 B, vec3 D, vec3 E, vec3 F, vec3 H, float dEB, float dED, float dEF, float dEH,
+vec4 largerWindowLines(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 G, vec3 H, vec3 I, float dEB, float dED, float dEF, float dEH,
                        vec4 xbrz, vec4 contrast, inout vec4 weak)
 {
   vec4 sq = vec4(lessThan(contrast, vec4(XBRZ_MINC))) * vec4(greaterThan(BLEND(xbrz), vec4(0.0)));
   if (XBRZ_MINC > 0.0 && dot(sq, vec4(1.0)) > 0.0)
   {
-    sq *= diagonalStripes(coord, B, D, E, F, H, dEB, dED, dEF, dEH, xbrz, sq);
+    sq *= diagonalStripes(coord, A, B, C, D, E, F, G, H, I, dEB, dED, dEF, dEH, xbrz, sq);
     res = mix(res, xbrz, sq);
     weak *= 1.0 - sq;
   }
@@ -1210,6 +1245,9 @@ vec4 lineInOtherColor(vec4 res, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, 
   // corner is painted with the other candidate, which differs from it by more than XBRZ_TINT
   vec4 tint = vec4(lessThan(r, vec4(128.0))) * vec4(greaterThan(BLEND(r), vec4(0.0))) * FLAG(r, 4.0) *
               abs(sh - st) * (sh * sec + st * (1.0 - sec)) * vec4(greaterThan(pair * 255.0, vec4(XBRZ_TINT)));
+  // no corner can change: skip the rest (tint is only multiplied from here)
+  if (dot(tint, vec4(1.0)) <= 0.0)
+    return res;
   // the two pixels that make the line have one color
   vec4 pSh = vec4(DistYCbCr(C, D), DistYCbCr(B, I), DistYCbCr(F, G), DistYCbCr(A, H));
   vec4 pSt = vec4(DistYCbCr(B, G), DistYCbCr(A, F), DistYCbCr(C, H), DistYCbCr(D, I));
@@ -1448,7 +1486,7 @@ void main()
   vec4 pair = vec4(d_B_D, d_B_F, d_F_H, d_D_H);
   vec4 contrast, weak;
   res = minimumContrast(res, dEB, dED, dEF, dEH, contrast, weak);              // 1
-  res = largerWindowLines(res, coord, B, D, E, F, H, dEB, dED, dEF, dEH, xbrz, contrast, weak);  // 11
+  res = largerWindowLines(res, coord, A, B, C, D, E, F, G, H, I, dEB, dED, dEF, dEH, xbrz, contrast, weak);  // 11
   res = diagonalRules(res, coord, A, B, C, D, E, F, G, H, I, pair, dEB, dED, dEF, dEH);  // 2 to 7
   res = weakCorners(res, weak);                                                 // 1, weak corners
   res = lineThroughAA(res, xbrz, contrast, B, D, E, F, H);                      // 8

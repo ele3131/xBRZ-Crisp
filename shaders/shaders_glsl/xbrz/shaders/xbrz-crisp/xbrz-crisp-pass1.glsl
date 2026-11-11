@@ -326,6 +326,9 @@ float get_left_ratio(vec2 center, vec2 origin, vec2 direction, vec2 scale)
 #define INFO_AT(x, y) floor(INFO(coord + vec2(x, y) * INFO_STEP) * 255.0 + 0.5)
 #define BLEND(r) mod(r, 4.0)
 #define FLAG(r, f) mod(floor((r) / (f)), 2.0)
+//#crisp{
+#define XBRZ_TIPK 0.1  // 23. a loose pixel's tip: the cut line moves out by this
+//#crisp}
 
 void main()
 {
@@ -358,7 +361,6 @@ void main()
 
 //#crisp{
   // BLEND 3 (a loose pixel, rule 23): a plain corner with a smaller tip (the cut line moves out by XBRZ_TIPK)
-  const float XBRZ_TIPK = 0.1;
   vec4 tip = 1.0 + XBRZ_TIPK * vec4(equal(BLEND(info), vec4(3.0)));
 //#crisp}
   vec4 doLineBlend = FLAG(info, 4.0);

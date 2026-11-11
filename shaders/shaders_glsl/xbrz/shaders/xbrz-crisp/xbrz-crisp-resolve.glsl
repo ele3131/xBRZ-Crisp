@@ -327,7 +327,9 @@ float distYCbCr(vec3 pixA, vec3 pixB)
 #define FLAG(r, f) mod(floor((r) / (f)), 2.0)
 
 //#crisp{
-// ---- Tunables of rules 14 and 17 to 24 (distances in x/255, like XBRZ_MINC), in rule order ----
+// ---- Tunables of rules 14 and 17 to 25 (distances in x/255, like XBRZ_MINC), in rule order ----
+#define XBRZ_SAME 15.0       // the tolerance of sameColor (the default tolerance, fixed here: it is not the XBRZ_TOL parameter)
+#define XBRZ_TONE 20.0       // 14. the tolerance of sameTone, the colors of one stroke
 #define XBRZ_STRAIGHT 64.0   // 14. minimum contrast of a straightened edge
 #define XBRZ_DARK 0.3        // 14. a stroke this dark (luma) or darker may have two lighter side colors
 #define XBRZ_LONE_RAMP 1.4   // 17. not a ramp: d(L,E) + d(E,O) above this times d(L,O)
@@ -337,8 +339,17 @@ float distYCbCr(vec3 pixA, vec3 pixB)
 #define XBRZ_JUNC_RAMP 1.06  // 20. not a junction but a ramp: the two shorter distances of E and its two neighbors add up to less than this times the longest
 #define XBRZ_JUNC_RAMP2 1.12 // 20. a looser ramp, for the corners kept round where a cut goes on or E is a strip
 #define XBRZ_JUNC_RAMP3 1.15 // 20. looser still where E is the end of a strong ramp with its middle color well between
+#define XBRZ_JUNC_AA_MIN 40.0  // 20. dark outline with an antialiasing pixel: the nearer neighbor differs from E by at least this
+#define XBRZ_JUNC_AA_MAX 70.0  // 20. and by less than this
+#define XBRZ_JUNC_AA_DARK 0.35 // 20. and the darkest of the three is darker than this (luma)
+#define XBRZ_JUNC_MID 0.4    // 20. the middle step of a strong ramp is more than this times the whole
+#define XBRZ_JUNC_FAR 100.0  // 20. a ramp is strong when its far end differs from E by more than this
 #define XBRZ_LINE_SIDE 25.0  // 21. the other neighbor of a corner differs from a straight line by this
 #define XBRZ_LINE_TONE 0.4   // 21. p and q are close shades when they differ by less than this times E's difference to either
+#define XBRZ_LINE_STRONG 64.0 // 21. a line this far from E is strong (a line of four counts, and q may take the corner)
+#define XBRZ_LINE_ALONG 20.0 // 21. E's color goes on along the cut when a pixel beside the corner is closer than this
+#define XBRZ_CROSS_MAX 64.0  // 22. E and the neighbor are close shades when they (or the stripe's end and the neighbor) differ by less than this
+#define XBRZ_CROSS_RAMP 45.0 // 22. a faint step (closer than this) on a ramp toward a darker pixel stays
 #define XBRZ_LOOSE 60.0      // 23. a pixel this far from each of its 4 side neighbors is loose
 #define XBRZ_HOOK 90.0       // 24. a line between two colors this far apart needs a corner to go on to
 #define XBRZ_POINT 60.0      // 25. the two pixels beside a pointed pixel differ by this
@@ -356,9 +367,9 @@ float luma(vec3 c) { return dot(c, LUMA); }
 // The distance of two colors in x/255 units.
 float dist255(vec3 a, vec3 b) { return distYCbCr(a, b) * 255.0; }
 // Two colors closer than the default tolerance (15, fixed here: it is not the XBRZ_TOL parameter).
-bool sameColor(vec3 a, vec3 b) { return dist255(a, b) < 15.0; }
+bool sameColor(vec3 a, vec3 b) { return dist255(a, b) < XBRZ_SAME; }
 // The tolerance of the straight steps (rule 14).
-bool sameTone(vec3 a, vec3 b) { return dist255(a, b) <= 20.0; }
+bool sameTone(vec3 a, vec3 b) { return dist255(a, b) <= XBRZ_TONE; }
 // The original pixel at an offset from E.
 vec3 at(vec2 o) { return P(o.x, o.y); }
 float sameF(vec3 a, vec3 b) { return float(sameColor(a, b)); }
@@ -523,6 +534,15 @@ Roles roles(Frame f, float s)
   return r;
 }
 
+// The frame of corner k (0 to 3: x, y, z, w), for the loops over the corners.
+Frame cornerFrame(int k, Frame fX, Frame fY, Frame fZ, Frame fW)
+{
+  if (k == 0) return fX;
+  if (k == 1) return fY;
+  if (k == 2) return fZ;
+  return fW;
+}
+
 // 1.0 when one of the decision words around a corner has the blocked bit (128), which rule 22 needs.
 float hasBlocked(Frame f)
 {
@@ -549,13 +569,13 @@ vec2 straight21(Roles r, vec3 E, float ln)
   // across it from E is closer to E than to p), q's color does not cross it (at p - q), the cut ends at p
   // (the pixel past p along the cut is closer to E than to p and q), and E's color does not go on along
   // the cut on either side
-  bool four = !middle && dist255(r.u, E) >= 64.0 && !sameColor(r.w, r.umw)
+  bool four = !middle && dist255(r.u, E) >= XBRZ_LINE_STRONG && !sameColor(r.w, r.umw)
            && dist255(r.u2, r.u) > dist255(r.u2, E)
            && sameColor(r.u, r.uw) && sameColor(r.u, r.uw2) && sameColor(r.u, at(r.p + 3.0 * r.q))
            && dist255(r.u2mw, E) < min(dist255(r.u2mw, r.u), dist255(r.u2mw, r.w))
-           && dist255(E, r.wmu) >= 20.0 && dist255(E, r.umw) >= 20.0;
+           && dist255(E, r.wmu) >= XBRZ_LINE_ALONG && dist255(E, r.umw) >= XBRZ_LINE_ALONG;
   if (!middle && !four) return vec2(0.0);
-  bool takes = sameColor(r.w, r.w2) && dist255(r.u, E) >= 64.0 && sameColor(r.w, r.w2mu)
+  bool takes = sameColor(r.w, r.w2) && dist255(r.u, E) >= XBRZ_LINE_STRONG && sameColor(r.w, r.w2mu)
             && dist255(r.wmu, E) < dist255(r.wmu, r.w) && luma(r.w) < luma(E);
   return vec2(1.0, takes ? 1.0 : 0.0);
 }
@@ -575,14 +595,14 @@ float back22(Roles r, vec3 E, float eWord, float blocked, float loneE)
   if (BLEND(r.ru) == 0.0 || abs(FLAG(r.ru, 8.0) - r.s) > 0.5 || max(FLAG(r.ru, 128.0), blocked) < 0.5
       || max(FLAG(r.ru, along), FLAG(eWord, along)) < 0.5) return 0.0;
   float dn = dist255(E, r.u);
-  if (dn >= 64.0) return 0.0;
+  if (dn >= XBRZ_CROSS_MAX) return 0.0;
   if (luma(r.u) > luma(E))
   {
     // n is the lighter one: it ends the stripe, and E is the darker one
-    if (dn < 45.0 && luma(r.mu) < luma(E)) return 0.0; // a faint step on a ramp toward a darker pixel stays
+    if (dn < XBRZ_CROSS_RAMP && luma(r.mu) < luma(E)) return 0.0; // a faint step on a ramp toward a darker pixel stays
     return sameAsOne(r.u, r.w, r.u2mw) * loneE;
   }
-  if (dn < 45.0 && luma(r.u2) < luma(r.u)) return 0.0;
+  if (dn < XBRZ_CROSS_RAMP && luma(r.u2) < luma(r.u)) return 0.0;
   return sameAsOne(E, r.umw, r.wmu) * apartFrom4(r.u, E, r.u2, r.uw, r.umw);
 }
 // A plain round corner of E that takes its color from p, where p is a darker pixel apart from its 4
@@ -592,7 +612,7 @@ float back22(Roles r, vec3 E, float eWord, float blocked, float loneE)
 float tip22(Roles r, vec3 E)
 {
   float dl = dist255(r.umw, r.u);
-  if (dl < 15.0 || dl >= 64.0 || luma(r.umw - r.u) <= 0.0) return 0.0;
+  if (dl < XBRZ_SAME || dl >= XBRZ_CROSS_MAX || luma(r.umw - r.u) <= 0.0) return 0.0;
   if (sameColor(r.u, r.w) || sameColor(r.u, r.uw) || sameColor(r.w, r.uw) || sameColor(E, r.uw) || sameColor(E, r.u)) return 0.0;
   if (!sameColor(r.umw, at(2.0 * (r.p - r.q))) || sameColor(r.u, r.u2)) return 0.0;
   if (BLEND(r.ru) == 0.0 || BLEND(r.rumw) == 0.0 || max(FLAG(r.ru, 128.0), FLAG(r.rumw, 128.0)) < 0.5) return 0.0;
@@ -704,6 +724,8 @@ void main()
       // the pixels at two steps, named by their moves: l left, r right, u up, d down
       vec3 luu = P(-1., -2.), uu = P(0., -2.), ruu = P(1., -2.), llu = P(-2., -1.), ll = P(-2., 0.), lld = P(-2., 1.);
       vec3 rru = P(2., -1.), rr = P(2., 0.), rrd = P(2., 1.), ldd = P(-1., 2.), dd = P(0., 2.), rdd = P(1., 2.);
+      // the distances from E to its four side neighbors, in x/255 (x: B, y: D, z: F, w: H), for rules 20 to 24
+      vec4 dE4 = vec4(dist255(E, B), dist255(E, D), dist255(E, F), dist255(E, H));
 
       // ---- 17. A line drawn on one side only ----
       // a corner that draws xBRZ's line in the line's own color, where the pixel across the line (O) draws
@@ -765,7 +787,7 @@ void main()
         vec4 cand20 = vec4(dist255(B, D), dist255(B, F), dist255(F, H), dist255(D, H));
         // the three colors E and the two neighbors of a corner form a ramp (their distances sum to under
         // RAMP + 1 times the longest), and one neighbor's color goes on just past the other along the cut
-        vec4 dE1 = vec4(dist255(E, D), dist255(E, B), dist255(E, F), dist255(E, H));
+        vec4 dE1 = dE4.yxzw;
         vec4 dE2 = dE1.yzwx;
         vec4 ramp20 = vec4(lessThan(dE1 + dE2 + cand20, (1.0 + XBRZ_JUNC_RAMP) * max(cand20, max(dE1, dE2))));
         vec4 cr20 = max(vec4(junctionNear(B, lld), junctionNear(F, luu), junctionNear(H, rru), junctionNear(D, rdd)),
@@ -797,7 +819,7 @@ void main()
         vec4 runA = vec4(u1.x + u1.x * u2.x, m1.y + m1.y * m2.y, u1.z + u1.z * u2.z, m1.w + m1.w * m2.w);
         vec4 runB = vec4(d1.x + d1.x * d2.x, p1.y + p1.y * p2.y, d1.z + d1.z * d2.z, p1.w + p1.w * p2.w);
         vec4 on20 = isCut(blendResult) * vec4(greaterThan(cand20, vec4(XBRZ_JUNCTION)))
-                  * (1.0 - ramp20 * cr20 * vec4(greaterThan(min(dE1, dE2), vec4(40.0))) * vec4(lessThan(min(dE1, dE2), vec4(70.0))) * vec4(lessThan(lmin20, vec4(0.35))))
+                  * (1.0 - ramp20 * cr20 * vec4(greaterThan(min(dE1, dE2), vec4(XBRZ_JUNC_AA_MIN))) * vec4(lessThan(min(dE1, dE2), vec4(XBRZ_JUNC_AA_MAX))) * vec4(lessThan(lmin20, vec4(XBRZ_JUNC_AA_DARK))))
                   * (1.0 - ext1) * (1.0 - ext2) * (1.0 - extE) * vec4(lessThan(1.0 + runA + runB, vec4(3.0)));
         // on an antialiasing ramp (E and its two neighbors on one line in color), a corner stays round where another
         // pixel cuts the same corner along the line, or where the opposite corner of E stays cut (E is then a strip)
@@ -806,7 +828,7 @@ void main()
         vec4 maxE20 = max(dE1, dE2);
         vec4 wide20 = max(vec4(lessThan(dE1 + dE2 + cand20, (1.0 + XBRZ_JUNC_RAMP2) * max(cand20, maxE20))),
                           vec4(lessThan(dE1 + dE2 + cand20, (1.0 + XBRZ_JUNC_RAMP3) * maxE20)) * vec4(lessThan(cand20, maxE20))
-                          * vec4(greaterThan(min(cand20, min(dE1, dE2)), 0.4 * maxE20)) * vec4(greaterThan(maxE20, vec4(100.0))));
+                          * vec4(greaterThan(min(cand20, min(dE1, dE2)), XBRZ_JUNC_MID * maxE20)) * vec4(greaterThan(maxE20, vec4(XBRZ_JUNC_FAR))));
         vec4 keep20 = max(vec4(greaterThan(runA + runB, vec4(0.5))), (isCut(blendResult) * (1.0 - on20)).zwxy);
         on20 *= 1.0 - keep20 * wide20;
         blendResult *= 1.0 - on20;
@@ -825,7 +847,6 @@ void main()
       // it takes q's color where q is darker than E and goes on along the cut, and otherwise stays square
       if (anyCut(blendResult))
       {
-        Roles rX = roles(fX, sec.x), rY = roles(fY, sec.y), rZ = roles(fZ, sec.z), rW = roles(fW, sec.w);
         vec4 line21 = vec4(0.0), on21 = vec4(0.0);
         // the cut goes on: a 2:1 partner (as in rule 24) or the same corner of a diagonal neighbor is cut
         vec4 cB = cutOf(iB), cD = cutOf(iD), cF = cutOf(iF), cH = cutOf(iH), cA = cutOf(iA), cC = cutOf(iC), cG = cutOf(iG), cI = cutOf(iI);
@@ -834,11 +855,17 @@ void main()
         vec4 steepOn = vec4(haveSteepLine.x, haveShallowLine.y, haveSteepLine.z, haveShallowLine.w);
         vec4 run21 = max(mix(partSh, partSt, steepOn),
                          vec4(max(cC.x, cG.x), max(cA.y, cI.y), max(cC.z, cG.z), max(cA.w, cI.w)));
-        vec2 t;
-        if (blendResult.x > 0.0) { t = straight21(rX, E, run21.x); line21.x = t.x; on21.x = t.y; }
-        if (blendResult.y > 0.0) { t = straight21(rY, E, run21.y); line21.y = t.x; on21.y = t.y; }
-        if (blendResult.z > 0.0) { t = straight21(rZ, E, run21.z); line21.z = t.x; on21.z = t.y; }
-        if (blendResult.w > 0.0) { t = straight21(rW, E, run21.w); line21.w = t.x; on21.w = t.y; }
+        // one corner at a time, so straight21 is compiled once
+        for (int k = 0; k < 4; k++)
+        {
+          vec4 m = vec4(equal(vec4(float(k)), vec4(0., 1., 2., 3.)));
+          if (dot(blendResult, m) > 0.0)
+          {
+            vec2 t = straight21(roles(cornerFrame(k, fX, fY, fZ, fW), dot(sec, m)), E, dot(run21, m));
+            line21 += m * t.x;
+            on21 += m * t.y;
+          }
+        }
         // a corner that takes q's color becomes a plain corner (no line) in that color
         sec = abs(sec - on21);
         haveShallowLine *= 1.0 - on21;
@@ -864,7 +891,7 @@ void main()
           // the line is steep on the screen where the word says steep at x and z, and shallow at y and w
           vec4 steepOnScreen = vec4(haveSteepLine.x, haveShallowLine.y, haveSteepLine.z, haveShallowLine.w);
           vec4 part = mix(partSh, partSt, steepOnScreen);
-          vec4 pDist = vec4(dist255(E, sec.x > 0.5 ? B : D), dist255(E, sec.y > 0.5 ? F : B), dist255(E, sec.z > 0.5 ? H : F), dist255(E, sec.w > 0.5 ? D : H));
+          vec4 pDist = vec4(sec.x > 0.5 ? dE4.x : dE4.y, sec.y > 0.5 ? dE4.z : dE4.x, sec.z > 0.5 ? dE4.w : dE4.z, sec.w > 0.5 ? dE4.y : dE4.w);
           vec4 hook = lone24 * (1.0 - part) * vec4(greaterThanEqual(pDist, vec4(XBRZ_HOOK)));
           hook24 = hook;
         }
@@ -880,19 +907,23 @@ void main()
       vec4 bk = max(blockedBit, vec4(hasBlocked(fX), hasBlocked(fY), hasBlocked(fZ), hasBlocked(fW)));
       if (anyCut(blendResult) && dot(bk, vec4(1.0)) > 0.0)
       {
-        Roles rX = roles(fX, sec.x), rY = roles(fY, sec.y), rZ = roles(fZ, sec.z), rW = roles(fW, sec.w);
-        float loneE = apartFrom4(E, B, D, F, H);
-        if (blendResult.x > 0.0 && bk.x > 0.0) x22.x = back22(rX, E, info.x, blockedBit.x, loneE);
-        if (blendResult.y > 0.0 && bk.y > 0.0) x22.y = back22(rY, E, info.y, blockedBit.y, loneE);
-        if (blendResult.z > 0.0 && bk.z > 0.0) x22.z = back22(rZ, E, info.z, blockedBit.z, loneE);
-        if (blendResult.w > 0.0 && bk.w > 0.0) x22.w = back22(rW, E, info.w, blockedBit.w, loneE);
+        // E differs from its 4 side neighbors (apartFrom4, from dE4)
+        float loneE = float(min(min(dE4.x, dE4.y), min(dE4.z, dE4.w)) >= XBRZ_SAME);
+        for (int k = 0; k < 4; k++)
+        {
+          vec4 m = vec4(equal(vec4(float(k)), vec4(0., 1., 2., 3.)));
+          if (dot(blendResult, m) > 0.0 && dot(bk, m) > 0.0)
+            x22 += m * back22(roles(cornerFrame(k, fX, fY, fZ, fW), dot(sec, m)), E, dot(info, m), dot(blockedBit, m), loneE);
+        }
         blendResult *= 1.0 - x22;
         // and a round corner at the far end of such a lone darker pixel takes no tip of it (see tip22)
         vec4 t22 = vec4(0.0);
-        if (blendResult.x > 0.0 && bk.x > 0.0 && line.x < 0.5) t22.x = tip22(rX, E);
-        if (blendResult.y > 0.0 && bk.y > 0.0 && line.y < 0.5) t22.y = tip22(rY, E);
-        if (blendResult.z > 0.0 && bk.z > 0.0 && line.z < 0.5) t22.z = tip22(rZ, E);
-        if (blendResult.w > 0.0 && bk.w > 0.0 && line.w < 0.5) t22.w = tip22(rW, E);
+        for (int k = 0; k < 4; k++)
+        {
+          vec4 m = vec4(equal(vec4(float(k)), vec4(0., 1., 2., 3.)));
+          if (dot(blendResult, m) > 0.0 && dot(bk, m) > 0.0 && dot(line, m) < 0.5)
+            t22 += m * tip22(roles(cornerFrame(k, fX, fY, fZ, fW), dot(sec, m)), E);
+        }
         blendResult *= 1.0 - t22;
         x22 = max(x22, t22);
       }
@@ -923,7 +954,7 @@ void main()
       // neighbors (E's color is on none), with all 4 corners cut, takes a plain tip with no line on each corner, and
       // the output pass draws that tip smaller (BLEND 3): the pixel stays a square with softened corners instead of
       // a circle. A pixel with 3 corners cut is left as xBRZ draws it.
-      if (dot(isCut(blendResult), vec4(1.0)) > 3.5 && min(min(dist255(E, B), dist255(E, D)), min(dist255(E, F), dist255(E, H))) >= XBRZ_LOOSE
+      if (dot(isCut(blendResult), vec4(1.0)) > 3.5 && min(min(dE4.x, dE4.y), min(dE4.z, dE4.w)) >= XBRZ_LOOSE
           && sameF(E, A) + sameF(E, C) + sameF(E, G) + sameF(E, I) < 0.5)
       {
         line = vec4(0.0); haveShallowLine = vec4(0.0); haveSteepLine = vec4(0.0);
