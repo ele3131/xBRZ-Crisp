@@ -179,8 +179,14 @@
 //     the cut are cut, so the line has no gap, or where the pixel diagonal to E across the corner's point cuts
 //     the facing corner with a 45-degree line and pass 0 drew E's corner with no line, so the two cuts meet.
 //     Only where E differs from one of the corner's two neighbors by more than XBRZ_MATCH_EDGE.
+// 27. A bar at a vertex: where two arms of an outline end a knight's move apart and a bar of another color
+//     (three pixels or more) comes down to the gap pixel between them, pass 0 cuts the gap pixel's corner
+//     along a line in the bar's color, so the bar runs on past the vertex as a spike. The corner becomes a
+//     plain 45-degree cut in the bar's color where the gap pixel is an in-between tone of the bar and the
+//     outline, like the yellow bar between the red outlines of the Scooby-Doo 2 title, and otherwise the gap
+//     pixel's corners under the bar stay square, so the bar ends flat (XBRZ_VERTEX_TOL, _EDGE, _BAR).
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 26 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 27 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -353,6 +359,61 @@ float dist255(vec3 a, vec3 b) { return distYCbCr(a, b) * 255.0; }
 #define XBRZ_MATCH_WRAP 50.0  // gap: the corner's two neighbors are within this of each other
 #define XBRZ_MATCH_LINE 30.0  // gap: so are the same two pixels of both neighbors along the cut
 
+
+// ---- Rule 27: a bar at a vertex ----
+// Two arms of an outline of color C end a knight's move apart (L = G - u and UR = G + u - v) with the gap
+// pixel G between them, and T = G - v is the tip of a bar of another color that comes down to the vertex.
+// Where pass 0 cuts G's corner toward T and L along a line in T's color, T's color runs on past the
+// vertex as a spike: the corner becomes a plain 45-degree cut in T's color where G's color lies between
+// T's and C's (an in-between tone), and otherwise G's corners under T stay square, so the bar ends flat.
+#define XBRZ_VERTEX_TOL 15.0   // the arms' pixels have C within this
+#define XBRZ_VERTEX_EDGE 40.0  // G and T differ from C by more than this
+#define XBRZ_VERTEX_BAR 15.0   // the bar's pixels have T's color within this
+
+// one-hot corner of direction c (x TL, y TR, z BR, w BL)
+vec4 vtxCorner(vec2 c) { return vec4(c.x < 0.0 && c.y < 0.0, c.x > 0.0 && c.y < 0.0, c.x > 0.0 && c.y > 0.0, c.x < 0.0 && c.y > 0.0); }
+// pass 1 takes the horizontal neighbor for corners x and z and the vertical one for y and w, or the other with flag 8
+bool vtxSec(vec2 c, vec2 n) { return (c.x * c.y > 0.0) != (abs(n.x) > 0.5); }
+bool vtxSame(vec3 a, vec3 b) { return dist255(a, b) <= XBRZ_VERTEX_TOL; }
+// the vertex around G = E: L and UR have color C and go on to G - 2u + v and G + 2u; G, T, G + u and
+// G - u - v are not C; T's color goes on for two more pixels away from G (a bar, not the 2-pixel round
+// end of a shape, which keeps xBRZ's curve)
+bool vtxAt(vec2 u, vec2 v)
+{
+  vec3 C = P(-u.x, -u.y), G = P(0.0, 0.0), T = P(-v.x, -v.y);
+  return vtxSame(C, P(u.x - v.x, u.y - v.y)) && vtxSame(C, P(v.x - 2.0 * u.x, v.y - 2.0 * u.y)) && vtxSame(C, P(2.0 * u.x, 2.0 * u.y))
+      && dist255(C, G) > XBRZ_VERTEX_EDGE && dist255(C, T) > XBRZ_VERTEX_EDGE
+      && !vtxSame(C, P(u.x, u.y)) && !vtxSame(C, P(-u.x - v.x, -u.y - v.y))
+      && dist255(T, P(-2.0 * v.x, -2.0 * v.y)) <= XBRZ_VERTEX_BAR && dist255(T, P(-3.0 * v.x, -3.0 * v.y)) <= XBRZ_VERTEX_BAR;
+}
+// G's color lies between T's and C's, in color and in brightness
+bool vtxBetween(vec3 g, vec3 t, vec3 c)
+{
+  vec3 tc = t - c;
+  float k = dot(g - c, tc) / max(dot(tc, tc), 1e-6);
+  const vec3 wY = vec3(0.2627, 0.6780, 0.0593);
+  float yt = dot(t, wY), yc = dot(c, wY), kY = (dot(g, wY) - yc) / (abs(yt - yc) > 1e-3 ? yt - yc : 1e-3);
+  return k > 0.15 && k < 0.85 && dist255(c + k * tc, g) < 24.0 && abs(yt - yc) > 1e-3 && kY > 0.15 && kY < 0.85;
+}
+void vtx(vec2 u, vec2 v, inout vec4 res)
+{
+  vec2 c = -u - v;
+  vec4 m = vtxCorner(c);
+  float w = dot(res, m);
+  // G's corner toward T and L is cut along a line in T's color
+  if (BLEND(w) < 0.5 || FLAG(w, 4.0) < 0.5 || (FLAG(w, 8.0) > 0.5) != vtxSec(c, -v) || !vtxAt(u, v)) return;
+  if (vtxBetween(P(0.0, 0.0), P(-v.x, -v.y), P(-u.x, -u.y)))
+    res = mix(res, vec4(vtxSec(c, -v) ? 9.0 : 1.0), m);
+  else
+  {
+    res = mix(res, vec4(0.0), m);
+    // G's other corner under T loses a cut in T's color too
+    vec2 c2 = u - v;
+    vec4 m2 = vtxCorner(c2);
+    if ((FLAG(dot(res, m2), 8.0) > 0.5) == vtxSec(c2, -v)) res = mix(res, vec4(0.0), m2);
+  }
+}
+
 void main()
 {
   vec2 pos = fract(vTexCoord * SRC_SIZE.xy) - vec2(0.5, 0.5);
@@ -389,6 +450,14 @@ void main()
     // pass 0's corner back, in the resolve's word (cut, line, second color, shallow, steep)
     vec4 back = 1.0 + 4.0 * FLAG(w0, 4.0) + 8.0 * FLAG(w0, 8.0) + 16.0 * FLAG(w0, 16.0) + 64.0 * FLAG(w0, 64.0);
     res = mix(res, back, fix);
+  }
+  // rule 27: a bar at a vertex ends flat (or in a plain cut where the gap pixel is an in-between tone)
+  if (XBRZ_MINC > 0.0)
+  {
+    vtx(vec2( 1.0, 0.0), vec2(0.0,  1.0), res); vtx(vec2(-1.0, 0.0), vec2(0.0,  1.0), res);
+    vtx(vec2( 1.0, 0.0), vec2(0.0, -1.0), res); vtx(vec2(-1.0, 0.0), vec2(0.0, -1.0), res);
+    vtx(vec2(0.0,  1.0), vec2( 1.0, 0.0), res); vtx(vec2(0.0, -1.0), vec2( 1.0, 0.0), res);
+    vtx(vec2(0.0,  1.0), vec2(-1.0, 0.0), res); vtx(vec2(0.0, -1.0), vec2(-1.0, 0.0), res);
   }
   FRAG_OUT = res / 255.0;
 }

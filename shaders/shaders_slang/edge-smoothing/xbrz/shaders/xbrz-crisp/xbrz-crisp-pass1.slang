@@ -180,8 +180,14 @@
 //     the cut are cut, so the line has no gap, or where the pixel diagonal to E across the corner's point cuts
 //     the facing corner with a 45-degree line and pass 0 drew E's corner with no line, so the two cuts meet.
 //     Only where E differs from one of the corner's two neighbors by more than XBRZ_MATCH_EDGE.
+// 27. A bar at a vertex: where two arms of an outline end a knight's move apart and a bar of another color
+//     (three pixels or more) comes down to the gap pixel between them, pass 0 cuts the gap pixel's corner
+//     along a line in the bar's color, so the bar runs on past the vertex as a spike. The corner becomes a
+//     plain 45-degree cut in the bar's color where the gap pixel is an in-between tone of the bar and the
+//     outline, like the yellow bar between the red outlines of the Scooby-Doo 2 title, and otherwise the gap
+//     pixel's corners under the bar stay square, so the bar ends flat (XBRZ_VERTEX_TOL, _EDGE, _BAR).
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 26 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 27 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
