@@ -136,7 +136,9 @@
 //     like the outline of a neck that runs on behind its transition pixel. On a looser ramp
 //     (XBRZ_JUNC_RAMP2) a corner also stays round where another pixel cuts the same corner along the
 //     line, or where the opposite corner of the pixel stays cut, so a pixel on an antialiased curve
-//     is not cut at one end and square at the other, like the corner of a trunk in Minish Cap. At a
+//     is not cut at one end and square at the other, like the corner of a trunk in Minish Cap. Where the
+//     pixel is one end of a strong ramp (XBRZ_JUNC_RAMP3), like foam on water, the ramp may be looser still.
+//     At a
 //     crossing of four clearly different colors, where the pixel is dark and darker than both neighbors and
 //     the cut's color comes from a pixel that stands alone, a color that goes on only inside a flat area
 //     is no line, so a dark outline pixel is not nibbled by a small detail beside it.
@@ -334,6 +336,7 @@ float distYCbCr(vec3 pixA, vec3 pixB)
 #define XBRZ_JUNC_NEAR 20.0  // 20. a color this close to the next pixel goes on along the cut
 #define XBRZ_JUNC_RAMP 1.06  // 20. not a junction but a ramp: the two shorter distances of E and its two neighbors add up to less than this times the longest
 #define XBRZ_JUNC_RAMP2 1.12 // 20. a looser ramp, for the corners kept round where a cut goes on or E is a strip
+#define XBRZ_JUNC_RAMP3 1.15 // 20. looser still where E is the end of a strong ramp with its middle color well between
 #define XBRZ_LINE_SIDE 25.0  // 21. the other neighbor of a corner differs from a straight line by this
 #define XBRZ_LINE_TONE 0.4   // 21. p and q are close shades when they differ by less than this times E's difference to either
 #define XBRZ_LOOSE 60.0      // 23. a pixel this far from each of its 4 side neighbors is loose
@@ -798,7 +801,12 @@ void main()
                   * (1.0 - ext1) * (1.0 - ext2) * (1.0 - extE) * vec4(lessThan(1.0 + runA + runB, vec4(3.0)));
         // on an antialiasing ramp (E and its two neighbors on one line in color), a corner stays round where another
         // pixel cuts the same corner along the line, or where the opposite corner of E stays cut (E is then a strip)
-        vec4 wide20 = vec4(lessThan(dE1 + dE2 + cand20, (1.0 + XBRZ_JUNC_RAMP2) * max(cand20, max(dE1, dE2))));
+        // or, with XBRZ_JUNC_RAMP3, where E is one end of a strong ramp (the two neighbors are closer to each other
+        // than E is to the farther one, which differs from E by 100 or more) whose middle step is 0.4 of the whole
+        vec4 maxE20 = max(dE1, dE2);
+        vec4 wide20 = max(vec4(lessThan(dE1 + dE2 + cand20, (1.0 + XBRZ_JUNC_RAMP2) * max(cand20, maxE20))),
+                          vec4(lessThan(dE1 + dE2 + cand20, (1.0 + XBRZ_JUNC_RAMP3) * maxE20)) * vec4(lessThan(cand20, maxE20))
+                          * vec4(greaterThan(min(cand20, min(dE1, dE2)), 0.4 * maxE20)) * vec4(greaterThan(maxE20, vec4(100.0))));
         vec4 keep20 = max(vec4(greaterThan(runA + runB, vec4(0.5))), (isCut(blendResult) * (1.0 - on20)).zwxy);
         on20 *= 1.0 - keep20 * wide20;
         blendResult *= 1.0 - on20;

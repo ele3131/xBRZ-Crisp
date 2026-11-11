@@ -136,7 +136,9 @@
 //     like the outline of a neck that runs on behind its transition pixel. On a looser ramp
 //     (XBRZ_JUNC_RAMP2) a corner also stays round where another pixel cuts the same corner along the
 //     line, or where the opposite corner of the pixel stays cut, so a pixel on an antialiased curve
-//     is not cut at one end and square at the other, like the corner of a trunk in Minish Cap. At a
+//     is not cut at one end and square at the other, like the corner of a trunk in Minish Cap. Where the
+//     pixel is one end of a strong ramp (XBRZ_JUNC_RAMP3), like foam on water, the ramp may be looser still.
+//     At a
 //     crossing of four clearly different colors, where the pixel is dark and darker than both neighbors and
 //     the cut's color comes from a pixel that stands alone, a color that goes on only inside a flat area
 //     is no line, so a dark outline pixel is not nibbled by a small detail beside it.
