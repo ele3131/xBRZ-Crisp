@@ -169,8 +169,15 @@
 //     with no further arms, and the edge is straight and shared by three colors (XBRZ_POINT), both corners
 //     stay square, so a small detail keeps its whole edge instead of an arrow tip, like the lower khaki pixel
 //     of Isaac's sword hilt in Golden Sun's village.
+// 26. Matching corners: a pass after the resolve pass compares each corner the resolve pass left square
+//     with pass 0's decision. Where the square corner leaves a burr in a diagonal, it is cut again as pass 0
+//     decided: in a clean line between two colors (the corner's two neighbors within XBRZ_MATCH_WRAP, the same
+//     two pixels of both neighbors along the cut within XBRZ_MATCH_LINE) whose neighbors on both sides along
+//     the cut are cut, so the line has no gap, or where the pixel diagonal to E across the corner's point cuts
+//     the facing corner with a 45-degree line and pass 0 drew E's corner with no line, so the two cuts meet.
+//     Only where E differs from one of the corner's two neighbors by more than XBRZ_MATCH_EDGE.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 25 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 26 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.

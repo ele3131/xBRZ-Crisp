@@ -168,8 +168,15 @@
 //     with no further arms, and the edge is straight and shared by three colors (XBRZ_POINT), both corners
 //     stay square, so a small detail keeps its whole edge instead of an arrow tip, like the lower khaki pixel
 //     of Isaac's sword hilt in Golden Sun's village.
+// 26. Matching corners: a pass after the resolve pass compares each corner the resolve pass left square
+//     with pass 0's decision. Where the square corner leaves a burr in a diagonal, it is cut again as pass 0
+//     decided: in a clean line between two colors (the corner's two neighbors within XBRZ_MATCH_WRAP, the same
+//     two pixels of both neighbors along the cut within XBRZ_MATCH_LINE) whose neighbors on both sides along
+//     the cut are cut, so the line has no gap, or where the pixel diagonal to E across the corner's point cuts
+//     the facing corner with a 45-degree line and pass 0 drew E's corner with no line, so the two cuts meet.
+//     Only where E differs from one of the corner's two neighbors by more than XBRZ_MATCH_EDGE.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 25 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 26 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -286,17 +293,29 @@ COMPAT_VARYING vec4 TEX0;
 #define vTexCoord TEX0.xy
 #define FRAG_OUT FragColor
 
-// the input of the first pass (three passes back), which is the original image unless other shaders run before xBRZ
-uniform sampler2D PassPrev3Texture;
-uniform COMPAT_PRECISION vec2 PassPrev3TextureSize;
-uniform COMPAT_PRECISION vec2 PassPrev3InputSize;
+//#crisp{
+// the input of the first pass (four passes back: pass 0, the resolve pass and the matching pass come between), which is the original image unless other shaders run before xBRZ
+uniform sampler2D PassPrev4Texture;
+uniform COMPAT_PRECISION vec2 PassPrev4TextureSize;
+uniform COMPAT_PRECISION vec2 PassPrev4InputSize;
 #define OUT_SIZE OutputSize
-#define ORIG_SIZE vec4(PassPrev3TextureSize, 1.0 / PassPrev3TextureSize)
-#define ORIG_INPUT_SIZE PassPrev3InputSize
+#define ORIG_SIZE vec4(PassPrev4TextureSize, 1.0 / PassPrev4TextureSize)
+#define ORIG_INPUT_SIZE PassPrev4InputSize
+//#crisp}
+//#plain // the input of the first pass (three passes back), which is the original image unless other shaders run before xBRZ
+//#plain uniform sampler2D PassPrev3Texture;
+//#plain uniform COMPAT_PRECISION vec2 PassPrev3TextureSize;
+//#plain uniform COMPAT_PRECISION vec2 PassPrev3InputSize;
+//#plain #define OUT_SIZE OutputSize
+//#plain #define ORIG_SIZE vec4(PassPrev3TextureSize, 1.0 / PassPrev3TextureSize)
+//#plain #define ORIG_INPUT_SIZE PassPrev3InputSize
 // the first pass's texture and the original's can have different sizes (RetroArch rounds each one
 // up to a power of two on its own, e.g. 256 and 512 with snes9x), so each one is read with its own
 #define SRC_SIZE vec4(TextureSize, 1.0 / TextureSize)
-#define P(x,y) COMPAT_TEXTURE(PassPrev3Texture, ocoord + ORIG_SIZE.zw * vec2(x, y)).rgb
+//#crisp{
+#define P(x,y) COMPAT_TEXTURE(PassPrev4Texture, ocoord + ORIG_SIZE.zw * vec2(x, y)).rgb
+//#crisp}
+//#plain #define P(x,y) COMPAT_TEXTURE(PassPrev3Texture, ocoord + ORIG_SIZE.zw * vec2(x, y)).rgb
 #define INFO(uv) COMPAT_TEXTURE(Texture, uv)
 #define INFO_STEP SRC_SIZE.zw
 

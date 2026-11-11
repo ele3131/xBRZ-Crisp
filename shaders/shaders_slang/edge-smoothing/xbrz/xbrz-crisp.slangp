@@ -1,4 +1,4 @@
-shaders = 4
+shaders = 5
 
 shader0 = ../../stock.slang
 filter_linear0 = false
@@ -10,13 +10,19 @@ shader1 = shaders/xbrz-crisp/xbrz-crisp-pass0.slang
 filter_linear1 = false
 scale_type1 = source
 scale1 = 1.0
+alias1 = xbrz_crisp_pass0
 
 shader2 = shaders/xbrz-crisp/xbrz-crisp-resolve.slang
 filter_linear2 = false
 scale_type2 = source
 scale2 = 1.0
 
-shader3 = shaders/xbrz-crisp/xbrz-crisp-pass1.slang
+shader3 = shaders/xbrz-crisp/xbrz-crisp-match.slang
 filter_linear3 = false
-scale_type3 = viewport
+scale_type3 = source
 scale3 = 1.0
+
+shader4 = shaders/xbrz-crisp/xbrz-crisp-pass1.slang
+filter_linear4 = false
+scale_type4 = viewport
+scale4 = 1.0
