@@ -49,17 +49,17 @@
 
 <sub>More: [other games](comparisons/3-other-games-20.png)</sub>
 
-<h2 align="center">🎛️ Presets</h2>
+<h2 align="center">🎛️ Contrast</h2>
 
-Three presets, from smoothest to closest to the original art. Load one, or change `XBRZ_MINC` in Quick Menu › Shaders › Shader Parameters:
+The `xbrz-crisp` preset uses `XBRZ_MINC` 20. To keep more or fewer of the original pixels, change it in Quick Menu › Shaders › Shader Parameters and save the preset:
 
 <img src="comparisons/design/presets-strip.png" alt="Golden Sun grass: original, xBRZ (original), crisp 10, 20 and 30" width="100%">
 
-| Preset | `XBRZ_MINC` | Look |
-|---|---|---|
-| `xbrz-crisp-10` | 10 | The closest to xBRZ. Only the softest shading and dithering keep their pixels, and everything else, including soft edges like the steps of a roof, is smoothed as in xBRZ, still visibly sharper. |
-| **`xbrz-crisp`** (default) | **20** | The balance. Grass, foliage and stone keep most of their detail, while outlines, faces, text and most soft diagonals stay smooth. |
-| `xbrz-crisp-30` | 30 | The closest to the original art. Textures keep nearly all their pixels, and more soft diagonals turn into steps. |
+| `XBRZ_MINC` | Look |
+|---|---|
+| 10 | The closest to xBRZ. Only the softest shading and dithering keep their pixels, and everything else, including soft edges like the steps of a roof, is smoothed as in xBRZ, still visibly sharper. |
+| **20** (default) | The balance. Grass, foliage and stone keep most of their detail, while outlines, faces, text and most soft diagonals stay smooth. |
+| 30 | The closest to the original art. Textures keep nearly all their pixels, and more soft diagonals turn into steps. |
 
 20 is the default because up to 20 each step keeps more of the original pixels for little loss of smoothness. Past it, smooth antialiased shapes start to lose more.
 
@@ -119,7 +119,7 @@ Tested in RetroArch on Android (gl driver, Game Boy Advance at 6x). The slang ve
 > Get the latest zip from **[Releases](https://github.com/ele3131/xbrz-crisp/releases)**.
 
 1. Copy the zip's contents into RetroArch's shader folder: `shaders_slang` for Vulkan, glcore, D3D and Metal, `shaders_glsl` for the gl driver.
-2. In a game, open Quick Menu › Shaders › Load and pick `edge-smoothing/xbrz/xbrz-crisp.slangp` (slang) or `xbrz/xbrz-crisp.glslp` (glsl). Use `xbrz-crisp-10` or `xbrz-crisp-30` for the other presets.
+2. In a game, open Quick Menu › Shaders › Load and pick `edge-smoothing/xbrz/xbrz-crisp.slangp` (slang) or `xbrz/xbrz-crisp.glslp` (glsl).
 3. Save it with Quick Menu › Shaders › Save › Save Global Preset, or per game with Save Game Preset.
 
 <h2 align="center">🤝 Giving back to libretro</h2>
