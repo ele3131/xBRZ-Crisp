@@ -142,7 +142,9 @@
 //     At a
 //     crossing of four clearly different colors, where the pixel is dark and darker than both neighbors and
 //     the cut's color comes from a pixel that stands alone, a color that goes on only inside a flat area
-//     is no line, so a dark outline pixel is not nibbled by a small detail beside it.
+//     is no line, so a dark outline pixel is not nibbled by a small detail beside it. At the end of a bar two
+//     pixels wide whose two corners at the end are cut, the corner just under the end is cut too, so the tip
+//     stays round, like the tip of a foot in Tales of Phantasia.
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
 //     straight line of three of its color along the pixel's side, where the corner's other neighbor
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of

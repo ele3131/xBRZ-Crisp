@@ -141,7 +141,9 @@
 //     At a
 //     crossing of four clearly different colors, where the pixel is dark and darker than both neighbors and
 //     the cut's color comes from a pixel that stands alone, a color that goes on only inside a flat area
-//     is no line, so a dark outline pixel is not nibbled by a small detail beside it.
+//     is no line, so a dark outline pixel is not nibbled by a small detail beside it. At the end of a bar two
+//     pixels wide whose two corners at the end are cut, the corner just under the end is cut too, so the tip
+//     stays round, like the tip of a foot in Tales of Phantasia.
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
 //     straight line of three of its color along the pixel's side, where the corner's other neighbor
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
@@ -854,6 +856,13 @@ void main()
         vec4 on20 = isCut(blendResult) * vec4(greaterThan(cand20, vec4(XBRZ_JUNCTION)))
                   * (1.0 - ramp20 * cr20 * vec4(greaterThan(min(dE1, dE2), vec4(XBRZ_JUNC_AA_MIN))) * vec4(lessThan(min(dE1, dE2), vec4(XBRZ_JUNC_AA_MAX))) * vec4(lessThan(lmin20, vec4(XBRZ_JUNC_AA_DARK))))
                   * (1.0 - ext1) * (1.0 - ext2) * (1.0 - extE) * vec4(lessThan(1.0 + runA + runB, vec4(3.0)));
+        // the tip of a bar two pixels wide: the pixel across the corner and the neighbor that does not give the
+        // cut's color share a color, and the bar's two corners at its end are cut, so the corner under the end
+        // stays round like the bar's own corners (the tip of a foot in Tales of Phantasia)
+        vec4 tA = cutOf(iA), tB = cutOf(iB), tC = cutOf(iC), tD = cutOf(iD), tF = cutOf(iF), tG = cutOf(iG), tH = cutOf(iH), tI = cutOf(iI);
+        vec4 tipH = vec4(sameF(A, B) * tB.z * tA.w, sameF(C, B) * tB.w * tC.z, sameF(I, H) * tH.x * tI.y, sameF(G, H) * tH.y * tG.x);
+        vec4 tipV = vec4(sameF(A, D) * tD.z * tA.y, sameF(C, F) * tF.w * tC.x, sameF(I, F) * tF.x * tI.w, sameF(G, D) * tD.y * tG.z);
+        on20 *= 1.0 - mix(tipV, tipH, vec4(1.0 - sec.x, sec.y, 1.0 - sec.z, sec.w));
         // on an antialiasing ramp (E and its two neighbors on one line in color), a corner stays round where another
         // pixel cuts the same corner along the line, or where the opposite corner of E stays cut (E is then a strip)
         // or, with XBRZ_JUNC_RAMP3, where E is one end of a strong ramp (the two neighbors are closer to each other
