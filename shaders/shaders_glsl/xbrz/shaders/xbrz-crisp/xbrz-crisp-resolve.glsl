@@ -149,6 +149,10 @@
 //     starts beside the pixel and runs toward the corner counts too, and where the other neighbor is darker
 //     and goes on along the cut, the corner takes that neighbor's color instead of staying square. On a
 //     ramp (the two neighbors are close shades far from the pixel, and the cut goes on) the corner is cut.
+//     At the tip of an outline that runs diagonally into an area of one color, the area is no line: the
+//     corner is cut as in xBRZ where the area and the other neighbor are close shades of one background,
+//     and otherwise takes the other neighbor's color, so the background does not bite into the object,
+//     like the hand in Golden Sun's village.
 // 22. Crossed cuts: where two neighboring pixels of close but distinct shades cut into each other from the two ends
 //     of their shared side, the lighter one ends a 45-degree stripe of its color and the darker one
 //     stands apart from its other neighbors, both corners stay square, so the darker shade does not
@@ -355,6 +359,8 @@ float distYCbCr(vec3 pixA, vec3 pixB)
 #define XBRZ_LINE_TONE 0.4   // 21. p and q are close shades when they differ by less than this times E's difference to either
 #define XBRZ_LINE_STRONG 64.0 // 21. a line this far from E is strong (a line of four counts, and q may take the corner)
 #define XBRZ_LINE_ALONG 20.0 // 21. E's color goes on along the cut when a pixel beside the corner is closer than this
+#define XBRZ_LINE_PAST 40.0  // 21. tip in an area: q differs from the pixel past E by this
+#define XBRZ_LINE_BACK 0.5   // 21. tip in an area: p and q are one background when closer than this times E's difference to either
 #define XBRZ_CROSS_MAX 64.0  // 22. E and the neighbor are close shades when they (or the stripe's end and the neighbor) differ by less than this
 #define XBRZ_CROSS_RAMP 45.0 // 22. a faint step (closer than this) on a ramp toward a darker pixel stays
 #define XBRZ_LOOSE 60.0      // 23. a pixel this far from each of its 4 side neighbors is loose
@@ -570,6 +576,20 @@ vec2 straight21(Roles r, vec3 E, float ln)
   if (dist255(r.u, r.w) <= XBRZ_LINE_SIDE) return vec2(0.0);
   if ((ln > 0.5 || sameColor(r.w, at(-r.q))) && sameColor(r.mu, E)
       && dist255(r.u, r.w) < XBRZ_LINE_TONE * min(dist255(E, r.u), dist255(E, r.w))) return vec2(0.0);
+  // the tip of an outline in an area: p's color is an area (it goes on past p and across the corner), E's
+  // color goes on diagonally beside q, q differs from the pixel past E (a checkerboard or a dot between two
+  // pixels of q's color keeps its squares) and E differs from p and q by 64 or more. Then the corner is
+  // not a line's: it is cut in p's color, as in xBRZ, where p and q are close shades of one background
+  // and E is a tip (its color goes on neither away from p nor away from q), and otherwise it takes q's
+  // color where E is a tip or q's color goes on diagonally past q, so the background does not bite into
+  // the object
+  if (sameColor(r.u, r.u2) && sameColor(r.u, r.uw) && sameColor(E, r.wmu) && dist255(r.w, at(-r.q)) >= XBRZ_LINE_PAST
+      && min(dist255(E, r.u), dist255(E, r.w)) >= XBRZ_LINE_STRONG)
+  {
+    bool tipE = !sameColor(E, at(-r.p)) && !sameColor(E, at(-r.q));
+    if (dist255(r.u, r.w) < XBRZ_LINE_BACK * min(dist255(E, r.u), dist255(E, r.w))) { if (tipE) return vec2(0.0); }
+    else if (tipE || sameColor(r.w, at(2.0 * r.q - r.p))) return vec2(1.0, 1.0);
+  }
   // p in the middle of three of its color along E's side
   bool middle = sameColor(r.u, r.uw) && sameColor(r.u, r.umw);
   // or a line of four from p toward the corner: it differs from E by 64 or more and is thin (the pixel

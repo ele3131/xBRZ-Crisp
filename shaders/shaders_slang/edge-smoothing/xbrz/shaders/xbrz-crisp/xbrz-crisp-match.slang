@@ -150,6 +150,10 @@
 //     starts beside the pixel and runs toward the corner counts too, and where the other neighbor is darker
 //     and goes on along the cut, the corner takes that neighbor's color instead of staying square. On a
 //     ramp (the two neighbors are close shades far from the pixel, and the cut goes on) the corner is cut.
+//     At the tip of an outline that runs diagonally into an area of one color, the area is no line: the
+//     corner is cut as in xBRZ where the area and the other neighbor are close shades of one background,
+//     and otherwise takes the other neighbor's color, so the background does not bite into the object,
+//     like the hand in Golden Sun's village.
 // 22. Crossed cuts: where two neighboring pixels of close but distinct shades cut into each other from the two ends
 //     of their shared side, the lighter one ends a 45-degree stripe of its color and the darker one
 //     stands apart from its other neighbors, both corners stay square, so the darker shade does not
