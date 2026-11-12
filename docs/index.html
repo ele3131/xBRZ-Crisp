@@ -120,7 +120,7 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
 <div class="wrap">
   <header class="prose">
     <h1>xBRZ Crisp</h1>
-    <p class="lede">xBRZ decides, for each corner of every pixel, whether it is the corner of a shape by comparing weighted color distances around it, and rounds it if so. It has no minimum contrast, so even the small steps of soft shading and textures are rounded and melt into blobs. xBRZ Crisp keeps that edge test and adds a contrast threshold (<code>XBRZ_MINC</code>, 20/255 YCbCr distance by default): a corner whose two colors differ by less stays square. It also keeps a corner square when the cut would join two very different colors on its diagonal (<code>XBRZ_DIAG</code>). Outlines, text and sprites are smoothed as in xBRZ, while grass, foliage and stone keep the pixels the artists drew.</p>
+    <p class="lede">xBRZ decides, for each corner of every pixel, whether it is the corner of a shape by comparing weighted color distances around it, and rounds it if so. It has no minimum contrast, so even the small steps of soft shading and textures are rounded and melt into blobs. xBRZ Crisp reimplements that edge test (by way of libretro's port) and adds a contrast threshold (<code>XBRZ_MINC</code>, 20/255 YCbCr distance by default): a corner whose two colors differ by less stays square. It also keeps a corner square when the cut would join two very different colors on its diagonal (<code>XBRZ_DIAG</code>). Outlines, text and sprites are smoothed as in xBRZ, while grass, foliage and stone keep the pixels the artists drew.</p>
     <p><a href="#how">See what Crisp adds on top of xBRZ</a></p>
   </header>
 
@@ -241,8 +241,8 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
 
   <section class="prose" id="how">
     <h2>What Crisp adds on top of xBRZ</h2>
-    <p class="muted">The pictures show the original C++ xBRZ. xBRZ Crisp runs the same corner test as xBRZ, with the thresholds listed under Parameters, and then adds the vetoes below.</p>
-    <p>xBRZ scales pixel art by asking one question at every corner of every pixel: is this the corner of a shape? If the answer is yes, it cuts the corner with a neighbor's color, and a staircase of pixels becomes a smooth line. That works beautifully on outlines and text. Its weakness is that it says yes too often, so shading, textures and faces get shapes the artist never drew.</p>
+    <p class="muted">The pictures show the original C++ xBRZ. xBRZ Crisp runs xBRZ's corner test as reimplemented in libretro's port, with the thresholds listed under Parameters, and then adds the vetoes below.</p>
+    <p>xBRZ scales pixel art by asking one question at every corner of every pixel: is this the corner of a shape? If the answer is yes, it cuts the corner with a neighbor's color, and a staircase of pixels becomes a smooth line. That works beautifully on outlines and text. On art with soft shading it also says yes to small shading steps, which smooths textures and faces more than some players want.</p>
     <p>xBRZ Crisp keeps every answer xBRZ gives and adds a few vetoes. A vetoed corner simply stays square, the way the artist drew it. Nothing is blurred and no new colors are made.</p>
 
     <h3>1. Soft shading is not a shape</h3>
@@ -275,8 +275,9 @@ ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
 
     <h3>What does not change</h3>
     <figure><img src="img/explain/text.png" alt="Spell menu text in Harry Potter: Prisoner of Azkaban: original, xBRZ (original) and xBRZ Crisp" loading="lazy"><figcaption>Harry Potter: Prisoner of Azkaban, spell menu.</figcaption></figure>
-    <p>Edges are found with xBRZ's own test, so letters, outlines and large shapes come out as smooth as in xBRZ. The result reads like xBRZ from a distance, with clean round shapes. Up close, textures, faces and interface details look like the original art instead of being repainted.</p>
+    <p>Edges are found with xBRZ's corner test, so letters, outlines and large shapes come out as smooth as in xBRZ. The result reads like xBRZ from a distance, with clean round shapes. Up close, textures, faces and interface details look like the original art instead of being repainted.</p>
     <p>The idea of only joining colors that match along the diagonal comes from <a href="https://github.com/libretro/slang-shaders/tree/master/edge-smoothing/cleanEdge">cleanEdge</a> by torcado. No cleanEdge code is included.</p>
+    <p>xBRZ Crisp is an independent shader. It is not affiliated with or endorsed by Zenju, and it is not the original xBRZ.</p>
     <p class="muted">Port details: xBRZ Crisp started as a set of fixes to libretro's <code>xbrz-freescale-multipass</code>, a shader written for RetroArch separately from <a href="https://sourceforge.net/projects/xbrz/">Zenju's C++ xBRZ</a>, and most of its code has been rewritten since. Blend color ties and the order of the four corners were changed to follow the C++ xBRZ, the GLSL version takes the output scale from the image size instead of the texture size, and the output pass reads the image from the pass before xBRZ, so it also works after other shaders in a preset.</p>
   </section>
 

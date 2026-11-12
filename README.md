@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="comparisons/design/banner.png" alt="xBRZ Crisp: Golden Sun village with two magnified circles of grass, xBRZ turning it into blobs and xBRZ Crisp keeping its pixels" width="100%">
+  <img src="comparisons/design/banner.png" alt="xBRZ Crisp: Golden Sun village with two magnified circles of grass, xBRZ (original) smoothing it and xBRZ Crisp keeping its pixels" width="100%">
 </p>
 
 <p align="center">
@@ -13,8 +13,8 @@
 <table align="center" width="100%">
   <tr>
     <td align="center" width="33%">🎯<br><b>Only clear edges</b><br><sub>A corner is rounded only when its two colors really differ</sub></td>
-    <td align="center" width="33%">🌿<br><b>Textures stay intact</b><br><sub>Soft shading no longer melts into blobs</sub></td>
-    <td align="center" width="33%">⚡<br><b>Close to libretro xBRZ's cost</b><br><sub>The extra checks run once per game pixel, not per screen pixel</sub></td>
+    <td align="center" width="33%">🌿<br><b>Textures stay intact</b><br><sub>Soft shading keeps its pixels</sub></td>
+    <td align="center" width="33%">⚡<br><b>Close to the cost of libretro's port</b><br><sub>The extra checks run once per game pixel, not per screen pixel</sub></td>
   </tr>
 </table>
 </div>
@@ -87,7 +87,7 @@ libretro's `xbrz-freescale-multipass` uses the same tolerance, steep and dominan
 
 <br>
 
-The pictures show the original C++ xBRZ. xBRZ Crisp runs the same corner test as xBRZ, with the thresholds listed under Parameters, and then applies the rules below.
+The pictures show the original C++ xBRZ. xBRZ Crisp runs xBRZ's corner test as reimplemented in libretro's port, with the thresholds listed under Parameters, and then applies the rules below.
 
 xBRZ looks at each corner of each pixel and decides whether to round it. xBRZ Crisp keeps every one of those decisions and only says no when rounding would invent a shape the artist never drew. In that case the corner stays square. The red circles mark where the two differ.
 
@@ -98,7 +98,7 @@ xBRZ looks at each corner of each pixel and decides whether to round it. xBRZ Cr
 3. 📏 **Lines end the way they were drawn.** Straight lines do not bend where they meet, stacked stripes end square (unless a line meets their end), and diagonal lines run on to their end or up to the outline. A 45-degree diagonal the artist drew, like a lock of hair, and thin light strokes, like the white strokes of letters, are rounded as in xBRZ. A dark shadow that runs under a character's feet closes around them on any floor, flat or textured, and a row of 1-pixel tiles between two walls, like the squares of a gauge, keeps its tiles square. On a strong edge, a line runs on through a light pixel that is only a shade off its background, and a light tip wrapped in one shade is rounded rather than cut, as in the original xBRZ, so a leg or a limb is not cut short. The end of a 1-pixel bar does not grow a hook, a small detail at the point of a V keeps its whole edge instead of an arrow tip, and a lone dot stays a square with softened corners instead of a circle. Last, a separate pass looks at the finished corners of neighboring pixels together: where these rules left one corner square in the middle of a diagonal that xBRZ draws, leaving a burr, that corner is cut again, so the line stays whole.
 4. 📐 **Steps are drawn straight.** xBRZ only draws 45-degree and 2:1 lines. Where an edge climbs in regular steps of 2 to 6 pixels, like the italic letters of Golden Sun, a rail or the edge of a roof, the cut follows the steps' own slope, so both sides of a stroke run parallel and the line does not bend at every step. A letter's dark shadow runs parallel to its letter. Curves, irregular steps and low-contrast edges keep xBRZ's lines.
 
-Edges are still found with xBRZ's own test, so outlines and text are smoothed as before. The diagonal check is inspired by [cleanEdge](https://github.com/libretro/slang-shaders/tree/master/edge-smoothing/cleanEdge) by torcado. The [comparison page](https://ele3131.github.io/xBRZ-Crisp/#how) goes through every rule with more examples.
+Edges are still found with xBRZ's corner test, so outlines and text are smoothed as before. The diagonal check is inspired by [cleanEdge](https://github.com/libretro/slang-shaders/tree/master/edge-smoothing/cleanEdge) by torcado. The [comparison page](https://ele3131.github.io/xBRZ-Crisp/#how) goes through every rule with more examples.
 
 </details>
 
@@ -107,7 +107,7 @@ Edges are still found with xBRZ's own test, so outlines and text are smoothed as
 
 xBRZ Crisp started as a set of fixes to libretro's `xbrz-freescale-multipass`, a shader written for RetroArch separately from [Zenju's C++ xBRZ](https://sourceforge.net/projects/xbrz/), and most of its code has been rewritten since. Blend color ties and the order of the four corners were changed to follow the C++ xBRZ, the GLSL version takes the output scale from the image size instead of the texture size, and the output pass reads the image from the pass before xBRZ, so it also works after other shaders in a preset (a color correction, for example). It runs in four passes: the first decides every corner once per game pixel, a resolve pass settles the decisions that depend on the neighbors, a matching pass checks the finished corners of neighboring pixels together so that no diagonal is left with a burr, both also once per game pixel, and the output pass only draws the corners.
 
-The code is shared with plain `xbrz-freescale-multipass`: `tools/make-multipass.py` writes it from these files, with its own title, `XBRZ_MINC` at 0 and three passes (no matching pass), so it keeps rules 2 and 4 to 7, the ones that fix clear xBRZ errors; the other rules are the crisp look and run only with `XBRZ_MINC` above 0. Each file starts with a numbered list of the rules, and each rule has its own section with the same number in the code.
+The code is shared with plain `xbrz-freescale-multipass`: `tools/make-multipass.py` writes it from these files, with its own title, `XBRZ_MINC` at 0 and three passes (no matching pass), so it keeps rules 2 and 4 to 7, the ones that fix clear errors of the port; the other rules are the crisp look and run only with `XBRZ_MINC` above 0. Each file starts with a numbered list of the rules, and each rule has its own section with the same number in the code.
 
 Tested in RetroArch on Android (gl driver, Game Boy Advance at 6x). The slang version was compiled to SPIR-V with glslang and renders the same output as the GLSL version in an offline harness.
 
@@ -129,5 +129,7 @@ Part of xBRZ Crisp is now in libretro's port of the xBRZ scaler. Starting with o
 <h2 align="center">⚖️ License</h2>
 
 xBRZ is © Zenju, who wrote the [original C++ version](https://sourceforge.net/projects/xbrz/), and is distributed under the GNU General Public License v3; libretro's shader and xBRZ Crisp keep that license, as noted in the shader headers. Hyllian's xBR vertex code and texel mapping are under the MIT-style license included there. The similar diagonal check is inspired by torcado's cleanEdge (MIT license); no cleanEdge code is included.
+
+xBRZ Crisp is an independent shader. It is not affiliated with or endorsed by Zenju, and it is not the original xBRZ.
 
 <sub>Developed with the help of Claude (Anthropic).</sub>
