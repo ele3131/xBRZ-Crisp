@@ -641,9 +641,9 @@ float outerN(vec2 coord, vec2 b, vec2 o1, vec2 o2, vec2 o3, vec2 o4, vec2 o5, ve
 // two or more of its own color outward (a mass): a thin stroke breaks more visibly than a mass is nicked.
 #define XBRZ_X36_DARK 0.15
 #define XBRZ_X36_DULL 0.6
-vec2 crossWin(vec2 coord, vec2 b)
+// (the four colors of the 2x2 are passed in: they are already among A to I)
+vec2 crossWin(vec2 coord, vec2 b, vec3 tl, vec3 tr, vec3 bl, vec3 br)
 {
-  vec3 tl = PC(b), tr = PC(b + vec2(1.0, 0.0)), bl = PC(b + vec2(0.0, 1.0)), br = PC(b + vec2(1.0, 1.0));
   if (eq(tl, br) && neq(tr, bl))
   {
     float far = min(DistYCbCr(tl, tr), DistYCbCr(tl, bl)) * 255.0;
@@ -1691,10 +1691,10 @@ void main()
   if (CRISP_RULES && XBRZ_MINC > 0.0)
   {
     vec2 k;
-    k = crossWin(coord, vec2(0.0, 0.0));   if (k.y > 0.5) blendResult.z = BLEND_NORMAL; else if (k.x > 0.5) blendResult.z = BLEND_NONE;
-    k = crossWin(coord, vec2(-1.0, 0.0));  if (k.x > 0.5) blendResult.w = BLEND_NORMAL; else if (k.y > 0.5) blendResult.w = BLEND_NONE;
-    k = crossWin(coord, vec2(0.0, -1.0));  if (k.x > 0.5) blendResult.y = BLEND_NORMAL; else if (k.y > 0.5) blendResult.y = BLEND_NONE;
-    k = crossWin(coord, vec2(-1.0, -1.0)); if (k.y > 0.5) blendResult.x = BLEND_NORMAL; else if (k.x > 0.5) blendResult.x = BLEND_NONE;
+    k = crossWin(coord, vec2(0.0, 0.0), E, F, H, I);   if (k.y > 0.5) blendResult.z = BLEND_NORMAL; else if (k.x > 0.5) blendResult.z = BLEND_NONE;
+    k = crossWin(coord, vec2(-1.0, 0.0), D, E, G, H);  if (k.x > 0.5) blendResult.w = BLEND_NORMAL; else if (k.y > 0.5) blendResult.w = BLEND_NONE;
+    k = crossWin(coord, vec2(0.0, -1.0), B, C, E, F);  if (k.x > 0.5) blendResult.y = BLEND_NORMAL; else if (k.y > 0.5) blendResult.y = BLEND_NONE;
+    k = crossWin(coord, vec2(-1.0, -1.0), A, B, D, E); if (k.y > 0.5) blendResult.x = BLEND_NORMAL; else if (k.x > 0.5) blendResult.x = BLEND_NONE;
   }
 
   vec4 res = vec4(blendResult);
