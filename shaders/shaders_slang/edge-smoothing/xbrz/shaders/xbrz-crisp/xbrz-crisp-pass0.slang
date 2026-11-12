@@ -1536,7 +1536,8 @@ void main()
       if (c0.x != c0.y)
       {
         vec2 s = tieSparse(coord, vec2(0.0, 0.0)).yx + 0.5 * c0;
-        if (s.y > s.x && tieHeld(coord, vec2(0.0, 0.0)).x > 0.5) blendResult.z = BLEND_NORMAL; else if (s.x > s.y && tieHeld(coord, vec2(0.0, 0.0)).y > 0.5) blendResult.z = BLEND_NONE;
+        vec2 h = tieHeld(coord, vec2(0.0, 0.0));
+        if (s.y > s.x && h.x > 0.5) blendResult.z = BLEND_NORMAL; else if (s.x > s.y && h.y > 0.5) blendResult.z = BLEND_NONE;
       }
     }
   }
@@ -1558,7 +1559,8 @@ void main()
       if (c0.x != c0.y)
       {
         vec2 s = tieSparse(coord, vec2(-1.0, 0.0)).yx + 0.5 * c0;
-        if (s.x > s.y && tieHeld(coord, vec2(-1.0, 0.0)).y > 0.5) blendResult.w = BLEND_NORMAL; else if (s.y > s.x && tieHeld(coord, vec2(-1.0, 0.0)).x > 0.5) blendResult.w = BLEND_NONE;
+        vec2 h = tieHeld(coord, vec2(-1.0, 0.0));
+        if (s.x > s.y && h.y > 0.5) blendResult.w = BLEND_NORMAL; else if (s.y > s.x && h.x > 0.5) blendResult.w = BLEND_NONE;
       }
     }
   }
@@ -1580,7 +1582,8 @@ void main()
       if (c0.x != c0.y)
       {
         vec2 s = tieSparse(coord, vec2(0.0, -1.0)).yx + 0.5 * c0;
-        if (s.x > s.y && tieHeld(coord, vec2(0.0, -1.0)).y > 0.5) blendResult.y = BLEND_NORMAL; else if (s.y > s.x && tieHeld(coord, vec2(0.0, -1.0)).x > 0.5) blendResult.y = BLEND_NONE;
+        vec2 h = tieHeld(coord, vec2(0.0, -1.0));
+        if (s.x > s.y && h.y > 0.5) blendResult.y = BLEND_NORMAL; else if (s.y > s.x && h.x > 0.5) blendResult.y = BLEND_NONE;
       }
     }
   }
@@ -1602,7 +1605,8 @@ void main()
       if (c0.x != c0.y)
       {
         vec2 s = tieSparse(coord, vec2(-1.0, -1.0)).yx + 0.5 * c0;
-        if (s.y > s.x && tieHeld(coord, vec2(-1.0, -1.0)).x > 0.5) blendResult.x = BLEND_NORMAL; else if (s.x > s.y && tieHeld(coord, vec2(-1.0, -1.0)).y > 0.5) blendResult.x = BLEND_NONE;
+        vec2 h = tieHeld(coord, vec2(-1.0, -1.0));
+        if (s.y > s.x && h.x > 0.5) blendResult.x = BLEND_NORMAL; else if (s.x > s.y && h.y > 0.5) blendResult.x = BLEND_NONE;
       }
     }
   }
@@ -1620,12 +1624,14 @@ void main()
   //                    -|D|E|F|x
   //                    -|G|H|I|x
   //                    -|-|x|x|-
+  vec2 lineZ = vec2(0.0);
+  if (blendResult.z >= BLEND_NORMAL)
+    lineZ = lineTests(F, G, H, C, E, d_F_H, eq(N_m1_p2, H) && !eq(G, H), eq(N_p2_m1, F) && !eq(C, F));
   if (cornerCut(blendResult.z, blendResult.y, blendResult.w, min(dEF, dEH), E, G, H, I, F, C))
   {
     res.z += 4.0;
-    vec2 line = lineTests(F, G, H, C, E, d_F_H, eq(N_m1_p2, H) && !eq(G, H), eq(N_p2_m1, F) && !eq(C, F));
-    if (neq(E,G) && neq(D,G)) res.z += line.x;
-    if (neq(E,C) && neq(B,C)) res.z += line.y;
+    if (neq(E,G) && neq(D,G)) res.z += lineZ.x;
+    if (neq(E,C) && neq(B,C)) res.z += lineZ.y;
   }
 
   // Pixel Tap Mapping: -|-|-|-|-
@@ -1633,12 +1639,14 @@ void main()
   //                    x|D|E|F|-
   //                    x|G|H|I|-
   //                    -|x|x|-|-
+  vec2 lineW = vec2(0.0);
+  if (blendResult.w >= BLEND_NORMAL)
+    lineW = lineTests(H, A, D, I, E, d_D_H, eq(N_m2_m1, D) && !eq(A, D), eq(N_p1_p2, H) && !eq(I, H));
   if (cornerCut(blendResult.w, blendResult.z, blendResult.x, min(dED, dEH), E, A, D, G, H, I))
   {
     res.w += 4.0;
-    vec2 line = lineTests(H, A, D, I, E, d_D_H, eq(N_m2_m1, D) && !eq(A, D), eq(N_p1_p2, H) && !eq(I, H));
-    if (neq(E,A) && neq(B,A)) res.w += line.x;
-    if (neq(E,I) && neq(F,I)) res.w += line.y;
+    if (neq(E,A) && neq(B,A)) res.w += lineW.x;
+    if (neq(E,I) && neq(F,I)) res.w += lineW.y;
   }
 
   // Pixel Tap Mapping: -|-|x|x|-
@@ -1646,12 +1654,14 @@ void main()
   //                    -|D|E|F|x
   //                    -|-|H|I|-
   //                    -|-|-|-|-
+  vec2 lineY = vec2(0.0);
+  if (blendResult.y >= BLEND_NORMAL)
+    lineY = lineTests(B, I, F, A, E, d_B_F, eq(N_p2_p1, F) && !eq(I, F), eq(N_m1_m2, B) && !eq(A, B));
   if (cornerCut(blendResult.y, blendResult.x, blendResult.z, min(dEB, dEF), E, I, F, C, B, A))
   {
     res.y += 4.0;
-    vec2 line = lineTests(B, I, F, A, E, d_B_F, eq(N_p2_p1, F) && !eq(I, F), eq(N_m1_m2, B) && !eq(A, B));
-    if (neq(E,I) && neq(H,I)) res.y += line.x;
-    if (neq(E,A) && neq(D,A)) res.y += line.y;
+    if (neq(E,I) && neq(H,I)) res.y += lineY.x;
+    if (neq(E,A) && neq(D,A)) res.y += lineY.y;
   }
 
   // Pixel Tap Mapping: -|x|x|-|-
@@ -1659,12 +1669,14 @@ void main()
   //                    x|D|E|F|-
   //                    -|G|H|-|-
   //                    -|-|-|-|-
+  vec2 lineX = vec2(0.0);
+  if (blendResult.x >= BLEND_NORMAL)
+    lineX = lineTests(D, C, B, G, E, d_B_D, eq(N_p1_m2, B) && !eq(C, B), eq(N_m2_p1, D) && !eq(G, D));
   if (cornerCut(blendResult.x, blendResult.w, blendResult.y, min(dEB, dED), E, C, B, A, D, G))
   {
     res.x += 4.0;
-    vec2 line = lineTests(D, C, B, G, E, d_B_D, eq(N_p1_m2, B) && !eq(C, B), eq(N_m2_p1, D) && !eq(G, D));
-    if (neq(E,C) && neq(F,C)) res.x += line.x;
-    if (neq(E,G) && neq(H,G)) res.x += line.y;
+    if (neq(E,C) && neq(F,C)) res.x += lineX.x;
+    if (neq(E,G) && neq(H,G)) res.x += lineX.y;
   }
 
   // Decisions for the output pass, made once per input pixel instead of once per output pixel:
@@ -1698,113 +1710,82 @@ void main()
     {
       vec4 ln = mod(floor(res / 4.0), 2.0) * mod(floor(res / 16.0), 2.0) * step(64.0, res);
       vec4 c4 = vec4(min(dED, dEB), min(dEB, dEF), min(dEF, dEH), min(dEH, dED)) * 255.0;
-      if (ln.z > 0.5 && c4.z >= 64.0 && eq(F,H) && eq(F,C) && eq(H,G) && neq(I,E) && neq(I,F) && near(E,B) && near(E,D) && DistYCbCr(I,F) < DistYCbCr(E,F) && DistYCbCr(I,E) < DistYCbCr(E,F) && neq(I, N_p2_p1) && neq(I, N_p1_p2) && neq(F, N_p2_p1) && neq(F, N_p1_p2) && (eq(F, N_p2_p0) || eq(H, N_p0_p2)))
+      if (ln.z > 0.5 && c4.z >= 64.0 && eq(F,H) && eq(F,C) && eq(H,G) && neq(I,E) && neq(I,F) && (dEB * 255.0 < 30.0) && (dED * 255.0 < 30.0) && DistYCbCr(I,F) < dEF && DistYCbCr(I,E) < dEF && neq(I, N_p2_p1) && neq(I, N_p1_p2) && neq(F, N_p2_p1) && neq(F, N_p1_p2) && (eq(F, N_p2_p0) || eq(H, N_p0_p2)))
         res.z = mod(res.z, 4.0) + 8.0 * mod(floor(res.z / 8.0), 2.0);
-      if (ln.w > 0.5 && c4.w >= 64.0 && eq(D,H) && eq(D,A) && eq(H,I) && neq(G,E) && neq(G,D) && near(E,B) && near(E,F) && DistYCbCr(G,D) < DistYCbCr(E,D) && DistYCbCr(G,E) < DistYCbCr(E,D) && neq(G, N_m2_p1) && neq(G, N_m1_p2) && neq(D, N_m2_p1) && neq(D, N_m1_p2) && (eq(D, N_m2_p0) || eq(H, N_p0_p2)))
+      if (ln.w > 0.5 && c4.w >= 64.0 && eq(D,H) && eq(D,A) && eq(H,I) && neq(G,E) && neq(G,D) && (dEB * 255.0 < 30.0) && (dEF * 255.0 < 30.0) && DistYCbCr(G,D) < dED && DistYCbCr(G,E) < dED && neq(G, N_m2_p1) && neq(G, N_m1_p2) && neq(D, N_m2_p1) && neq(D, N_m1_p2) && (eq(D, N_m2_p0) || eq(H, N_p0_p2)))
         res.w = mod(res.w, 4.0) + 8.0 * mod(floor(res.w / 8.0), 2.0);
-      if (ln.y > 0.5 && c4.y >= 64.0 && eq(B,F) && eq(B,A) && eq(F,I) && neq(C,E) && neq(C,B) && near(E,D) && near(E,H) && DistYCbCr(C,B) < DistYCbCr(E,B) && DistYCbCr(C,E) < DistYCbCr(E,B) && neq(C, N_p2_m1) && neq(C, N_p1_m2) && neq(B, N_p2_m1) && neq(B, N_p1_m2) && (eq(B, N_p0_m2) || eq(F, N_p2_p0)))
+      if (ln.y > 0.5 && c4.y >= 64.0 && eq(B,F) && eq(B,A) && eq(F,I) && neq(C,E) && neq(C,B) && (dED * 255.0 < 30.0) && (dEH * 255.0 < 30.0) && DistYCbCr(C,B) < dEB && DistYCbCr(C,E) < dEB && neq(C, N_p2_m1) && neq(C, N_p1_m2) && neq(B, N_p2_m1) && neq(B, N_p1_m2) && (eq(B, N_p0_m2) || eq(F, N_p2_p0)))
         res.y = mod(res.y, 4.0) + 8.0 * mod(floor(res.y / 8.0), 2.0);
-      if (ln.x > 0.5 && c4.x >= 64.0 && eq(B,D) && eq(B,C) && eq(D,G) && neq(A,E) && neq(A,B) && near(E,F) && near(E,H) && DistYCbCr(A,B) < DistYCbCr(E,B) && DistYCbCr(A,E) < DistYCbCr(E,B) && neq(A, N_m2_m1) && neq(A, N_m1_m2) && neq(B, N_m2_m1) && neq(B, N_m1_m2) && (eq(B, N_p0_m2) || eq(D, N_m2_p0)))
+      if (ln.x > 0.5 && c4.x >= 64.0 && eq(B,D) && eq(B,C) && eq(D,G) && neq(A,E) && neq(A,B) && (dEF * 255.0 < 30.0) && (dEH * 255.0 < 30.0) && DistYCbCr(A,B) < dEB && DistYCbCr(A,E) < dEB && neq(A, N_m2_m1) && neq(A, N_m1_m2) && neq(B, N_m2_m1) && neq(B, N_m1_m2) && (eq(B, N_p0_m2) || eq(D, N_m2_p0)))
         res.x = mod(res.x, 4.0) + 8.0 * mod(floor(res.x / 8.0), 2.0);
     }
     // 32. Lone pixel test redone: a corner cut without a line, blocked by a neighboring corner that the rules
     // above left square, gets xBRZ's line (contrast 64 or more) where a stroke 1 pixel wide bends around it,
     // and E's color, where it goes on, runs for 3 pixels or more
+    // 35. Edge of a thin band: along a band 1 pixel wide that runs on in a 2:1 line, with a strong color past
+    // it and close shades on E's side, the lone pixel test uses the reference tolerance (30) also at medium
+    // contrast (40 to 64), so the band's edge has no tooth
+    // (one line test per corner for both rules)
     {
       vec4 bl = mod(res, 4.0), ln = mod(floor(res / 4.0), 2.0);
       vec4 c4 = vec4(min(dED, dEB), min(dEB, dEF), min(dEF, dEH), min(dEH, dED)) * 255.0;
-      if (bl.z > 0.0 && ln.z < 0.5 && !((eq(E,D) && !eq(E,N_m2_p0)) || (eq(E,B) && !eq(E,N_p0_m2))) && bl.y == 0.0 && bl.w == 0.0 && c4.z >= 64.0 && blendResult.z == BLEND_NORMAL && eq(F,H) && eq(F,C) && eq(H,G) && neq(F, N_p2_p0) && neq(H, N_p0_p2)
-          && cornerCut(blendResult.z, BLEND_NONE, BLEND_NONE, min(dEF, dEH), E, G, H, I, F, C))
+      if ((bl.z > 0.0 && ln.z < 0.5 && !((eq(E,D) && !eq(E,N_m2_p0)) || (eq(E,B) && !eq(E,N_p0_m2))) && bl.y == 0.0 && bl.w == 0.0 && c4.z >= 64.0 && blendResult.z == BLEND_NORMAL && eq(F,H) && eq(F,C) && eq(H,G) && neq(F, N_p2_p0) && neq(H, N_p0_p2)
+           && cornerCut(blendResult.z, BLEND_NONE, BLEND_NONE, min(dEF, dEH), E, G, H, I, F, C))
+          || (bl.z == 1.0 && ln.z < 0.5 && c4.z >= 40.0 && c4.z < XBRZ_GUARD_EDGE && eq(F,H) && DistYCbCr(I,F) * 255.0 >= 40.0
+          && ((eq(G,H) && eq(F,N_p2_p0) && (dED * 255.0 < 30.0) && near(E,C) && DistYCbCr(N_p0_p2,H) * 255.0 >= 40.0) || (eq(C,F) && eq(H,N_p0_p2) && (dEB * 255.0 < 30.0) && near(E,G) && DistYCbCr(N_p2_p0,F) * 255.0 >= 40.0))
+           && cornerCut(blendResult.z, blendResult.y, blendResult.w, 1.0, E, G, H, I, F, C)))
       {
         res.z += 4.0;
-        vec2 line = lineTests(F, G, H, C, E, d_F_H, eq(N_m1_p2, H) && !eq(G, H), eq(N_p2_m1, F) && !eq(C, F));
-        if (neq(E,G) && neq(D,G)) res.z += line.x;
-        if (neq(E,C) && neq(B,C)) res.z += line.y;
+        if (neq(E,G) && neq(D,G)) res.z += lineZ.x;
+        if (neq(E,C) && neq(B,C)) res.z += lineZ.y;
       }
-      if (bl.w > 0.0 && ln.w < 0.5 && !((eq(E,F) && !eq(E,N_p2_p0)) || (eq(E,B) && !eq(E,N_p0_m2))) && bl.z == 0.0 && bl.x == 0.0 && c4.w >= 64.0 && blendResult.w == BLEND_NORMAL && eq(D,H) && eq(D,A) && eq(H,I) && neq(D, N_m2_p0) && neq(H, N_p0_p2)
-          && cornerCut(blendResult.w, BLEND_NONE, BLEND_NONE, min(dED, dEH), E, A, D, G, H, I))
+      if ((bl.w > 0.0 && ln.w < 0.5 && !((eq(E,F) && !eq(E,N_p2_p0)) || (eq(E,B) && !eq(E,N_p0_m2))) && bl.z == 0.0 && bl.x == 0.0 && c4.w >= 64.0 && blendResult.w == BLEND_NORMAL && eq(D,H) && eq(D,A) && eq(H,I) && neq(D, N_m2_p0) && neq(H, N_p0_p2)
+           && cornerCut(blendResult.w, BLEND_NONE, BLEND_NONE, min(dED, dEH), E, A, D, G, H, I))
+          || (bl.w == 1.0 && ln.w < 0.5 && c4.w >= 40.0 && c4.w < XBRZ_GUARD_EDGE && eq(D,H) && DistYCbCr(G,D) * 255.0 >= 40.0
+          && ((eq(I,H) && eq(D,N_m2_p0) && (dEF * 255.0 < 30.0) && near(E,A) && DistYCbCr(N_p0_p2,H) * 255.0 >= 40.0) || (eq(A,D) && eq(H,N_p0_p2) && (dEB * 255.0 < 30.0) && near(E,I) && DistYCbCr(N_m2_p0,D) * 255.0 >= 40.0))
+           && cornerCut(blendResult.w, blendResult.z, blendResult.x, 1.0, E, A, D, G, H, I)))
       {
         res.w += 4.0;
-        vec2 line = lineTests(H, A, D, I, E, d_D_H, eq(N_m2_m1, D) && !eq(A, D), eq(N_p1_p2, H) && !eq(I, H));
-        if (neq(E,A) && neq(B,A)) res.w += line.x;
-        if (neq(E,I) && neq(F,I)) res.w += line.y;
+        if (neq(E,A) && neq(B,A)) res.w += lineW.x;
+        if (neq(E,I) && neq(F,I)) res.w += lineW.y;
       }
-      if (bl.y > 0.0 && ln.y < 0.5 && !((eq(E,D) && !eq(E,N_m2_p0)) || (eq(E,H) && !eq(E,N_p0_p2))) && bl.x == 0.0 && bl.z == 0.0 && c4.y >= 64.0 && blendResult.y == BLEND_NORMAL && eq(B,F) && eq(B,A) && eq(F,I) && neq(B, N_p0_m2) && neq(F, N_p2_p0)
-          && cornerCut(blendResult.y, BLEND_NONE, BLEND_NONE, min(dEB, dEF), E, I, F, C, B, A))
+      if ((bl.y > 0.0 && ln.y < 0.5 && !((eq(E,D) && !eq(E,N_m2_p0)) || (eq(E,H) && !eq(E,N_p0_p2))) && bl.x == 0.0 && bl.z == 0.0 && c4.y >= 64.0 && blendResult.y == BLEND_NORMAL && eq(B,F) && eq(B,A) && eq(F,I) && neq(B, N_p0_m2) && neq(F, N_p2_p0)
+           && cornerCut(blendResult.y, BLEND_NONE, BLEND_NONE, min(dEB, dEF), E, I, F, C, B, A))
+          || (bl.y == 1.0 && ln.y < 0.5 && c4.y >= 40.0 && c4.y < XBRZ_GUARD_EDGE && eq(B,F) && DistYCbCr(C,F) * 255.0 >= 40.0
+          && ((eq(A,B) && eq(F,N_p2_p0) && (dED * 255.0 < 30.0) && near(E,I) && DistYCbCr(N_p0_m2,B) * 255.0 >= 40.0) || (eq(I,F) && eq(B,N_p0_m2) && (dEH * 255.0 < 30.0) && near(E,A) && DistYCbCr(N_p2_p0,F) * 255.0 >= 40.0))
+           && cornerCut(blendResult.y, blendResult.x, blendResult.z, 1.0, E, I, F, C, B, A)))
       {
         res.y += 4.0;
-        vec2 line = lineTests(B, I, F, A, E, d_B_F, eq(N_p2_p1, F) && !eq(I, F), eq(N_m1_m2, B) && !eq(A, B));
-        if (neq(E,I) && neq(H,I)) res.y += line.x;
-        if (neq(E,A) && neq(D,A)) res.y += line.y;
+        if (neq(E,I) && neq(H,I)) res.y += lineY.x;
+        if (neq(E,A) && neq(D,A)) res.y += lineY.y;
       }
-      if (bl.x > 0.0 && ln.x < 0.5 && !((eq(E,F) && !eq(E,N_p2_p0)) || (eq(E,H) && !eq(E,N_p0_p2))) && bl.w == 0.0 && bl.y == 0.0 && c4.x >= 64.0 && blendResult.x == BLEND_NORMAL && eq(B,D) && eq(B,C) && eq(D,G) && neq(B, N_p0_m2) && neq(D, N_m2_p0)
-          && cornerCut(blendResult.x, BLEND_NONE, BLEND_NONE, min(dEB, dED), E, C, B, A, D, G))
+      if ((bl.x > 0.0 && ln.x < 0.5 && !((eq(E,F) && !eq(E,N_p2_p0)) || (eq(E,H) && !eq(E,N_p0_p2))) && bl.w == 0.0 && bl.y == 0.0 && c4.x >= 64.0 && blendResult.x == BLEND_NORMAL && eq(B,D) && eq(B,C) && eq(D,G) && neq(B, N_p0_m2) && neq(D, N_m2_p0)
+           && cornerCut(blendResult.x, BLEND_NONE, BLEND_NONE, min(dEB, dED), E, C, B, A, D, G))
+          || (bl.x == 1.0 && ln.x < 0.5 && c4.x >= 40.0 && c4.x < XBRZ_GUARD_EDGE && eq(B,D) && DistYCbCr(A,D) * 255.0 >= 40.0
+          && ((eq(C,B) && eq(D,N_m2_p0) && (dEF * 255.0 < 30.0) && near(E,G) && DistYCbCr(N_p0_m2,B) * 255.0 >= 40.0) || (eq(G,D) && eq(B,N_p0_m2) && (dEH * 255.0 < 30.0) && near(E,C) && DistYCbCr(N_m2_p0,D) * 255.0 >= 40.0))
+           && cornerCut(blendResult.x, blendResult.w, blendResult.y, 1.0, E, C, B, A, D, G)))
       {
         res.x += 4.0;
-        vec2 line = lineTests(D, C, B, G, E, d_B_D, eq(N_p1_m2, B) && !eq(C, B), eq(N_m2_p1, D) && !eq(G, D));
-        if (neq(E,C) && neq(F,C)) res.x += line.x;
-        if (neq(E,G) && neq(H,G)) res.x += line.y;
+        if (neq(E,C) && neq(F,C)) res.x += lineX.x;
+        if (neq(E,G) && neq(H,G)) res.x += lineX.y;
       }
     }
     // 34. Small square of close shades: in a 2x2 of close shades (not all exactly equal) closed on its 8 side
     // neighbors by one color, the outer corner is only rounded, without a line, like the other three
     {
       vec4 c4 = vec4(min(dED, dEB), min(dEB, dEF), min(dEF, dEH), min(dEH, dED)) * 255.0;
-      if (c4.x >= 48.0 && near(E,F) && near(E,H) && near(E,I) && (E != F || E != H || E != I)
+      if (c4.x >= 48.0 && (dEF * 255.0 < 30.0) && (dEH * 255.0 < 30.0) && near(E,I) && (E != F || E != H || E != I)
           && eq(B,C) && eq(B,D) && eq(B,G) && eq(B,N_p2_p0) && eq(B,N_p2_p1) && eq(B,N_p0_p2) && eq(B,N_p1_p2))
         res.x = mod(res.x, 4.0) + 8.0 * mod(floor(res.x / 8.0), 2.0);
-      if (c4.y >= 48.0 && near(E,D) && near(E,H) && near(E,G) && (E != D || E != H || E != G)
+      if (c4.y >= 48.0 && (dED * 255.0 < 30.0) && (dEH * 255.0 < 30.0) && near(E,G) && (E != D || E != H || E != G)
           && eq(F,B) && eq(F,A) && eq(F,I) && eq(F,N_m2_p0) && eq(F,N_m2_p1) && eq(F,N_p0_p2) && eq(F,N_m1_p2))
         res.y = mod(res.y, 4.0) + 8.0 * mod(floor(res.y / 8.0), 2.0);
-      if (c4.z >= 48.0 && near(E,D) && near(E,B) && near(E,A) && (E != D || E != B || E != A)
+      if (c4.z >= 48.0 && (dED * 255.0 < 30.0) && (dEB * 255.0 < 30.0) && near(E,A) && (E != D || E != B || E != A)
           && eq(F,C) && eq(F,H) && eq(F,G) && eq(F,N_m2_p0) && eq(F,N_m2_m1) && eq(F,N_p0_m2) && eq(F,N_m1_m2))
         res.z = mod(res.z, 4.0) + 8.0 * mod(floor(res.z / 8.0), 2.0);
-      if (c4.w >= 48.0 && near(E,F) && near(E,B) && near(E,C) && (E != F || E != B || E != C)
+      if (c4.w >= 48.0 && (dEF * 255.0 < 30.0) && (dEB * 255.0 < 30.0) && near(E,C) && (E != F || E != B || E != C)
           && eq(D,A) && eq(D,H) && eq(D,I) && eq(D,N_p2_p0) && eq(D,N_p2_m1) && eq(D,N_p0_m2) && eq(D,N_p1_m2))
         res.w = mod(res.w, 4.0) + 8.0 * mod(floor(res.w / 8.0), 2.0);
-    }
-    // 35. Edge of a thin band: along a band 1 pixel wide that runs on in a 2:1 line, with a strong color past
-    // it and close shades on E's side, the lone pixel test uses the reference tolerance (30) also at medium
-    // contrast (40 to 64), so the band's edge has no tooth
-    {
-      vec4 bl = mod(res, 4.0), ln = mod(floor(res / 4.0), 2.0);
-      vec4 c4 = vec4(min(dED, dEB), min(dEB, dEF), min(dEF, dEH), min(dEH, dED)) * 255.0;
-      if (bl.z == 1.0 && ln.z < 0.5 && c4.z >= 40.0 && c4.z < XBRZ_GUARD_EDGE && eq(F,H) && DistYCbCr(I,F) * 255.0 >= 40.0
-          && ((eq(G,H) && eq(F,N_p2_p0) && near(E,D) && near(E,C) && DistYCbCr(N_p0_p2,H) * 255.0 >= 40.0) || (eq(C,F) && eq(H,N_p0_p2) && near(E,B) && near(E,G) && DistYCbCr(N_p2_p0,F) * 255.0 >= 40.0))
-          && cornerCut(blendResult.z, blendResult.y, blendResult.w, 1.0, E, G, H, I, F, C))
-      {
-        res.z += 4.0;
-        vec2 line = lineTests(F, G, H, C, E, d_F_H, eq(N_m1_p2, H) && !eq(G, H), eq(N_p2_m1, F) && !eq(C, F));
-        if (neq(E,G) && neq(D,G)) res.z += line.x;
-        if (neq(E,C) && neq(B,C)) res.z += line.y;
-      }
-      if (bl.w == 1.0 && ln.w < 0.5 && c4.w >= 40.0 && c4.w < XBRZ_GUARD_EDGE && eq(D,H) && DistYCbCr(G,D) * 255.0 >= 40.0
-          && ((eq(I,H) && eq(D,N_m2_p0) && near(E,F) && near(E,A) && DistYCbCr(N_p0_p2,H) * 255.0 >= 40.0) || (eq(A,D) && eq(H,N_p0_p2) && near(E,B) && near(E,I) && DistYCbCr(N_m2_p0,D) * 255.0 >= 40.0))
-          && cornerCut(blendResult.w, blendResult.z, blendResult.x, 1.0, E, A, D, G, H, I))
-      {
-        res.w += 4.0;
-        vec2 line = lineTests(H, A, D, I, E, d_D_H, eq(N_m2_m1, D) && !eq(A, D), eq(N_p1_p2, H) && !eq(I, H));
-        if (neq(E,A) && neq(B,A)) res.w += line.x;
-        if (neq(E,I) && neq(F,I)) res.w += line.y;
-      }
-      if (bl.y == 1.0 && ln.y < 0.5 && c4.y >= 40.0 && c4.y < XBRZ_GUARD_EDGE && eq(B,F) && DistYCbCr(C,F) * 255.0 >= 40.0
-          && ((eq(A,B) && eq(F,N_p2_p0) && near(E,D) && near(E,I) && DistYCbCr(N_p0_m2,B) * 255.0 >= 40.0) || (eq(I,F) && eq(B,N_p0_m2) && near(E,H) && near(E,A) && DistYCbCr(N_p2_p0,F) * 255.0 >= 40.0))
-          && cornerCut(blendResult.y, blendResult.x, blendResult.z, 1.0, E, I, F, C, B, A))
-      {
-        res.y += 4.0;
-        vec2 line = lineTests(B, I, F, A, E, d_B_F, eq(N_p2_p1, F) && !eq(I, F), eq(N_m1_m2, B) && !eq(A, B));
-        if (neq(E,I) && neq(H,I)) res.y += line.x;
-        if (neq(E,A) && neq(D,A)) res.y += line.y;
-      }
-      if (bl.x == 1.0 && ln.x < 0.5 && c4.x >= 40.0 && c4.x < XBRZ_GUARD_EDGE && eq(B,D) && DistYCbCr(A,D) * 255.0 >= 40.0
-          && ((eq(C,B) && eq(D,N_m2_p0) && near(E,F) && near(E,G) && DistYCbCr(N_p0_m2,B) * 255.0 >= 40.0) || (eq(G,D) && eq(B,N_p0_m2) && near(E,H) && near(E,C) && DistYCbCr(N_m2_p0,D) * 255.0 >= 40.0))
-          && cornerCut(blendResult.x, blendResult.w, blendResult.y, 1.0, E, C, B, A, D, G))
-      {
-        res.x += 4.0;
-        vec2 line = lineTests(D, C, B, G, E, d_B_D, eq(N_p1_m2, B) && !eq(C, B), eq(N_m2_p1, D) && !eq(G, D));
-        if (neq(E,C) && neq(F,C)) res.x += line.x;
-        if (neq(E,G) && neq(H,G)) res.x += line.y;
-      }
     }
   }
   res = mix(res, xbrz, band);                                                   // 30, the band wins over the rules above
