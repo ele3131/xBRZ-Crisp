@@ -193,8 +193,14 @@
 //     surroundings keeps its cut, and the other stays whole: each of the 8 neighbors within XBRZ_HOLD_SAME
 //     of a pixel's color counts for it, a side neighbor twice, and on a tie the darker pixel stays whole
 //     (the two differ by more than XBRZ_JUNCTION), like the tree crowns of Golden Sun's Mt. Aleph.
+// 29. The burr of a square stroke: the corner of a pixel at the tip of a dark outline (its color goes on only
+//     on the side away from the corner) that xBRZ cuts with a line in the color of a lighter neighbor stays
+//     square where that neighbor's own corner at the same point is square, the corner pixel has the other
+//     neighbor's color, no pixel along the cut cuts the same corner and the three colors are clearly apart,
+//     so the outline ends flat under a square stroke instead of taking a lone wedge of it, like the black
+//     outline under Link's brown eyebrow in The Minish Cap.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 28 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 29 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.

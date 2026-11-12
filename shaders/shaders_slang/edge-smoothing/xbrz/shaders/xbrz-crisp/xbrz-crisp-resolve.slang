@@ -194,8 +194,14 @@
 //     surroundings keeps its cut, and the other stays whole: each of the 8 neighbors within XBRZ_HOLD_SAME
 //     of a pixel's color counts for it, a side neighbor twice, and on a tie the darker pixel stays whole
 //     (the two differ by more than XBRZ_JUNCTION), like the tree crowns of Golden Sun's Mt. Aleph.
+// 29. The burr of a square stroke: the corner of a pixel at the tip of a dark outline (its color goes on only
+//     on the side away from the corner) that xBRZ cuts with a line in the color of a lighter neighbor stays
+//     square where that neighbor's own corner at the same point is square, the corner pixel has the other
+//     neighbor's color, no pixel along the cut cuts the same corner and the three colors are clearly apart,
+//     so the outline ends flat under a square stroke instead of taking a lone wedge of it, like the black
+//     outline under Link's brown eyebrow in The Minish Cap.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 28 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 29 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -742,7 +748,7 @@ void main()
       vec3 rru = P(2., -1.), rr = P(2., 0.), rrd = P(2., 1.), ldd = P(-1., 2.), dd = P(0., 2.), rdd = P(1., 2.);
       // the distances from E to its four side neighbors, in x/255 (x: B, y: D, z: F, w: H), for rules 20 to 24
       vec4 dE4 = vec4(dist255(E, B), dist255(E, D), dist255(E, F), dist255(E, H));
-      // the corners the 8 neighbors cut, for rules 20, 21 and 24
+      // the corners the 8 neighbors cut, for rules 20, 21, 24 and 29
       vec4 cB = cutOf(iB), cD = cutOf(iD), cF = cutOf(iF), cH = cutOf(iH), cA = cutOf(iA), cC = cutOf(iC), cG = cutOf(iG), cI = cutOf(iI);
 
       // ---- 17. A line drawn on one side only ----
@@ -973,6 +979,32 @@ void main()
                            vec4(lessThan(abs(hE - hN), vec4(0.5))) * vec4(lessThan(vec4(luma(E) + 0.02), lN)));
           blendResult *= 1.0 - pair * whole;
         }
+      }
+
+      // ---- 29. The burr of a square stroke ----
+      // a corner of E cut along a line in the color of its neighbor n stays square where n's corner at the same
+      // point and the corner pixel's corner there are square, no diagonal neighbor along the cut cuts the same
+      // corner (a blocked one does not count), the corner pixel has the color of the other neighbor o, n and o
+      // differ by more than XBRZ_JUNCTION, and E is the tip of a dark outline: one side neighbor of E's color, on
+      // the side away from the corner, none of the three pixels on the corner's side, n lighter than E and
+      // XBRZ_STRAIGHT or more from it, and E no lighter than XBRZ_DARK
+      {
+        vec4 nC = mix(vec4(cD.y, cF.x, cF.w, cH.x), vec4(cB.w, cB.z, cH.y, cD.z), sec);
+        vec4 dNO = vec4(dist255(B, D), dist255(B, F), dist255(F, H), dist255(D, H));
+        vec4 dEN = mix(dE4.yxzw, dE4.xzwy, sec);
+        vec4 cP = vec4(cA.z, cC.w, cI.x, cG.y);
+        vec4 oA = mix(vec4(sameF(A, B), sameF(C, F), sameF(I, H), sameF(G, D)), vec4(sameF(A, D), sameF(C, B), sameF(I, F), sameF(G, H)), sec);
+        vec4 ok = vec4(lessThan(vec4(iC.x, iA.y, iC.z, iA.w), vec4(128.0))) * vec4(cC.x, cA.y, cC.z, cA.w) + vec4(lessThan(vec4(iG.x, iI.y, iG.z, iI.w), vec4(128.0))) * vec4(cG.x, cI.y, cG.z, cI.w);
+        float sB = sameF(E, B), sD = sameF(E, D), sF = sameF(E, F), sH = sameF(E, H);
+        float nS = sB + sD + sF + sH;
+        vec4 tip = vec4(float(nS == 1.0)) * vec4(sF + sH, sD + sH, sB + sD, sB + sF);
+        vec4 lN = mix(vec4(luma(D), luma(B), luma(F), luma(H)), vec4(luma(B), luma(F), luma(H), luma(D)), sec);
+        float sA = sameF(E, A), sC = sameF(E, C), sG = sameF(E, G), sI = sameF(E, I);
+        tip *= 1.0 - min(vec4(sA + sC + sG, sC + sA + sI, sI + sC + sG, sG + sA + sI), vec4(1.0));
+        tip *= vec4(greaterThan(lN, vec4(luma(E))));
+        vec4 burr = tip * vec4(lessThan(ok, vec4(0.5))) * isCut(blendResult) * line * oA * (1.0 - nC) * (1.0 - cP)
+                  * vec4(greaterThan(dNO, vec4(XBRZ_JUNCTION))) * vec4(greaterThanEqual(dEN, vec4(XBRZ_STRAIGHT))) * float(luma(E) <= XBRZ_DARK);
+        blendResult *= 1.0 - burr;
       }
 
       // ---- 25. A point on a shared edge ----
