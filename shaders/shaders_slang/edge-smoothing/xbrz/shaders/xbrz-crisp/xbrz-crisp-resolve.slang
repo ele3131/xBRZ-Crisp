@@ -162,7 +162,10 @@
 //     The ramp also counts where the pixel's color goes on diagonally on the far side of the cut, or where
 //     the pixel past it there is a close shade of the pixel (within XBRZ_LINE_TONE of its distance to the
 //     line), so the tip of a V and a diagonal outline that steps along a straight line are cut as in xBRZ,
-//     like the tip of a heart and the edge of a shield in The Minish Cap.
+//     like the tip of a heart and the edge of a shield in The Minish Cap. Where the pixel is the bend of an
+//     outline 1 pixel wide (its color goes on past both ends of the corner, diagonally beside the line and
+//     on the side away from it) with contrast 64 or more, the line does not count either, so the outline
+//     bends diagonally to its end, like the corner of the "0" in Golden Sun's battle menu.
 // 22. Crossed cuts: where two neighboring pixels of close but distinct shades cut into each other from the two ends
 //     of their shared side, the lighter one ends a 45-degree stripe of its color and the darker one
 //     stands apart from its other neighbors, both corners stay square, so the darker shade does not
@@ -213,8 +216,27 @@
 //     for a band of two), all four pixels keep xBRZ's cut at that corner, even below the minimum contrast
 //     and whatever the rules above decide, so a shadow under a line or the steps of an antialiasing ramp
 //     are drawn as straight bands instead of squares, like the shadow under a sword in Golden Sun.
+// 31. Exact ties: where xBRZ's two diagonal sums of a 2x2 checkerboard of two colors (64 or more apart)
+//     are exactly equal, xBRZ cuts neither corner and the two diagonals touch. Where only one diagonal
+//     goes on as a stroke 1 pixel wide, the rarer of the two colors in the 8x8 around it wins and keeps
+//     its diagonal joined, and the other is cut where each of its two pixels has a neighbor of its own
+//     color, so a dark outline closes on a light background and a light stroke on a dark one (the "O" of
+//     YOSHI in Zenju's test image, a kanji in Harry Potter).
+// 32. Lone pixel test redone: xBRZ draws no line through a pixel that has another corner cut, but where
+//     the rules above left that other corner square, a corner with contrast 64 or more inside a stroke 1
+//     pixel wide that bends gets xBRZ's line back, like the same corner on the other side of the stroke
+//     (the inside of the "0" in Golden Sun's battle menu), unless E's own color stops within 2 pixels.
+// 33. Hole in a thick stroke: the inner corner of a thick dark stroke that bends, with an antialiasing
+//     pixel of a third color at the outer corner, keeps only the small cut, without a line, so a hole
+//     in a digit has the same four corners.
+// 34. Small square of close shades: in a 2x2 of close shades that are not all exactly equal, closed on
+//     its 8 side neighbors by one color (48 or more apart), the outer corner is only rounded, without a
+//     line, so the four corners match (the studs in Street Boxing's fence).
+// 35. Edge of a thin band: along a band 1 pixel wide that runs on in a 2:1 line, with a strong color
+//     past it and close shades on E's side, the lone pixel test uses the reference tolerance (30) also
+//     at medium contrast (40 to 64), as rule 15 does at 64, so the band's edge has no tooth.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 30 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 35 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -584,6 +606,9 @@ float hasBlocked(Frame f)
 vec2 straight21(Roles r, vec3 E, float ln)
 {
   if (dist255(r.u, r.w) <= XBRZ_LINE_SIDE) return vec2(0.0);
+  // the bend of an outline 1 pixel wide (E's color at q - p and -q, not at -p nor -p - q) is not a line
+  if (sameColor(E, r.wmu) && sameColor(E, at(-r.q)) && !sameColor(E, at(-r.p)) && !sameColor(E, at(-r.p - r.q)) && !sameColor(E, r.u) && !sameColor(E, r.w)
+      && min(dist255(E, r.u), dist255(E, r.w)) >= XBRZ_LINE_STRONG) return vec2(0.0);
   if ((ln > 0.5 || sameColor(r.w, at(-r.q)))
       && (sameColor(r.mu, E) || sameColor(r.wmu, E)
           || dist255(r.mu, E) < XBRZ_LINE_TONE * dist255(r.mu, r.u) || dist255(r.wmu, E) < XBRZ_LINE_TONE * dist255(r.wmu, r.u))
