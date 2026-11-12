@@ -64,6 +64,9 @@
 //    between the line's two colors on a strong edge, and rule 1 left the opposite corner square, that
 //    corner is cut too, as in xBRZ, so the pixel becomes a thin strip of the diagonal instead of a
 //    notch in it.
+//    A 2:1 wedge is not brought back where it would lie against a third color (the neighbor along whose
+//    side it runs is XBRZ_MINC or more from both the wedge's color and the pixel, and on no ramp with
+//    them), like a dark wedge beside the blue line of a sword in Golden Sun.
 // 9. Line shapes: the shallow and steep line tests weigh hue a little more than lightness (1.2x), so
 //    lines in hue-shifted shading follow the artist's pixels. A line xBRZ finds is kept too, unless it
 //    would bring back a corner blocked by rule 2 or the line's color runs on along a 45-degree
@@ -156,6 +159,10 @@
 //     corner is cut as in xBRZ where the area and the other neighbor are close shades of one background,
 //     and otherwise takes the other neighbor's color, so the background does not bite into the object,
 //     like the hand in Golden Sun's village.
+//     The ramp also counts where the pixel's color goes on diagonally on the far side of the cut, or where
+//     the pixel past it there is a close shade of the pixel (within XBRZ_LINE_TONE of its distance to the
+//     line), so the tip of a V and a diagonal outline that steps along a straight line are cut as in xBRZ,
+//     like the tip of a heart and the edge of a shield in The Minish Cap.
 // 22. Crossed cuts: where two neighboring pixels of close but distinct shades cut into each other from the two ends
 //     of their shared side, the lighter one ends a 45-degree stripe of its color and the darker one
 //     stands apart from its other neighbors, both corners stay square, so the darker shade does not
@@ -200,8 +207,14 @@
 //     neighbor's color, no pixel along the cut cuts the same corner and the three colors are clearly apart,
 //     so the outline ends flat under a square stroke instead of taking a lone wedge of it, like the black
 //     outline under Link's brown eyebrow in The Minish Cap.
+// 30. Diagonal bands: where a diagonal band 1 pixel wide passes through a corner (two of the four pixels
+//     that meet there share a color on one diagonal, the colors on its two sides go on along it, and the
+//     far side differs from the pixel by XBRZ_BAND_FAR or more for a band of three pixels, XBRZ_BAND_FAR2
+//     for a band of two), all four pixels keep xBRZ's cut at that corner, even below the minimum contrast
+//     and whatever the rules above decide, so a shadow under a line or the steps of an antialiasing ramp
+//     are drawn as straight bands instead of squares, like the shadow under a sword in Golden Sun.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 29 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 30 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -336,6 +349,8 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 #define CRISP_RULES (XBRZ_MINC > 0.0 && XBRZ_DIAG > 0.0)
 #define XBRZ_ALIKE 20.0     // colors this close (x/255) count as alike
 #define XBRZ_HYST 4.0       // 1. a corner this close below XBRZ_MINC is weak
+#define XBRZ_BAND_FAR 20.0  // 30. the color past a band of three pixels or more differs from the pixel by this
+#define XBRZ_BAND_FAR2 30.0 // 30. and past a band of two pixels by this
 #define XBRZ_DIAG_AA 92.0   // 2. diagonal limit on antialiasing ramps
 #define XBRZ_RAMP 1.15      // 2, 6. a ramp: (d(E,P) + d(P,Q)) / d(E,Q) up to this
 #define XBRZ_STRIPE 64.0    // 2, 3. a diagonal stripe keeps a close color (within this) along its length
@@ -347,6 +362,7 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 #define XBRZ_NOTCH 45.0     // 6. the notch's diagonal limit is XBRZ_DIAG plus this
 #define XBRZ_TIP 36.0       // 7. stripe ends stay square above this diagonal distance
 #define XBRZ_AA_LINE 1.01   // 8. E lies between the colors: d(P1,E) + d(E,P2) up to this times d(P1,P2)
+#define XBRZ_AA_OFF 1.2     // 8. three colors are on no ramp when the two short steps add up to more than this times the long one
 #define XBRZ_AA_EDGE 40.0   // 8. the two colors differ by at least this
 #define XBRZ_FAR_TONE 36.0  // 9. two colors that clearly differ: more than this apart
 #define XBRZ_BLACK 0.15     // 10. a near-black outline is darker than this (luma)
@@ -480,6 +496,77 @@ vec2 lineTests(vec3 a, vec3 b, vec3 c, vec3 d, vec3 E, float pairD, bool alt45s,
   float shallow = (((STEEP_E * sab <= scd) && farTone(a, b, c, d, E, alt45s)) || plainLine(a, b, c, d, pairD, alt45s)) ? 16.0 + 32.0 * toneLine(a, b, c, d) : 0.0;
   float steep = (((STEEP_E * scd <= sab) && farTone(c, d, a, b, E, alt45t)) || plainLine(c, d, a, b, pairD, alt45t)) ? 64.0 + 32.0 * toneLine(c, d, a, b) : 0.0;
   return vec2(shallow, steep);
+}
+
+// ============================================================================================
+// 30. Diagonal bands
+// ============================================================================================
+// The band test at one corner, seen from the pixel at offset o (color e): p and q are the offsets of its
+// two neighbors at the corner (colors cp and cq) and cpq is the color of the corner pixel. Two cases, both
+// with cp and cq of one color. That color is the band (cpq differs): the corner pixel's color goes on along
+// the band, e's color goes on on the other side, and the corner pixel is farther from e than from the band.
+// Or e is the band (cpq is the same color as cp and cq): e's color goes on diagonally, and the pixel across e
+// from the corner is farther from that color than from e. A band of three pixels or more needs the far color
+// XBRZ_BAND_FAR away, a band of two XBRZ_BAND_FAR2. The four colors come from the caller, so nothing is
+// read before the cheap test of cp and cq.
+float bandSide(vec2 coord, vec2 o, vec2 p, vec2 q, vec3 e, vec3 cp, vec3 cq, vec3 cpq)
+{
+  if (!eq(cp, cq)) return 0.0;
+  vec2 t = p - q;
+  if (eq(cp, cpq))
+  {
+    bool a = eq(e, P(o.x + t.x, o.y + t.y)), b = eq(e, P(o.x - t.x, o.y - t.y));
+    if (!a && !b) return 0.0;
+    vec3 opp = P(o.x - p.x - q.x, o.y - p.y - q.y);
+    float d = DistYCbCr(opp, cp);
+    if (d <= DistYCbCr(opp, e) || d * 255.0 < XBRZ_BAND_FAR) return 0.0;
+    if (d * 255.0 >= XBRZ_BAND_FAR2 || (a && b)) return 1.0;
+    return (a ? eq(e, P(o.x + 2.0 * t.x, o.y + 2.0 * t.y)) : eq(e, P(o.x - 2.0 * t.x, o.y - 2.0 * t.y))) ? 1.0 : 0.0;
+  }
+  float dAE = DistYCbCr(cpq, e);
+  if (dAE <= DistYCbCr(cpq, cp) || dAE * 255.0 < XBRZ_BAND_FAR) return 0.0;
+  if (!eq(cpq, P(o.x + 2.0 * p.x, o.y + 2.0 * p.y)) && !eq(cpq, P(o.x + 2.0 * q.x, o.y + 2.0 * q.y))) return 0.0;
+  if (!eq(e, P(o.x + t.x, o.y + t.y)) && !eq(e, P(o.x - t.x, o.y - t.y))) return 0.0;
+  if (dAE * 255.0 >= XBRZ_BAND_FAR2) return 1.0;
+  return (eq(cp, P(o.x + p.x + t.x, o.y + p.y + t.y)) || eq(cp, P(o.x + q.x - t.x, o.y + q.y - t.y))) ? 1.0 : 0.0;
+}
+// The corners of E that xBRZ cuts and a band passes through, seen from any of the four pixels that meet at
+// the corner: E, V and H (its neighbors at the offsets v and h) and VH (the corner pixel). A band needs one
+// of the two diagonals of those four pixels in one color, so most corners leave before anything is read.
+// One corner and one side at a time, so the test is compiled once.
+vec4 diagonalBands(vec4 xbrz, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 G, vec3 H, vec3 I)
+{
+  vec4 band = vec4(0.0);
+  if (XBRZ_MINC <= 0.0)
+    return band;
+  vec4 cut = vec4(greaterThan(BLEND(xbrz), vec4(0.0)));
+  for (int k = 0; k < 4; k++)
+  {
+    vec4 m = vec4(float(k == 0), float(k == 1), float(k == 2), float(k == 3));
+    if (dot(cut, m) < 0.5) continue;
+    vec2 v = vec2(0.0, k < 2 ? -1.0 : 1.0), h = vec2(k == 1 || k == 2 ? 1.0 : -1.0, 0.0);
+    vec3 cV = k < 2 ? B : H, cH = k == 1 || k == 2 ? F : D;
+    vec3 cVH = k == 0 ? A : (k == 1 ? C : (k == 2 ? I : G));
+    bool vh = eq(cV, cH);
+    if (!vh && !eq(E, cVH)) continue;
+    float f = 0.0;
+    for (int j = 0; j < 2; j++)
+    {
+      if (f > 0.5) continue;
+      // the pixel that looks at the corner: E and the corner pixel when V and H share a color, V and H otherwise
+      bool first = j == 0;
+      vec2 o = vh ? (first ? vec2(0.0) : v + h) : (first ? v : h);
+      vec2 p = vh ? (first ? v : -v) : (first ? -v : v);
+      vec2 q = first ? h : -h;
+      vec3 e   = vh ? (first ? E : cVH) : (first ? cV : cH);
+      vec3 cp  = vh ? (first ? cV : cH) : (first ? E : cVH);
+      vec3 cq  = vh ? (first ? cH : cV) : (first ? cVH : E);
+      vec3 cpq = vh ? (first ? cVH : E) : (first ? cH : cV);
+      f = bandSide(coord, o, p, q, e, cp, cq, cpq);
+    }
+    band += m * f;
+  }
+  return band;
 }
 
 // ============================================================================================
@@ -861,6 +948,13 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
 // when one corner is a cut line and the opposite corner is a line that rule 1 squared or left weak,
 // and E lies between their two blend colors on a strong edge, the opposite corner goes back to its
 // xBRZ decision, so a line through an antialiasing pixel cuts both halves of it, as in xBRZ
+// 1.0 when s is a third color next to the wedge's color p and E: XBRZ_MINC or more from both and on no
+// ramp with them (neither p nor E lies between the other two, within XBRZ_AA_OFF)
+float thirdColor(vec3 s, vec3 p, vec3 E)
+{
+  float dsp = DistYCbCr(s, p), dsE = DistYCbCr(s, E), dpE = DistYCbCr(p, E);
+  return float(min(dsp, dsE) * 255.0 >= XBRZ_MINC && dpE + dsp > XBRZ_AA_OFF * dsE && dpE + dsE > XBRZ_AA_OFF * dsp);
+}
 vec4 lineThroughAA(vec4 res, vec4 xbrz, vec4 contrast, vec3 B, vec3 D, vec3 E, vec3 F, vec3 H)
 {
   if (XBRZ_MINC <= 0.0)
@@ -875,6 +969,13 @@ vec4 lineThroughAA(vec4 res, vec4 xbrz, vec4 contrast, vec3 B, vec3 D, vec3 E, v
   vec4 sc = FLAG(xbrz, 8.0);
   vec3 Cx = sc.x > 0.5 ? B : D, Cy = sc.y > 0.5 ? F : B, Cz = sc.z > 0.5 ? H : F, Cw = sc.w > 0.5 ? D : H;
   float dXZ = DistYCbCr(Cx, Cz), dYW = DistYCbCr(Cy, Cw);
+  // a 2:1 wedge is not brought back where it would lie against a third color: the neighbor along
+  // whose side the wedge runs (the corner's first neighbor for a steep line, the second for a shallow
+  // one) must be within XBRZ_MINC of the wedge's color or of E
+  vec4 st8 = FLAG(xbrz, 64.0), sh8 = FLAG(xbrz, 16.0);
+  vec4 third8 = st8 * vec4(thirdColor(D, Cx, E), thirdColor(B, Cy, E), thirdColor(F, Cz, E), thirdColor(H, Cw, E))
+              + sh8 * vec4(thirdColor(B, Cx, E), thirdColor(F, Cy, E), thirdColor(H, Cz, E), thirdColor(D, Cw, E));
+  pair *= 1.0 - min(third8, vec4(1.0));
   float bxz = float(DistYCbCr(Cx, E) + DistYCbCr(E, Cz) <= XBRZ_AA_LINE * dXZ && dXZ * 255.0 >= XBRZ_AA_EDGE);
   float byw = float(DistYCbCr(Cy, E) + DistYCbCr(E, Cw) <= XBRZ_AA_LINE * dYW && dYW * 255.0 >= XBRZ_AA_EDGE);
   return mix(res, xbrz, pair * vec4(bxz, byw, bxz, byw));
@@ -1480,6 +1581,9 @@ void main()
   vec4 pair = vec4(d_B_D, d_B_F, d_F_H, d_D_H);
   vec4 contrast, weak;
   res = minimumContrast(res, dEB, dED, dEF, dEH, contrast, weak);              // 1
+  vec4 band = diagonalBands(xbrz, coord, A, B, C, D, E, F, G, H, I);         // 30
+  res = mix(res, xbrz, band);
+  weak *= 1.0 - band;
   res = largerWindowLines(res, coord, A, B, C, D, E, F, G, H, I, dEB, dED, dEF, dEH, xbrz, contrast, weak);  // 11
   res = diagonalRules(res, coord, A, B, C, D, E, F, G, H, I, pair, dEB, dED, dEF, dEH);  // 2 to 7
   res = weakCorners(res, weak);                                                 // 1, weak corners
@@ -1488,5 +1592,6 @@ void main()
   res = closedShadow(res, coord, A, B, C, D, E, F, G, H, I);                    // 12
   res = tilesBetweenWalls(res, coord, E);                                       // 13
   res = lineInOtherColor(res, A, B, C, D, E, F, G, H, I, pair, dEB, dED, dEF, dEH);  // 16, 18
+  res = mix(res, xbrz, band);                                                   // 30, the band wins over the rules above
   FRAG_OUT = res / 255.0;
 }

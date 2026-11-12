@@ -64,6 +64,9 @@
 //    between the line's two colors on a strong edge, and rule 1 left the opposite corner square, that
 //    corner is cut too, as in xBRZ, so the pixel becomes a thin strip of the diagonal instead of a
 //    notch in it.
+//    A 2:1 wedge is not brought back where it would lie against a third color (the neighbor along whose
+//    side it runs is XBRZ_MINC or more from both the wedge's color and the pixel, and on no ramp with
+//    them), like a dark wedge beside the blue line of a sword in Golden Sun.
 // 9. Line shapes: the shallow and steep line tests weigh hue a little more than lightness (1.2x), so
 //    lines in hue-shifted shading follow the artist's pixels. A line xBRZ finds is kept too, unless it
 //    would bring back a corner blocked by rule 2 or the line's color runs on along a 45-degree
@@ -156,6 +159,10 @@
 //     corner is cut as in xBRZ where the area and the other neighbor are close shades of one background,
 //     and otherwise takes the other neighbor's color, so the background does not bite into the object,
 //     like the hand in Golden Sun's village.
+//     The ramp also counts where the pixel's color goes on diagonally on the far side of the cut, or where
+//     the pixel past it there is a close shade of the pixel (within XBRZ_LINE_TONE of its distance to the
+//     line), so the tip of a V and a diagonal outline that steps along a straight line are cut as in xBRZ,
+//     like the tip of a heart and the edge of a shield in The Minish Cap.
 // 22. Crossed cuts: where two neighboring pixels of close but distinct shades cut into each other from the two ends
 //     of their shared side, the lighter one ends a 45-degree stripe of its color and the darker one
 //     stands apart from its other neighbors, both corners stay square, so the darker shade does not
@@ -200,8 +207,14 @@
 //     neighbor's color, no pixel along the cut cuts the same corner and the three colors are clearly apart,
 //     so the outline ends flat under a square stroke instead of taking a lone wedge of it, like the black
 //     outline under Link's brown eyebrow in The Minish Cap.
+// 30. Diagonal bands: where a diagonal band 1 pixel wide passes through a corner (two of the four pixels
+//     that meet there share a color on one diagonal, the colors on its two sides go on along it, and the
+//     far side differs from the pixel by XBRZ_BAND_FAR or more for a band of three pixels, XBRZ_BAND_FAR2
+//     for a band of two), all four pixels keep xBRZ's cut at that corner, even below the minimum contrast
+//     and whatever the rules above decide, so a shadow under a line or the steps of an antialiasing ramp
+//     are drawn as straight bands instead of squares, like the shadow under a sword in Golden Sun.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 29 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 30 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
