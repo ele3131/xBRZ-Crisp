@@ -187,8 +187,14 @@
 //     plain 45-degree cut in the bar's color where the gap pixel is an in-between tone of the bar and the
 //     outline, like the yellow bar between the red outlines of the Scooby-Doo 2 title, and otherwise the gap
 //     pixel's corners under the bar stay square, so the bar ends flat (XBRZ_VERTEX_TOL, _EDGE, _BAR).
+// 28. Two 2:1 cuts that cross: two pixels of one color a knight's move apart make xBRZ see a 2:1 line, and
+//     the two pixels between them then cut into each other along their shared side, each with a 2:1 line in
+//     the other's color, so the two colors seem to swap places. The pixel that is held less by its
+//     surroundings keeps its cut, and the other stays whole: each of the 8 neighbors within XBRZ_HOLD_SAME
+//     of a pixel's color counts for it, a side neighbor twice, and on a tie the darker pixel stays whole
+//     (the two differ by more than XBRZ_JUNCTION), like the tree crowns of Golden Sun's Mt. Aleph.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 27 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 28 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -454,7 +460,8 @@ void main()
     res = mix(res, back, fix);
   }
   // rule 27: a bar at a vertex ends flat (or in a plain cut where the gap pixel is an in-between tone)
-  if (XBRZ_MINC > 0.0)
+  // (only a corner cut along a line can be the spike)
+  if (XBRZ_MINC > 0.0 && dot(cut4(res) * FLAG(res, 4.0), vec4(1.0)) > 0.0)
   {
     vtx(vec2( 1.0, 0.0), vec2(0.0,  1.0), res); vtx(vec2(-1.0, 0.0), vec2(0.0,  1.0), res);
     vtx(vec2( 1.0, 0.0), vec2(0.0, -1.0), res); vtx(vec2(-1.0, 0.0), vec2(0.0, -1.0), res);

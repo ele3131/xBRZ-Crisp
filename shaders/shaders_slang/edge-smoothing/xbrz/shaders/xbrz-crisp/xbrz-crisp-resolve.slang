@@ -188,8 +188,14 @@
 //     plain 45-degree cut in the bar's color where the gap pixel is an in-between tone of the bar and the
 //     outline, like the yellow bar between the red outlines of the Scooby-Doo 2 title, and otherwise the gap
 //     pixel's corners under the bar stay square, so the bar ends flat (XBRZ_VERTEX_TOL, _EDGE, _BAR).
+// 28. Two 2:1 cuts that cross: two pixels of one color a knight's move apart make xBRZ see a 2:1 line, and
+//     the two pixels between them then cut into each other along their shared side, each with a 2:1 line in
+//     the other's color, so the two colors seem to swap places. The pixel that is held less by its
+//     surroundings keeps its cut, and the other stays whole: each of the 8 neighbors within XBRZ_HOLD_SAME
+//     of a pixel's color counts for it, a side neighbor twice, and on a tie the darker pixel stays whole
+//     (the two differ by more than XBRZ_JUNCTION), like the tree crowns of Golden Sun's Mt. Aleph.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 27 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 28 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -341,6 +347,7 @@ float distYCbCr(vec3 pixA, vec3 pixB)
 #define XBRZ_LOOSE 60.0      // 23. a pixel this far from each of its 4 side neighbors is loose
 #define XBRZ_HOOK 90.0       // 24. a line between two colors this far apart needs a corner to go on to
 #define XBRZ_POINT 60.0      // 25. the two pixels beside a pointed pixel differ by this
+#define XBRZ_HOLD_SAME 30.0  // 28. a neighbor this close in color holds a pixel
 
 // ---- Helpers of the Crisp rules ----
 // The center of E in the original image, set once in main. It is the one place the original is read from
@@ -374,6 +381,14 @@ float apartFrom4(vec3 c, vec3 a, vec3 b, vec3 d, vec3 e)
 }
 // 1.0 when one of the two colors a and b is the color c.
 float sameAsOne(vec3 c, vec3 a, vec3 b) { return (sameColor(c, a) || sameColor(c, b)) ? 1.0 : 0.0; }
+
+// 28. How firmly the pixel c is held by its 8 neighbors (in row order): each one within XBRZ_HOLD_SAME of
+// its color counts, a side neighbor twice.
+float held(vec3 a, vec3 b) { return float(dist255(a, b) <= XBRZ_HOLD_SAME); }
+float holdOf(vec3 c, vec3 tl, vec3 t, vec3 tr, vec3 l, vec3 r, vec3 bl, vec3 b, vec3 br)
+{
+  return held(c, tl) + held(c, tr) + held(c, bl) + held(c, br) + 2.0 * (held(c, t) + held(c, l) + held(c, r) + held(c, b));
+}
 
 // ---- 14. Straight steps ----
 // ---- 25. A point on a shared edge ----
@@ -727,6 +742,8 @@ void main()
       vec3 rru = P(2., -1.), rr = P(2., 0.), rrd = P(2., 1.), ldd = P(-1., 2.), dd = P(0., 2.), rdd = P(1., 2.);
       // the distances from E to its four side neighbors, in x/255 (x: B, y: D, z: F, w: H), for rules 20 to 24
       vec4 dE4 = vec4(dist255(E, B), dist255(E, D), dist255(E, F), dist255(E, H));
+      // the corners the 8 neighbors cut, for rules 20, 21 and 24
+      vec4 cB = cutOf(iB), cD = cutOf(iD), cF = cutOf(iF), cH = cutOf(iH), cA = cutOf(iA), cC = cutOf(iC), cG = cutOf(iG), cI = cutOf(iI);
 
       // ---- 17. A line drawn on one side only ----
       // a corner that draws xBRZ's line in the line's own color, where the pixel across the line (O) draws
@@ -825,9 +842,8 @@ void main()
         // the tip of a bar two pixels wide: the pixel across the corner and the neighbor that does not give the
         // cut's color share a color, and the bar's two corners at its end are cut, so the corner under the end
         // stays round like the bar's own corners (the tip of a foot in Tales of Phantasia)
-        vec4 tA = cutOf(iA), tB = cutOf(iB), tC = cutOf(iC), tD = cutOf(iD), tF = cutOf(iF), tG = cutOf(iG), tH = cutOf(iH), tI = cutOf(iI);
-        vec4 tipH = vec4(sameF(A, B) * tB.z * tA.w, sameF(C, B) * tB.w * tC.z, sameF(I, H) * tH.x * tI.y, sameF(G, H) * tH.y * tG.x);
-        vec4 tipV = vec4(sameF(A, D) * tD.z * tA.y, sameF(C, F) * tF.w * tC.x, sameF(I, F) * tF.x * tI.w, sameF(G, D) * tD.y * tG.z);
+        vec4 tipH = vec4(sameF(A, B) * cB.z * cA.w, sameF(C, B) * cB.w * cC.z, sameF(I, H) * cH.x * cI.y, sameF(G, H) * cH.y * cG.x);
+        vec4 tipV = vec4(sameF(A, D) * cD.z * cA.y, sameF(C, F) * cF.w * cC.x, sameF(I, F) * cF.x * cI.w, sameF(G, D) * cD.y * cG.z);
         on20 *= 1.0 - mix(tipV, tipH, vec4(1.0 - sec.x, sec.y, 1.0 - sec.z, sec.w));
         // on an antialiasing ramp (E and its two neighbors on one line in color), a corner stays round where another
         // pixel cuts the same corner along the line, or where the opposite corner of E stays cut (E is then a strip)
@@ -857,7 +873,6 @@ void main()
       {
         vec4 line21 = vec4(0.0), on21 = vec4(0.0);
         // the cut goes on: a 2:1 partner (as in rule 24) or the same corner of a diagonal neighbor is cut
-        vec4 cB = cutOf(iB), cD = cutOf(iD), cF = cutOf(iF), cH = cutOf(iH), cA = cutOf(iA), cC = cutOf(iC), cG = cutOf(iG), cI = cutOf(iI);
         vec4 partSh = vec4(max(cD.z, cC.z), max(cF.w, cA.w), max(cF.x, cG.x), max(cD.y, cI.y));
         vec4 partSt = vec4(max(cB.z, cG.z), max(cB.w, cI.w), max(cH.x, cC.x), max(cH.y, cA.y));
         vec4 steepOn = vec4(haveSteepLine.x, haveShallowLine.y, haveSteepLine.z, haveShallowLine.w);
@@ -893,7 +908,6 @@ void main()
         vec4 lone24 = line * isCut(blendResult) * abs(haveShallowLine - haveSteepLine);
         if (dot(lone24, vec4(1.0)) > 0.0)
         {
-          vec4 cB = cutOf(iB), cD = cutOf(iD), cF = cutOf(iF), cH = cutOf(iH), cA = cutOf(iA), cC = cutOf(iC), cG = cutOf(iG), cI = cutOf(iI);
           vec4 partSh = vec4(max(cD.z, cC.z), max(cF.w, cA.w), max(cF.x, cG.x), max(cD.y, cI.y));
           vec4 partSt = vec4(max(cB.z, cG.z), max(cB.w, cI.w), max(cH.x, cC.x), max(cH.y, cA.y));
           // the line is steep on the screen where the word says steep at x and z, and shallow at y and w
@@ -934,6 +948,31 @@ void main()
         }
         blendResult *= 1.0 - t22;
         x22 = max(x22, t22);
+      }
+
+      // ---- 28. Two 2:1 cuts that cross ----
+      // E's corner is cut along a 2:1 line in the color of the neighbor n, and n's corner at the other end of
+      // their shared side is cut the same way in E's color: the one of the two that is held more by its
+      // surroundings stays whole (see holdOf; on a tie, the darker one)
+      {
+        vec4 nW = mix(vec4(iD.z, iB.w, iF.x, iH.y), vec4(iB.z, iF.w, iH.x, iD.y), sec);
+        vec4 pair = isCut(blendResult) * isCut(BLEND(nW)) * vec4(equal(FLAG(nW, 8.0), sec)) * line * FLAG(nW, 4.0)
+                  * mix(haveSteepLine, haveShallowLine, sec) * mix(FLAG(nW, 64.0), FLAG(nW, 16.0), sec)
+                  * vec4(greaterThan(mix(dE4.yxzw, dE4.xzwy, sec), vec4(XBRZ_JUNCTION)));
+        if (dot(pair, vec4(1.0)) > 0.5)
+        {
+          // the neighbor of each corner: x: B or D, y: F or B, z: H or F, w: D or H (see sec)
+          float hE = holdOf(E, A, B, C, D, F, G, H, I), hB = 0.0, hD = 0.0, hF = 0.0, hH = 0.0;
+          if (pair.x * sec.x + pair.y * (1.0 - sec.y) > 0.0) hB = holdOf(B, luu, uu, ruu, A, C, D, E, F);
+          if (pair.x * (1.0 - sec.x) + pair.w * sec.w > 0.0) hD = holdOf(D, llu, A, B, ll, E, lld, G, H);
+          if (pair.y * sec.y + pair.z * (1.0 - sec.z) > 0.0) hF = holdOf(F, B, C, rru, E, rr, H, I, rrd);
+          if (pair.z * sec.z + pair.w * (1.0 - sec.w) > 0.0) hH = holdOf(H, D, E, F, G, I, ldd, dd, rdd);
+          vec4 hN = mix(vec4(hD, hB, hF, hH), vec4(hB, hF, hH, hD), sec);
+          vec4 lN = mix(vec4(luma(D), luma(B), luma(F), luma(H)), vec4(luma(B), luma(F), luma(H), luma(D)), sec);
+          vec4 whole = max(vec4(lessThan(vec4(hE), hN - 0.5)),
+                           vec4(lessThan(abs(hE - hN), vec4(0.5))) * vec4(lessThan(vec4(luma(E) + 0.02), lN)));
+          blendResult *= 1.0 - pair * whole;
+        }
       }
 
       // ---- 25. A point on a shared edge ----
