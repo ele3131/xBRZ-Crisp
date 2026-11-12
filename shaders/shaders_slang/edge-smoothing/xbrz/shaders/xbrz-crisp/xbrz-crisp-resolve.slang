@@ -147,7 +147,10 @@
 //     the cut's color comes from a pixel that stands alone, a color that goes on only inside a flat area
 //     is no line, so a dark outline pixel is not nibbled by a small detail beside it. At the end of a bar two
 //     pixels wide whose two corners at the end are cut, the corner just under the end is cut too, so the tip
-//     stays round, like the tip of a foot in Tales of Phantasia.
+//     stays round, like the tip of a foot in Tales of Phantasia. A corner whose cut goes on as one straight
+//     line through the facing corner of the neighbor that gives its color stays cut where its two neighbors
+//     are much closer to each other than to the pixel, so a thin stroke between two background colors keeps
+//     both its edges, like the halo of King Kai in Buu's Fury.
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
 //     straight line of three of its color along the pixel's side, where the corner's other neighbor
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
@@ -235,8 +238,18 @@
 // 35. Edge of a thin band: along a band 1 pixel wide that runs on in a 2:1 line, with a strong color
 //     past it and close shades on E's side, the lone pixel test uses the reference tolerance (30) also
 //     at medium contrast (40 to 64), as rule 15 does at 64, so the band's edge has no tooth.
+// 36. Crossing strokes: in a 2x2 where one diagonal has one exact color and the other two close shades of
+//     one stroke, far from the first, the stroke is joined where each of its two pixels goes on outward by
+//     one pixel of its shades at a side (a stroke 1 pixel wide) and the exact color has two or more pixels
+//     outward (a mass), so a thin halo crossed by a skirt in Buu's Fury stays whole. A dark outline beside a
+//     dull stroke (XBRZ_X36_DARK, XBRZ_X36_DULL) separates two areas and stays joined.
+// 37. A contour by a knight's move: where a corner takes the color of a neighbor P while the other neighbor
+//     has the color of the pixel just past P (the two a knight's move apart) and P's facing corner on the same
+//     cut already takes that color, the corner takes the other neighbor's color, so an outline that skips a
+//     pixel follows the edge instead of leaving a sliver of the inner color outside it (Golden Sun's village).
+//     P must not be a shade between the outline and the pixel.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 35 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 37 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -896,6 +909,10 @@ void main()
         // pixel cuts the same corner along the line, or where the opposite corner of E stays cut (E is then a strip)
         // or, with XBRZ_JUNC_RAMP3, where E is one end of a strong ramp (the two neighbors are closer to each other
         // than E is to the farther one, which differs from E by 100 or more) whose middle step is 0.4 of the whole
+        // the cut goes on as one straight line through the facing corner of the neighbor that gives its color,
+        // and the two neighbors are much closer to each other than to E (from E they are one side of an edge)
+        vec4 half20 = mix(vec4(cD.z, cB.w, cF.x, cH.y), vec4(cB.z, cF.w, cH.x, cD.y), sec);
+        on20 *= 1.0 - half20 * vec4(lessThan(cand20, 0.5 * min(dE1, dE2)));
         vec4 maxE20 = max(dE1, dE2);
         vec4 wide20 = max(vec4(lessThan(dE1 + dE2 + cand20, (1.0 + XBRZ_JUNC_RAMP2) * max(cand20, maxE20))),
                           vec4(lessThan(dE1 + dE2 + cand20, (1.0 + XBRZ_JUNC_RAMP3) * maxE20)) * vec4(lessThan(cand20, maxE20))
@@ -943,6 +960,40 @@ void main()
         blendResult *= 1.0 - line21 * (1.0 - on21);
       }
 
+  // ---- 37. A contour by a knight's move ----
+  // The corner paints the color of its neighbor P; the other
+  // neighbor O has the color of the pixel K past P (O and K a knight's move apart), and P's facing corner on
+  // the same straight cut already paints K's color: the contour runs along the cut, so the corner takes O.
+  {
+    vec4 cutK = isCut(blendResult);
+    vec4 sB = FLAG(iB, 8.0), sD = FLAG(iD, 8.0), sF = FLAG(iF, 8.0), sH = FLAG(iH, 8.0);
+    vec4 flipK = vec4(0.0);
+    if (cutK.x > 0.5)
+    {
+      bool s1 = sec.x > 0.5; vec3 P = s1 ? B : D, O = s1 ? D : B, K = s1 ? C : G;
+      bool face = s1 ? (cB.z > 0.5 && sB.z < 0.5) : (cD.z > 0.5 && sD.z > 0.5);
+      flipK.x = float(face && sameColor(O, K) && dist255(O, P) >= 24.0 && dist255(P, E) >= XBRZ_JUNCTION && dist255(O, P) + dist255(P, E) >= 1.15 * dist255(O, E) && dist255(O, E) >= XBRZ_JUNCTION);
+    }
+    if (cutK.y > 0.5)
+    {
+      bool s1 = sec.y > 0.5; vec3 P = s1 ? F : B, O = s1 ? B : F, K = s1 ? I : A;
+      bool face = s1 ? (cF.w > 0.5 && sF.w < 0.5) : (cB.w > 0.5 && sB.w > 0.5);
+      flipK.y = float(face && sameColor(O, K) && dist255(O, P) >= 24.0 && dist255(P, E) >= XBRZ_JUNCTION && dist255(O, P) + dist255(P, E) >= 1.15 * dist255(O, E) && dist255(O, E) >= XBRZ_JUNCTION);
+    }
+    if (cutK.z > 0.5)
+    {
+      bool s1 = sec.z > 0.5; vec3 P = s1 ? H : F, O = s1 ? F : H, K = s1 ? G : C;
+      bool face = s1 ? (cH.x > 0.5 && sH.x < 0.5) : (cF.x > 0.5 && sF.x > 0.5);
+      flipK.z = float(face && sameColor(O, K) && dist255(O, P) >= 24.0 && dist255(P, E) >= XBRZ_JUNCTION && dist255(O, P) + dist255(P, E) >= 1.15 * dist255(O, E) && dist255(O, E) >= XBRZ_JUNCTION);
+    }
+    if (cutK.w > 0.5)
+    {
+      bool s1 = sec.w > 0.5; vec3 P = s1 ? D : H, O = s1 ? H : D, K = s1 ? A : I;
+      bool face = s1 ? (cD.y > 0.5 && sD.y < 0.5) : (cH.y > 0.5 && sH.y > 0.5);
+      flipK.w = float(face && sameColor(O, K) && dist255(O, P) >= 24.0 && dist255(P, E) >= XBRZ_JUNCTION && dist255(O, P) + dist255(P, E) >= 1.15 * dist255(O, E) && dist255(O, E) >= XBRZ_JUNCTION);
+    }
+    sec = abs(sec - flipK);
+  }
       // ---- 24. A line with nothing to go on to ----
       // a 2:1 or 1:2 line between colors XBRZ_HOOK or more apart is drawn only where another corner goes on along
       // it: the corner at either end of its step, one pixel beside E along the line (x: shallow D.z and C.z, steep

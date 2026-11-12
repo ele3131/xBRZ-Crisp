@@ -146,7 +146,10 @@
 //     the cut's color comes from a pixel that stands alone, a color that goes on only inside a flat area
 //     is no line, so a dark outline pixel is not nibbled by a small detail beside it. At the end of a bar two
 //     pixels wide whose two corners at the end are cut, the corner just under the end is cut too, so the tip
-//     stays round, like the tip of a foot in Tales of Phantasia.
+//     stays round, like the tip of a foot in Tales of Phantasia. A corner whose cut goes on as one straight
+//     line through the facing corner of the neighbor that gives its color stays cut where its two neighbors
+//     are much closer to each other than to the pixel, so a thin stroke between two background colors keeps
+//     both its edges, like the halo of King Kai in Buu's Fury.
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
 //     straight line of three of its color along the pixel's side, where the corner's other neighbor
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
@@ -234,8 +237,18 @@
 // 35. Edge of a thin band: along a band 1 pixel wide that runs on in a 2:1 line, with a strong color
 //     past it and close shades on E's side, the lone pixel test uses the reference tolerance (30) also
 //     at medium contrast (40 to 64), as rule 15 does at 64, so the band's edge has no tooth.
+// 36. Crossing strokes: in a 2x2 where one diagonal has one exact color and the other two close shades of
+//     one stroke, far from the first, the stroke is joined where each of its two pixels goes on outward by
+//     one pixel of its shades at a side (a stroke 1 pixel wide) and the exact color has two or more pixels
+//     outward (a mass), so a thin halo crossed by a skirt in Buu's Fury stays whole. A dark outline beside a
+//     dull stroke (XBRZ_X36_DARK, XBRZ_X36_DULL) separates two areas and stays joined.
+// 37. A contour by a knight's move: where a corner takes the color of a neighbor P while the other neighbor
+//     has the color of the pixel just past P (the two a knight's move apart) and P's facing corner on the same
+//     cut already takes that color, the corner takes the other neighbor's color, so an outline that skips a
+//     pixel follows the edge instead of leaving a sliver of the inner color outside it (Golden Sun's village).
+//     P must not be a shade between the outline and the pixel.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 35 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 37 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -632,6 +645,68 @@ vec2 tieHeld(vec2 coord, vec2 b)
   float h1 = float(sideHeld(coord, b, vec2(-1.0, -1.0), tl) && sideHeld(coord, b + vec2(1.0, 1.0), vec2(1.0, 1.0), tl));
   float h2 = float(sideHeld(coord, b + vec2(1.0, 0.0), vec2(1.0, -1.0), tr) && sideHeld(coord, b + vec2(0.0, 1.0), vec2(-1.0, 1.0), tr));
   return vec2(h1, h2);
+}
+
+// ============================================================================================
+// 36. Crossing strokes
+// ============================================================================================
+// how many of the 5 neighbors of the 2x2 pixel at b + p that lie outside the 2x2 (offsets o1..o5 from b)
+// have the color c (exact) or, with lim > 0, lie within lim of c1 or c2
+float outerN(vec2 coord, vec2 b, vec2 o1, vec2 o2, vec2 o3, vec2 o4, vec2 o5, vec3 c1, vec3 c2, float lim)
+{
+  float n = 0.0;
+  vec3 q;
+  q = PC(b + o1); n += float(lim > 0.0 ? min(DistYCbCr(q, c1), DistYCbCr(q, c2)) * 255.0 < lim : eq(q, c1));
+  q = PC(b + o2); n += float(lim > 0.0 ? min(DistYCbCr(q, c1), DistYCbCr(q, c2)) * 255.0 < lim : eq(q, c1));
+  q = PC(b + o3); n += float(lim > 0.0 ? min(DistYCbCr(q, c1), DistYCbCr(q, c2)) * 255.0 < lim : eq(q, c1));
+  q = PC(b + o4); n += float(lim > 0.0 ? min(DistYCbCr(q, c1), DistYCbCr(q, c2)) * 255.0 < lim : eq(q, c1));
+  q = PC(b + o5); n += float(lim > 0.0 ? min(DistYCbCr(q, c1), DistYCbCr(q, c2)) * 255.0 < lim : eq(q, c1));
+  return n;
+}
+#define S_TL vec2(0.0, -1.0), vec2(-1.0, 0.0), vec2(0.0, -1.0), vec2(-1.0, 0.0), vec2(0.0, -1.0)
+#define S_TR vec2(1.0, -1.0), vec2(2.0, 0.0), vec2(1.0, -1.0), vec2(2.0, 0.0), vec2(1.0, -1.0)
+#define S_BL vec2(-1.0, 1.0), vec2(0.0, 2.0), vec2(-1.0, 1.0), vec2(0.0, 2.0), vec2(-1.0, 1.0)
+#define S_BR vec2(2.0, 1.0), vec2(1.0, 2.0), vec2(2.0, 1.0), vec2(1.0, 2.0), vec2(2.0, 1.0)
+#define O_TL vec2(-1.0, -1.0), vec2(0.0, -1.0), vec2(1.0, -1.0), vec2(-1.0, 0.0), vec2(-1.0, 1.0)
+#define O_TR vec2(0.0, -1.0), vec2(1.0, -1.0), vec2(2.0, -1.0), vec2(2.0, 0.0), vec2(2.0, 1.0)
+#define O_BL vec2(-1.0, 0.0), vec2(-1.0, 1.0), vec2(-1.0, 2.0), vec2(0.0, 2.0), vec2(1.0, 2.0)
+#define O_BR vec2(2.0, 0.0), vec2(2.0, 1.0), vec2(2.0, 2.0), vec2(1.0, 2.0), vec2(0.0, 2.0)
+// a 2x2 where one diagonal has one exact color and the other two close shades of one stroke, both far
+// from the first: returns (1, 0) when the first diagonal (top-left to bottom-right) should join, (0, 1) the
+// second, (0, 0) to leave xBRZ's choice. The stroke of two shades joins where each of its pixels goes on
+// outward by exactly one pixel of its shades (a stroke 1 pixel wide) and a pixel of the exact color has
+// two or more of its own color outward (a mass): a thin stroke breaks more visibly than a mass is nicked.
+#define XBRZ_X36_DARK 0.15
+#define XBRZ_X36_DULL 0.6
+vec2 crossWin(vec2 coord, vec2 b)
+{
+  vec3 tl = PC(b), tr = PC(b + vec2(1.0, 0.0)), bl = PC(b + vec2(0.0, 1.0)), br = PC(b + vec2(1.0, 1.0));
+  if (eq(tl, br) && neq(tr, bl))
+  {
+    float far = min(DistYCbCr(tl, tr), DistYCbCr(tl, bl)) * 255.0;
+    if (far < 64.0 || DistYCbCr(tr, bl) * 255.0 >= 0.5 * far) return vec2(0.0);
+    // a dark outline next to a dull stroke separates two areas: it stays joined
+    if (dot(tl, lumaW) < XBRZ_X36_DARK && max(dot(tr, lumaW), dot(bl, lumaW)) < XBRZ_X36_DULL) return vec2(0.0);
+    float lim = max(30.0, 0.8 * DistYCbCr(tr, bl) * 255.0);
+    bool thin = outerN(coord, b, O_TR, tr, bl, lim) == 1.0 && outerN(coord, b, S_TR, tr, bl, lim) > 0.5
+             && outerN(coord, b, O_BL, tr, bl, lim) == 1.0 && outerN(coord, b, S_BL, tr, bl, lim) > 0.5;
+    bool mass = (outerN(coord, b, O_TL, tl, tl, 0.0) >= 2.0 && outerN(coord, b, S_TL, tl, tl, 0.0) > 0.5)
+             || (outerN(coord, b, O_BR, tl, tl, 0.0) >= 2.0 && outerN(coord, b, S_BR, tl, tl, 0.0) > 0.5);
+    return (thin && mass) ? vec2(0.0, 1.0) : vec2(0.0);
+  }
+  if (eq(tr, bl) && neq(tl, br))
+  {
+    float far = min(DistYCbCr(tr, tl), DistYCbCr(tr, br)) * 255.0;
+    if (far < 64.0 || DistYCbCr(tl, br) * 255.0 >= 0.5 * far) return vec2(0.0);
+    if (dot(tr, lumaW) < XBRZ_X36_DARK && max(dot(tl, lumaW), dot(br, lumaW)) < XBRZ_X36_DULL) return vec2(0.0);
+    float lim = max(30.0, 0.8 * DistYCbCr(tl, br) * 255.0);
+    bool thin = outerN(coord, b, O_TL, tl, br, lim) == 1.0 && outerN(coord, b, S_TL, tl, br, lim) > 0.5
+             && outerN(coord, b, O_BR, tl, br, lim) == 1.0 && outerN(coord, b, S_BR, tl, br, lim) > 0.5;
+    bool mass = (outerN(coord, b, O_TR, tr, tr, 0.0) >= 2.0 && outerN(coord, b, S_TR, tr, tr, 0.0) > 0.5)
+             || (outerN(coord, b, O_BL, tr, tr, 0.0) >= 2.0 && outerN(coord, b, S_BL, tr, tr, 0.0) > 0.5);
+    return (thin && mass) ? vec2(1.0, 0.0) : vec2(0.0);
+  }
+  return vec2(0.0);
 }
 
 vec4 diagonalBands(vec4 xbrz, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 G, vec3 H, vec3 I)
@@ -1646,6 +1721,17 @@ void main()
         if (s.y > s.x && h.x > 0.5) blendResult.x = BLEND_NORMAL; else if (s.x > s.y && h.y > 0.5) blendResult.x = BLEND_NONE;
       }
     }
+  }
+
+  // 36. Crossing strokes: z joins F-H (diag 2 of b=(0,0)), w joins D-H (diag 1 of b=(-1,0)),
+  // y joins B-F (diag 1 of b=(0,-1)), x joins B-D (diag 2 of b=(-1,-1))
+  if (CRISP_RULES && XBRZ_MINC > 0.0)
+  {
+    vec2 k;
+    k = crossWin(coord, vec2(0.0, 0.0));   if (k.y > 0.5) blendResult.z = BLEND_NORMAL; else if (k.x > 0.5) blendResult.z = BLEND_NONE;
+    k = crossWin(coord, vec2(-1.0, 0.0));  if (k.x > 0.5) blendResult.w = BLEND_NORMAL; else if (k.y > 0.5) blendResult.w = BLEND_NONE;
+    k = crossWin(coord, vec2(0.0, -1.0));  if (k.x > 0.5) blendResult.y = BLEND_NORMAL; else if (k.y > 0.5) blendResult.y = BLEND_NONE;
+    k = crossWin(coord, vec2(-1.0, -1.0)); if (k.y > 0.5) blendResult.x = BLEND_NORMAL; else if (k.x > 0.5) blendResult.x = BLEND_NONE;
   }
 
   vec4 res = vec4(blendResult);

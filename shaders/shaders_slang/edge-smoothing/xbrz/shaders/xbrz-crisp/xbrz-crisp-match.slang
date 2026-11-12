@@ -147,7 +147,10 @@
 //     the cut's color comes from a pixel that stands alone, a color that goes on only inside a flat area
 //     is no line, so a dark outline pixel is not nibbled by a small detail beside it. At the end of a bar two
 //     pixels wide whose two corners at the end are cut, the corner just under the end is cut too, so the tip
-//     stays round, like the tip of a foot in Tales of Phantasia.
+//     stays round, like the tip of a foot in Tales of Phantasia. A corner whose cut goes on as one straight
+//     line through the facing corner of the neighbor that gives its color stays cut where its two neighbors
+//     are much closer to each other than to the pixel, so a thin stroke between two background colors keeps
+//     both its edges, like the halo of King Kai in Buu's Fury.
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
 //     straight line of three of its color along the pixel's side, where the corner's other neighbor
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
@@ -235,8 +238,18 @@
 // 35. Edge of a thin band: along a band 1 pixel wide that runs on in a 2:1 line, with a strong color
 //     past it and close shades on E's side, the lone pixel test uses the reference tolerance (30) also
 //     at medium contrast (40 to 64), as rule 15 does at 64, so the band's edge has no tooth.
+// 36. Crossing strokes: in a 2x2 where one diagonal has one exact color and the other two close shades of
+//     one stroke, far from the first, the stroke is joined where each of its two pixels goes on outward by
+//     one pixel of its shades at a side (a stroke 1 pixel wide) and the exact color has two or more pixels
+//     outward (a mass), so a thin halo crossed by a skirt in Buu's Fury stays whole. A dark outline beside a
+//     dull stroke (XBRZ_X36_DARK, XBRZ_X36_DULL) separates two areas and stays joined.
+// 37. A contour by a knight's move: where a corner takes the color of a neighbor P while the other neighbor
+//     has the color of the pixel just past P (the two a knight's move apart) and P's facing corner on the same
+//     cut already takes that color, the corner takes the other neighbor's color, so an outline that skips a
+//     pixel follows the edge instead of leaving a sliver of the inner color outside it (Golden Sun's village).
+//     P must not be a shade between the outline and the pixel.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 35 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 37 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
