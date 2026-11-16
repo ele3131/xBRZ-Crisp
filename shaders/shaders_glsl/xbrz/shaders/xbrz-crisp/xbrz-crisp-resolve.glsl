@@ -106,7 +106,10 @@
 //     4 to 6; xBRZ only draws 45 degrees and 2:1), and with steps of 3 or more the corner next to the
 //     step at the thin end gets a sliver of that line. Both sides of a stroke then run parallel and a
 //     long step does not bend. Runs of 7 or more, irregular steps and low-contrast edges (water,
-//     wood, shading) keep xBRZ's lines.
+//     wood, shading) keep xBRZ's lines. The thin end also goes to a pixel that is a close shade of the step
+//     pixel (under XBRZ_THIN_TONE), in place of a cut of its own where it is a close shade of one neighbor of the
+//     corner, so an antialiased side of a stroke runs as straight as a side in one color (a highlight on
+//     red armor).
 // 15. Lone pixel and L-shape tests on strong edges: xBRZ draws no line through a pixel that already
 //     has another corner cut and differs from the pixel across it, so a lone pixel keeps its shape, and
 //     only rounds a corner, without a line, where one color wraps around it in an L. Where the pixel
@@ -469,6 +472,7 @@ float distYCbCr(vec3 pixA, vec3 pixB)
 #define XBRZ_SAME 15.0       // the tolerance of sameColor (the default tolerance, fixed here: it is not the XBRZ_TOL parameter)
 #define XBRZ_TONE 20.0       // 14. the tolerance of sameTone, the colors of one stroke
 #define XBRZ_STRAIGHT 64.0   // 14. minimum contrast of a straightened edge
+#define XBRZ_THIN_TONE 40.0  // 14. a pixel this close to the step pixel may take the thin end of its line
 #define XBRZ_DARK 0.3        // 14. a stroke this dark (luma) or darker may have two lighter side colors
 #define XBRZ_LONE_RAMP 1.4   // 17. not a ramp: d(L,E) + d(E,O) above this times d(L,O)
 #define XBRZ_ISO 40.0        // 19. a pixel this far from all 8 of its neighbors keeps out of their corners
@@ -1297,6 +1301,15 @@ void main()
     // next to the step pixel along the line (steep: E + v, shallow: E + h) takes that line's thin end
     vec4 lineOn = line * isCut(blendResult);
     vec4 free = vec4(equal(blendResult, vec4(0.0)));
+    if (anyCut(blendResult))
+    {
+      // a cut corner of a pixel that is a close shade of one of the corner's neighbors may take a thin end too
+      vec3 sE = P(0., 0.), sB = P(0., -1.), sD = P(-1., 0.), sF = P(1., 0.), sH = P(0., 1.);
+      vec4 dN = vec4(min(dist255(sE, sB), dist255(sE, sD)), min(dist255(sE, sB), dist255(sE, sF)),
+                     min(dist255(sE, sF), dist255(sE, sH)), min(dist255(sE, sD), dist255(sE, sH)));
+      vec4 dP = vec4(dist255(sB, sD), dist255(sB, sF), dist255(sF, sH), dist255(sD, sH));
+      free = max(free, isCut(blendResult) * vec4(lessThan(dN, XBRZ_JUNC_TONE * dP)) * vec4(greaterThan(dP, vec4(XBRZ_STRAIGHT))));
+    }
     vec4 cSt = free * vec4(drawsLine(iB.x), drawsLine(iF.y), drawsLine(iH.z), drawsLine(iD.w));
     vec4 cSh = free * vec4(drawsLine(iD.x), drawsLine(iB.y), drawsLine(iF.z), drawsLine(iH.w));
     if (dot(lineOn + cSt + cSh, vec4(1.0)) > 0.0)
@@ -1315,7 +1328,7 @@ void main()
           vec2 v = k == 0 ? vX : (k == 1 ? vY : (k == 2 ? vZ : vW));
           vec2 h = k == 0 ? hX : (k == 1 ? hY : (k == 2 ? hZ : hW));
           float lo = dot(m, lineOn), xs = dot(m, xSt), xh = dot(m, xSh);
-          bool steepOk = dot(m, cSt) > 0.0 && sameTone(at(v), E0);
+          bool steepOk = dot(m, cSt) > 0.0 && dist255(at(v), E0) < XBRZ_THIN_TONE;
           bool shallowOk = false;
           float thinS = 0.0;
           // The step runs of the corner, in the order they are needed. j 0 and 1: the steep and the shallow
@@ -1327,7 +1340,7 @@ void main()
             if (j == 4)
             {
               if (steepOk) thinS = thinEnd(r2, r3, true, xs);
-              shallowOk = thinS == 0.0 && dot(m, cSh) > 0.0 && sameTone(at(h), E0);
+              shallowOk = thinS == 0.0 && dot(m, cSh) > 0.0 && dist255(at(h), E0) < XBRZ_THIN_TONE;
             }
             vec2 s = vec2(0.), a = v, b = h;
             bool need = lo > 0.0;

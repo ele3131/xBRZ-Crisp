@@ -107,7 +107,10 @@
 //     4 to 6; xBRZ only draws 45 degrees and 2:1), and with steps of 3 or more the corner next to the
 //     step at the thin end gets a sliver of that line. Both sides of a stroke then run parallel and a
 //     long step does not bend. Runs of 7 or more, irregular steps and low-contrast edges (water,
-//     wood, shading) keep xBRZ's lines.
+//     wood, shading) keep xBRZ's lines. The thin end also goes to a pixel that is a close shade of the step
+//     pixel (under XBRZ_THIN_TONE), in place of a cut of its own where it is a close shade of one neighbor of the
+//     corner, so an antialiased side of a stroke runs as straight as a side in one color (a highlight on
+//     red armor).
 // 15. Lone pixel and L-shape tests on strong edges: xBRZ draws no line through a pixel that already
 //     has another corner cut and differs from the pixel across it, so a lone pixel keeps its shape, and
 //     only rounds a corner, without a line, where one color wraps around it in an L. Where the pixel
