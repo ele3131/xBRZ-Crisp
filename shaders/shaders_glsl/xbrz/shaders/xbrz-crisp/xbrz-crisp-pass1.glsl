@@ -5,7 +5,7 @@
 // writes that shader, dropping the lines between //#crisp{ and //#crisp} and turning the //#plain
 // lines on.
 //#crisp}
-//#plain // xBRZ freescale, multipass: xBRZ at any scale factor, in three passes.
+//#plain // xBRZ freescale, multipass: xBRZ at any scale factor, in four passes.
 //#plain //
 //#plain // Rules 2, 4 to 7 and 10 below keep xBRZ from cutting corners into shapes the artist did not
 //#plain // draw (fake diagonals at junctions of three colors, bent frames, rounded ends of stripes, a pixel
@@ -15,9 +15,13 @@
 //
 // xBRZ decides, for each corner of each pixel, whether to cut it and how (a corner piece, a 45-degree
 // line, or a shallow or steep line). The rules below then change some of those decisions. Each rule
-// has a section of the same number and name in the code. The first pass (pass 0) makes the decisions,
-// the resolve pass, also once per game pixel, finishes rules 1, 2 and 9, which need the neighbours'
-// decisions, and the output pass (pass 1) only draws the corners.
+// has a section of the same number and name in the code. The point pass decides once, at each point where
+// 4 pixels meet, which way xBRZ blends there (as xBRZ's own preprocessing does), pass 0 makes each pixel's
+// decisions from those of its 4 points, the resolve pass, also once per game pixel, finishes the rules
+// that need the neighbours' decisions, and the output pass (pass 1) only draws the corners.
+//#crisp{
+// The match pass, between the resolve pass and pass 1, runs rules 26, 27 and 38 to 44.
+//#crisp}
 //
 // 1. Minimum contrast (XBRZ_MINC): a corner whose two colors differ by less than XBRZ_MINC (x/255,
 //    YCbCr distance) is left square, so low-contrast shading, dithering and textures (grass,
@@ -125,10 +129,15 @@
 // 18. Outlines closed: the line of rule 16 is also drawn in its own color through a pixel that is not
 //     lone, where that line is a near-black outline (XBRZ_TINT_DARK) darker than the pixel, so an
 //     outline that steps by a knight's move stays closed instead of letting the colors on both sides
-//     touch, like a black outline between yellow and pink on a fighter's sprite.
+//     touch, like a black outline between yellow and pink on a fighter's sprite. Unlike rule 16, the
+//     line keeps its shallow or steep shape, so a band that runs along the outline stays straight (the
+//     grey band of a hood).
 // 19. A pixel apart keeps to itself: a corner is not painted with the color of a pixel that differs from
 //     all 8 of its neighbors by XBRZ_ISO or more and keeps its own corners square, so a lone dot of
 //     color, like the bead of a bracelet in Golden Sun's village, does not leak into the pixels around it.
+//     Nor is a corner cut without a line painted with the color of a pixel none of whose 8 neighbors shares
+//     its color, where the corner's other neighbor differs from it by XBRZ_ISO_FAR or more and the pixel
+//     across the corner is neither color, like a dark green pixel on the Golden Sun slime.
 // 20. A corner where no edge runs: a corner between two neighbors of clearly different colors
 //     (XBRZ_JUNCTION) stays square where no line goes on through it (neither color continues past the
 //     corner, the pixel's own color does not continue along the cut, and fewer than three pixels in a
@@ -182,6 +191,10 @@
 //     XBRZ_LOOSE or more and from all 4 diagonal neighbors, and xBRZ cuts all 4 of its corners (a dot, an eye, a
 //     highlight), the corners take a plain tip with no line and the output pass draws that tip smaller than a
 //     normal one, so the pixel stays a square with softened corners instead of a circle.
+//     A loose pixel with only 3 corners cut that differs from all 8 neighbors by XBRZ_LONE23 or more,
+//     where those corners would take colors that differ from each other (a red eye between white, lilac
+//     and purple), keeps the small tip only at a corner between two neighbors of the same color; a corner
+//     between two different colors stays square, so no color around the dot reaches into it.
 // 25. A point on a shared edge: where both corners of a pixel at one edge are cut with a 45-degree line in
 //     the color across that edge (the two lines meet in a point), the pixel is the vertex of a V of its color
 //     with no further arms, and the edge is straight and shared by three colors (XBRZ_POINT), both corners
@@ -218,6 +231,10 @@
 //     for a band of two), all four pixels keep xBRZ's cut at that corner, even below the minimum contrast
 //     and whatever the rules above decide, so a shadow under a line or the steps of an antialiasing ramp
 //     are drawn as straight bands instead of squares, like the shadow under a sword in Golden Sun.
+//     A corner that rule 1 left square also keeps xBRZ's cut where a dark outline 1 pixel wide runs
+//     diagonally around a pixel XBRZ_RING or more from it, on the background side and at the outline's own
+//     outer corners, so the outline of a bright shape stays a closed diagonal ring over a low-contrast
+//     background, like an orange diamond on a scaffold.
 // 31. Exact ties: where xBRZ's two diagonal sums of a 2x2 checkerboard of two colors (64 or more apart)
 //     are exactly equal, xBRZ cuts neither corner and the two diagonals touch. Where only one diagonal
 //     goes on as a stroke 1 pixel wide, the rarer of the two colors in the 8x8 around it wins and keeps
@@ -247,20 +264,57 @@
 //     cut already takes that color, the corner takes the other neighbor's color, so an outline that skips a
 //     pixel follows the edge instead of leaving a sliver of the inner color outside it (Golden Sun's village).
 //     P must not be a shade between the outline and the pixel.
+//     The other neighbor and the pixel past P may also be two shades of one outline, much closer to each
+//     other than to P, like a shoulder in Golden Sun's battles.
+// 38. A junction of four colors: where a side neighbor that the resolve pass keeps whole meets E and two
+//     more pixels at a point where all four colors differ by more than XBRZ_JUNC4, and the pixel diagonal to
+//     E cuts its corner there, E's corner there stays square too (unless it is a 2:1 line), so it does not
+//     paint the whole pixel's color or end as a lone ramp against its square side (Golden Sun's menu frame).
+//     Not where the two colors the cut joins are two shades of one stroke (under XBRZ_STEP38 as far apart as
+//     the other colors), like the dark brown and brown outline of a hood, which bends there as in xBRZ.
+// 39. A tie on a ramp: where E's two neighbors at a corner are equally far from E and E lies on the straight
+//     ramp between them, neither color has a better claim to the corner when the pixel across it is a
+//     fourth color, so the corner stays square and E touches both, like the light pink under the white of
+//     Harry's eye. A near tie (within XBRZ_MID39) counts too where the pixel across the corner is
+//     XBRZ_FAR39 or more from all three and no 2:1 line runs there, like a grey leaf.
+// 40. A dot that separates: a lone dot (40 or more from all 8 neighbors, like a nostril between skin
+//     tones) whose ring of neighbors holds a color K in two or more separate groups (the shadow under an eye
+//     and a mouth, on two sides of Harry's nose) keeps them apart when it is darker than K and K is darker
+//     than the rest of the ring: a corner next to the dot that would paint K stays square, and the dot's
+//     own corners take rule 23's small tip, so K is not drawn as one stroke through the dot.
+// 41. A 1-pixel diagonal stroke keeps an even edge: on a stroke 1 pixel wide whose color goes on only
+//     diagonally, an outer corner that xBRZ leaves square between two side neighbors of different colors is
+//     cut along the stroke where the stroke is darker than both, like the black outline at Harry's knees,
+//     and two 2:1 lines that lean opposite ways at one edge, squeezing the stripe into a thin tip, are
+//     drawn as a 45-degree cut and a plain cut, like the olive stripe on the Golden Sun slime.
+// 42. A step in a 45-degree edge: a corner that xBRZ leaves square, where its two neighbors at the corner and
+//     the pixel across it are one color K (XBRZ_MINC or more from E) and E's other two neighbors are not K,
+//     is cut along the edge when the same corner of both pixels along the edge is cut with a 45-degree line
+//     painting K. xBRZ leaves such a corner square where its two diagonals nearly tie and a pixel farther
+//     away tips them the other way, which leaves a square step in a straight diagonal edge.
+// 43. A dome: where the resolve pass took back a corner of a 2-pixel run, and a cap color runs over the run
+//     and past both ends while the run ends on both sides in one other color, the corner is cut again (if the
+//     mirror corner of the run's other pixel is cut), so the cap ends round on both sides, like the top of
+//     a wizard's hair under his hood.
+// 44. The end of a dark 1-pixel stroke: where E ends a stroke 1 pixel wide and the 7 pixels around that end
+//     are XBRZ_END44 or more from it and lighter, E's two corners at the end are cut, so a dark mark ends
+//     round at both ends, like a pupil under a white eyelid (Isaac's eye) or the end of a font's shadow.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 37 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 44 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //
-// The first pass makes every blend decision once per input pixel (blend type, line type, blend
-// color and the minimum contrast) and the resolve pass, also once per input pixel, settles the
-// ones that depend on the neighbours' decisions, so the output pass, which runs once per output
-// pixel, only reads two textures where no corner is cut. Blend color ties and the order of the
-// four corners follow the reference C++ xBRZ, and the output pass reads the image from the pass
-// before xBRZ, so it also works after other shaders in a preset.
+// The point pass decides each point once and keeps the image's color next to that decision, pass 0
+// makes every blend decision once per input pixel (blend type, line type, blend color and the minimum
+// contrast) and the resolve pass, also once per input pixel, settles the ones that depend on the
+// neighbours' decisions, so the output pass, which runs once per output pixel, only reads two textures
+// where no corner is cut. Blend color ties (to within 1e-5, as the integer colors of the C++ code tie),
+// the order of the four corners and the cut of a corner with both a shallow and a steep line follow the
+// reference C++ xBRZ, and every pass reads the image from the point pass, which keeps the colors of the
+// pass before xBRZ, so it also works after other shaders in a preset.
 // Defaults: equal color tolerance 15, dominant direction 3.8, steep/shallow line 3.2
-// (reference xBRZ: 30, 3.6 and 2.2).
+// (reference xBRZ 1.9: 30, 3.6 and 2.4).
 /*
    Hyllian's xBR-vertex code and texel mapping
    Copyright (C) 2011/2016 Hyllian - sergiogdb@gmail.com
@@ -366,7 +420,7 @@ COMPAT_VARYING vec4 TEX0;
 #define FRAG_OUT FragColor
 
 //#crisp{
-// the input of the first pass (four passes back: pass 0, the resolve pass and the matching pass come between), which is the original image unless other shaders run before xBRZ
+// the point pass (four passes back: pass 0, the resolve pass and the match pass come between), whose color is xBRZ's input: the original image unless other shaders run before xBRZ
 uniform sampler2D PassPrev4Texture;
 uniform COMPAT_PRECISION vec2 PassPrev4TextureSize;
 uniform COMPAT_PRECISION vec2 PassPrev4InputSize;
@@ -374,7 +428,7 @@ uniform COMPAT_PRECISION vec2 PassPrev4InputSize;
 #define ORIG_SIZE vec4(PassPrev4TextureSize, 1.0 / PassPrev4TextureSize)
 #define ORIG_INPUT_SIZE PassPrev4InputSize
 //#crisp}
-//#plain // the input of the first pass (three passes back), which is the original image unless other shaders run before xBRZ
+//#plain // the point pass (three passes back: pass 0 and the resolve pass come between), whose color is xBRZ's input: the original image unless other shaders run before xBRZ
 //#plain uniform sampler2D PassPrev3Texture;
 //#plain uniform COMPAT_PRECISION vec2 PassPrev3TextureSize;
 //#plain uniform COMPAT_PRECISION vec2 PassPrev3InputSize;
@@ -458,10 +512,14 @@ void main()
   vec4 secondPix = FLAG(info, 8.0);
   vec4 haveShallowLine = FLAG(info, 16.0);
   vec4 haveSteepLine = FLAG(info, 64.0);
+  // a corner with both a shallow and a steep line: xBRZ draws the two lines together (their union), so the
+  // cut runs to the far end of both edges with a bend where the lines meet
+  vec4 bothLines = doLineBlend * haveShallowLine * haveSteepLine;
 //#crisp{
   // 14. Straight steps: a 3:1 (+32) or 4:1 (+128) line; a thin end (BLEND 2) starts 1 pixel further along
   vec4 longL = FLAG(info, 32.0) + 2.0 * FLAG(info, 128.0);
   vec4 shiftA = vec4(equal(blendResult, vec4(2.0))) * vec4(greaterThan(longL, vec4(0.0)));
+  bothLines *= vec4(equal(longL, vec4(0.0)));  // a 3:1 or 4:1 step keeps its own line
 //#crisp}
 
   // ============================================================================================
@@ -498,7 +556,10 @@ void main()
     }
     vec2 bo = (secondPix.z > 0.0) ? vec2( 0., 1.) : vec2( 1., 0.);
     vec3 blendPix = P(bo.x, bo.y);
-    res = mix(res, blendPix, get_left_ratio(pos, origin, direction, scale));
+    float ratio = get_left_ratio(pos, origin, direction, scale);
+    if (bothLines.z > 0.0)
+      ratio = max(get_left_ratio(pos, vec2(0.0, 0.25), vec2(1.0, -1.0) + vec2(1.0, 0.0), scale), get_left_ratio(pos, vec2(0.0, 0.5), vec2(1.0, -1.0) + vec2(0.0, -1.0), scale));
+    res = mix(res, blendPix, ratio);
   }
 
   // Pixel Tap Mapping: -|B|-
@@ -528,7 +589,10 @@ void main()
     }
     vec2 bo = (secondPix.y > 0.0) ? vec2( 1., 0.) : vec2( 0.,-1.);
     vec3 blendPix = P(bo.x, bo.y);
-    res = mix(res, blendPix, get_left_ratio(pos, origin, direction, scale));
+    float ratio = get_left_ratio(pos, origin, direction, scale);
+    if (bothLines.y > 0.0)
+      ratio = max(get_left_ratio(pos, vec2(0.25, 0.0), vec2(-1.0, -1.0) + vec2(0.0, -1.0), scale), get_left_ratio(pos, vec2(0.5, 0.0), vec2(-1.0, -1.0) + vec2(-1.0, 0.0), scale));
+    res = mix(res, blendPix, ratio);
   }
 
   // Pixel Tap Mapping: -|B|-
@@ -558,7 +622,10 @@ void main()
     }
     vec2 bo = (secondPix.x > 0.0) ? vec2( 0.,-1.) : vec2(-1., 0.);
     vec3 blendPix = P(bo.x, bo.y);
-    res = mix(res, blendPix, get_left_ratio(pos, origin, direction, scale));
+    float ratio = get_left_ratio(pos, origin, direction, scale);
+    if (bothLines.x > 0.0)
+      ratio = max(get_left_ratio(pos, vec2(0.0, -0.25), vec2(-1.0, 1.0) + vec2(-1.0, 0.0), scale), get_left_ratio(pos, vec2(0.0, -0.5), vec2(-1.0, 1.0) + vec2(0.0, 1.0), scale));
+    res = mix(res, blendPix, ratio);
   }
 
   // Pixel Tap Mapping: -|-|-
@@ -588,7 +655,10 @@ void main()
     }
     vec2 bo = (secondPix.w > 0.0) ? vec2(-1., 0.) : vec2( 0., 1.);
     vec3 blendPix = P(bo.x, bo.y);
-    res = mix(res, blendPix, get_left_ratio(pos, origin, direction, scale));
+    float ratio = get_left_ratio(pos, origin, direction, scale);
+    if (bothLines.w > 0.0)
+      ratio = max(get_left_ratio(pos, vec2(-0.25, 0.0), vec2(1.0, 1.0) + vec2(0.0, 1.0), scale), get_left_ratio(pos, vec2(-0.5, 0.0), vec2(1.0, 1.0) + vec2(1.0, 0.0), scale));
+    res = mix(res, blendPix, ratio);
   }
 
   FRAG_OUT = vec4(res, 1.0);

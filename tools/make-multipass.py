@@ -4,8 +4,8 @@
 The crisp passes are xbrz-freescale-multipass with a minimum contrast (XBRZ_MINC 20 instead of 0).
 Everything between a "//#crisp{" line and a "//#crisp}" line is crisp only and is dropped; a line
 starting with "//#plain" is only in the plain shader and is turned on. The output uses the libretro layout,
-with the resolve pass between pass 0 and pass 1, and the two xbrz-freescale-multipass presets
-(the libretro ones have no resolve pass yet).
+with the point pass before pass 0 and the resolve pass between pass 0 and pass 1, and the two
+xbrz-freescale-multipass presets (the libretro ones have no point or resolve pass yet).
 
 Pass 0 is written twice: xbrz-freescale-pass0 for plain xBRZ, with XBRZ_MINC fixed at 0 so the
 compiler leaves the crisp rules out (RetroArch passes the parameters as uniforms, so a menu value of 0
@@ -23,13 +23,14 @@ JOBS = [
     ('shaders/shaders_slang/edge-smoothing/xbrz/shaders/xbrz-crisp/xbrz-crisp-%s.slang',
      'slang-shaders/edge-smoothing/xbrz/shaders/xbrz-freescale-multipass/xbrz-freescale-%s.slang'),
 ]
-PASSES = ('pass0', 'resolve', 'pass1')
-STOCK = 'shader0 = ../../stock.slang\nalias0 = xbrz_fs_refpass\n\n'
+PASSES = ('point', 'pass0', 'resolve', 'pass1')
+# the slang presets name the point pass (whose color is xBRZ's input) as the passes read it
+ALIAS = 'alias0 = xbrz_fs_refpass\n'
 PRESETS = {
     'glsl-shaders/xbrz/xbrz-freescale-multipass.glslp': ('', 'xbrz-freescale-pass0', ''),
-    'slang-shaders/edge-smoothing/xbrz/xbrz-freescale-multipass.slangp': (STOCK, 'xbrz-freescale-pass0', ''),
+    'slang-shaders/edge-smoothing/xbrz/xbrz-freescale-multipass.slangp': (ALIAS, 'xbrz-freescale-pass0', ''),
     'glsl-shaders/xbrz/xbrz-crisp.glslp': ('', 'xbrz-crisp-pass0', 'xbrz-crisp'),
-    'slang-shaders/edge-smoothing/xbrz/xbrz-crisp.slangp': (STOCK, 'xbrz-crisp-pass0', 'xbrz-crisp'),
+    'slang-shaders/edge-smoothing/xbrz/xbrz-crisp.slangp': (ALIAS, 'xbrz-crisp-pass0', 'xbrz-crisp'),
 }
 CRISP_PARAMS = '\nparameters = "XBRZ_MINC;XBRZ_DIAG"\nXBRZ_MINC = "20.000000"\nXBRZ_DIAG = "100.000000"\n'
 
@@ -107,14 +108,14 @@ for src, dst in JOBS:
             with open(d_, 'w') as f: f.write(t)
             print(d_)
 
-for dst, (head, p0, crisp) in PRESETS.items():
+for dst, (alias, p0, crisp) in PRESETS.items():
     ext = dst.rsplit('.', 1)[1][:-1]
-    first = 1 if head else 0
-    text = 'shaders = %d\n\n' % (len(PASSES) + first) + head
-    for i, p in enumerate(PASSES, first):
+    text = 'shaders = %d\n\n' % len(PASSES)
+    for i, p in enumerate(PASSES):
         f = p0 if p == 'pass0' else 'xbrz-freescale-' + p
         text += ('shader%d = shaders/xbrz-freescale-multipass/%s.%s\nfilter_linear%d = false\n'
                  'scale_type%d = %s\nscale%d = 1.0\n' % (i, f, ext, i, i, 'viewport' if p == 'pass1' else 'source', i))
+        if p == 'point': text += alias
         if p != PASSES[-1]: text += '\n'
     if crisp: text += CRISP_PARAMS
     d = os.path.join(OUT, dst)
