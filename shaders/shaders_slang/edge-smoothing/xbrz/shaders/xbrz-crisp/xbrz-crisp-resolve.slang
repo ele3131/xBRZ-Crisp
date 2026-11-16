@@ -159,7 +159,12 @@
 //     stays round, like the tip of a foot in Tales of Phantasia. A corner whose cut goes on as one straight
 //     line through the facing corner of the neighbor that gives its color stays cut where its two neighbors
 //     are much closer to each other than to the pixel, so a thin stroke between two background colors keeps
-//     both its edges, like the halo of King Kai in Buu's Fury.
+//     both its edges, like the halo of King Kai in Buu's Fury. Two shades are no junction: where E is a
+//     close shade of one neighbor (under XBRZ_JUNC_TONE of the neighbors' distance) the corner is the edge of
+//     E's area, like a highlight beside antialiased red; where the two neighbors are shades of one gray or hue
+//     (their hue under XBRZ_JUNC_HUE apart) much closer to each other than to E (XBRZ_JUNC_SHADE), they are one
+//     outline; and a shade of E's own gray or hue along the cut counts as E's color going on, so an outline in
+//     two grays that steps by a darker joint bends as in xBRZ (the hood in a SNES portrait).
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
 //     straight line of three of its color along the pixel's side, where the corner's other neighbor
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
@@ -445,6 +450,9 @@ float distYCbCr(vec3 pixA, vec3 pixB)
 #define XBRZ_JUNC_AA_DARK 0.35 // 20. and the darkest of the three is darker than this (luma)
 #define XBRZ_JUNC_MID 0.4    // 20. the middle step of a strong ramp is more than this times the whole
 #define XBRZ_JUNC_FAR 100.0  // 20. a ramp is strong when its far end differs from E by more than this
+#define XBRZ_JUNC_HUE 8.0    // 20. two colors this close in hue (Cb and Cr only) are shades of one gray or hue
+#define XBRZ_JUNC_SHADE 0.65 // 20. two shades are one outline when this much closer to each other than to E
+#define XBRZ_JUNC_TONE 0.25  // 20. E is a shade of a neighbor this much closer to it than the two neighbors are apart
 #define XBRZ_LINE_SIDE 25.0  // 21. the other neighbor of a corner differs from a straight line by this
 #define XBRZ_LINE_TONE 0.4   // 21. p and q are close shades when they differ by less than this times E's difference to either
 #define XBRZ_LINE_STRONG 64.0 // 21. a line this far from E is strong (a line of four counts, and q may take the corner)
@@ -473,6 +481,13 @@ float luma(vec3 c) { return dot(c, LUMA); }
 float dist255(vec3 a, vec3 b) { return distYCbCr(a, b) * 255.0; }
 // Two colors closer than the default tolerance (15, fixed here: it is not the XBRZ_TOL parameter).
 bool sameColor(vec3 a, vec3 b) { return dist255(a, b) < XBRZ_SAME; }
+// rule 20: the distance of two colors in hue only (Cb and Cr, x/255), to tell two shades of one gray or hue
+float chroma255(vec3 a, vec3 b)
+{
+  vec3 d = a - b;
+  float Y = dot(d, vec3(0.2627, 0.6780, 0.0593));
+  return 255.0 * length(vec2(0.5 / (1.0 - 0.0593) * (d.b - Y), 0.5 / (1.0 - 0.2627) * (d.r - Y)));
+}
 // rule 37: O and K are one outline: the same color, or two shades much closer to each other than to P
 #define XBRZ_KIN37 0.6
 bool kin37(vec3 O, vec3 K, vec3 P)
@@ -961,13 +976,19 @@ void main()
         ext2 *= 1.0 - cross20 * vec4(sameF(B, C) * sameF(B, uu), sameF(F, I) * sameF(F, rr), sameF(H, G) * sameF(H, dd), sameF(D, A) * sameF(D, ll));
         // E's color on the pixels beside it along the cut
         float eAcross = max(junctionNear(E, G), junctionNear(E, C)), eAlong = max(junctionNear(E, A), junctionNear(E, I));
-        vec4 extE = vec4(eAcross, eAlong, eAcross, eAlong);
+        // or a shade of E's own gray or hue (much closer to E than either neighbor) goes on along the cut
+        float sC = chroma255(E, C) < XBRZ_JUNC_HUE ? dgE.y : 999.0, sG = chroma255(E, G) < XBRZ_JUNC_HUE ? dgE.w : 999.0;
+        float sA = chroma255(E, A) < XBRZ_JUNC_HUE ? dgE.x : 999.0, sI = chroma255(E, I) < XBRZ_JUNC_HUE ? dgE.z : 999.0;
+        vec4 extE = max(vec4(eAcross, eAlong, eAcross, eAlong), vec4(lessThan(vec4(min(sC, sG), min(sA, sI), min(sC, sG), min(sA, sI)), XBRZ_JUNC_SHADE * min(dE1, dE2))));
         // the run of pixels that cut the same corner along the cut's line (E included, up to 2 on each side)
         vec4 m1 = cutOf(iA), m2 = cutOf(INFO_AT(-2.0, -2.0)), p1 = cutOf(iI), p2 = cutOf(INFO_AT(2.0, 2.0));
         vec4 u1 = cutOf(iC), u2 = cutOf(INFO_AT(2.0, -2.0)), d1 = cutOf(iG), d2 = cutOf(INFO_AT(-2.0, 2.0));
         vec4 runA = vec4(u1.x + u1.x * u2.x, m1.y + m1.y * m2.y, u1.z + u1.z * u2.z, m1.w + m1.w * m2.w);
         vec4 runB = vec4(d1.x + d1.x * d2.x, p1.y + p1.y * p2.y, d1.z + d1.z * d2.z, p1.w + p1.w * p2.w);
-        vec4 on20 = isCut(blendResult) * vec4(greaterThan(cand20, vec4(XBRZ_JUNCTION)))
+        vec4 chr20 = vec4(chroma255(B, D), chroma255(B, F), chroma255(F, H), chroma255(D, H));
+        // two shades are no junction: E a close shade of one neighbor, or the two neighbors shades of one gray or hue
+        vec4 on20 = isCut(blendResult) * vec4(greaterThan(cand20, vec4(XBRZ_JUNCTION))) * vec4(greaterThanEqual(min(dE1, dE2), XBRZ_JUNC_TONE * cand20))
+                  * (1.0 - vec4(lessThan(cand20, XBRZ_JUNC_SHADE * min(dE1, dE2))) * vec4(lessThan(chr20, vec4(XBRZ_JUNC_HUE))))
                   * (1.0 - ramp20 * cr20 * vec4(greaterThan(min(dE1, dE2), vec4(XBRZ_JUNC_AA_MIN))) * vec4(lessThan(min(dE1, dE2), vec4(XBRZ_JUNC_AA_MAX))) * vec4(lessThan(lmin20, vec4(XBRZ_JUNC_AA_DARK))))
                   * (1.0 - ext1) * (1.0 - ext2) * (1.0 - extE) * vec4(lessThan(1.0 + runA + runB, vec4(3.0)));
         // the tip of a bar two pixels wide: the pixel across the corner and the neighbor that does not give the

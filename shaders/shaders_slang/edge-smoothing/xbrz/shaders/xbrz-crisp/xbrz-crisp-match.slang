@@ -159,7 +159,12 @@
 //     stays round, like the tip of a foot in Tales of Phantasia. A corner whose cut goes on as one straight
 //     line through the facing corner of the neighbor that gives its color stays cut where its two neighbors
 //     are much closer to each other than to the pixel, so a thin stroke between two background colors keeps
-//     both its edges, like the halo of King Kai in Buu's Fury.
+//     both its edges, like the halo of King Kai in Buu's Fury. Two shades are no junction: where E is a
+//     close shade of one neighbor (under XBRZ_JUNC_TONE of the neighbors' distance) the corner is the edge of
+//     E's area, like a highlight beside antialiased red; where the two neighbors are shades of one gray or hue
+//     (their hue under XBRZ_JUNC_HUE apart) much closer to each other than to E (XBRZ_JUNC_SHADE), they are one
+//     outline; and a shade of E's own gray or hue along the cut counts as E's color going on, so an outline in
+//     two grays that steps by a darker joint bends as in xBRZ (the hood in a SNES portrait).
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
 //     straight line of three of its color along the pixel's side, where the corner's other neighbor
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
