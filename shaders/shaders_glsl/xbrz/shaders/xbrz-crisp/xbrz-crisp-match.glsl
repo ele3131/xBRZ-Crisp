@@ -134,7 +134,8 @@
 //     outline that steps by a knight's move stays closed instead of letting the colors on both sides
 //     touch, like a black outline between yellow and pink on a fighter's sprite. Unlike rule 16, the
 //     line keeps its shallow or steep shape, so a band that runs along the outline stays straight (the
-//     grey band of a hood).
+//     grey band of a hood). Not where the color the corner would take is near-black too: two dark shades
+//     meet there and there is no outline to close (Isaac's shoulder).
 // 19. A pixel apart keeps to itself: a corner is not painted with the color of a pixel that differs from
 //     all 8 of its neighbors by XBRZ_ISO or more and keeps its own corners square, so a lone dot of
 //     color, like the bead of a bracelet in Golden Sun's village, does not leak into the pixels around it.
@@ -163,10 +164,12 @@
 //     are much closer to each other than to the pixel, so a thin stroke between two background colors keeps
 //     both its edges, like the halo of King Kai in Buu's Fury. Two shades are no junction: where E is a
 //     close shade of one neighbor (under XBRZ_JUNC_TONE of the neighbors' distance) the corner is the edge of
-//     E's area, like a highlight beside antialiased red; where the two neighbors are shades of one gray or hue
-//     (their hue under XBRZ_JUNC_HUE apart) much closer to each other than to E (XBRZ_JUNC_SHADE), they are one
-//     outline; and a shade of E's own gray or hue along the cut counts as E's color going on, so an outline in
-//     two grays that steps by a darker joint bends as in xBRZ (the hood in a SNES portrait).
+//     E's area, like a highlight beside antialiased red; where the two neighbors are shades of one gray (both
+//     nearly gray, under XBRZ_JUNC_GRAY, and their hue under XBRZ_JUNC_HUE apart) much closer to each other than
+//     to E (XBRZ_JUNC_SHADE), they are one outline; and, for a nearly gray E, a shade of E's own gray along the
+//     cut counts as E's color going on, so an outline in two grays that steps by a darker joint bends as in xBRZ
+//     (the hood in a SNES portrait). Two shades of a color are not taken for one outline, so a belt and the
+//     cloth above it meet a buckle with square corners on both sides (Isaac in Golden Sun).
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
 //     straight line of three of its color along the pixel's side, where the corner's other neighbor
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
@@ -307,6 +310,9 @@
 // 44. The end of a dark 1-pixel stroke: where E ends a stroke 1 pixel wide and the 7 pixels around that end
 //     are XBRZ_END44 or more from it and lighter, E's two corners at the end are cut, so a dark mark ends
 //     round at both ends, like a pupil under a white eyelid (Isaac's eye) or the end of a font's shadow.
+//     Not a corner past which E's color goes on by a knight's move, where the pixel diagonal to E cuts its
+//     corner toward it: the stroke turns there as an outline (rule 37), so it leaves no tip of the other color
+//     (the flame of a fire horse).
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 // 11 to 44 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
@@ -821,7 +827,7 @@ float far44(vec3 E, float lE, vec2 o)
   vec3 q = P(o.x, o.y);
   return float(dist255(E, q) >= XBRZ_END44 && dot(q, LUMA_W44) >= lE);
 }
-vec4 strokeEnd44(vec4 res)
+vec4 strokeEnd44(vec2 coord, vec4 res)
 {
   vec4 s = vec4(sB, sF, sH, sD);
   // one side neighbor goes on with E and the other three are far: E is the end of a 1-pixel stroke
@@ -839,6 +845,12 @@ vec4 strokeEnd44(vec4 res)
     vec2 c = k == 0 ? u - v : -u - v;
     vec4 m = vtxCorner(c);
     if (BLEND(dot(res, m)) > 0.5) continue;
+    // the stroke turns at this corner: E's color goes on by a knight's move past it, and the pixel diagonal to E there
+    // cuts its corner toward that pixel, so the outline runs on along the cut (as rule 37 draws it)
+    vec2 k1 = c - v, k2 = 2.0 * c + v;
+    vec4 wG = INFO_AT(c.x, c.y);
+    if ((dist255(E, P(k1.x, k1.y)) < XBRZ_SAME_M && BLEND(dot(wG, vtxCorner(-c - 2.0 * v))) > 0.5)
+        || (dist255(E, P(k2.x, k2.y)) < XBRZ_SAME_M && BLEND(dot(wG, vtxCorner(c + 2.0 * v))) > 0.5)) continue;
     // a plain cut in the nearer of the corner's two neighbors (pass 1 takes the horizontal one for x and z)
     vec3 Nh = at3(vec2(c.x, 0.0)), Nv = at3(vec2(0.0, c.y));
     bool hz = c.x * c.y > 0.0;
@@ -921,7 +933,7 @@ void main()
   if (loneE || dot(cut4(res) * FLAG(res, 4.0) * abs(FLAG(res, 16.0) - FLAG(res, 64.0)), vec4(1.0)) > 0.0)
     res = diagStroke41(coord, res, loneE);
   // 44 (only where E has a side neighbor XBRZ_END44 or more away)
-  if (max(max(sB, sD), max(sF, sH)) >= XBRZ_END44) res = strokeEnd44(res);
+  if (max(max(sB, sD), max(sF, sH)) >= XBRZ_END44) res = strokeEnd44(coord, res);
   FRAG_OUT = res / 255.0;
 }
 #endif

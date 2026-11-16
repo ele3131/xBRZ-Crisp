@@ -134,7 +134,8 @@
 //     outline that steps by a knight's move stays closed instead of letting the colors on both sides
 //     touch, like a black outline between yellow and pink on a fighter's sprite. Unlike rule 16, the
 //     line keeps its shallow or steep shape, so a band that runs along the outline stays straight (the
-//     grey band of a hood).
+//     grey band of a hood). Not where the color the corner would take is near-black too: two dark shades
+//     meet there and there is no outline to close (Isaac's shoulder).
 // 19. A pixel apart keeps to itself: a corner is not painted with the color of a pixel that differs from
 //     all 8 of its neighbors by XBRZ_ISO or more and keeps its own corners square, so a lone dot of
 //     color, like the bead of a bracelet in Golden Sun's village, does not leak into the pixels around it.
@@ -163,10 +164,12 @@
 //     are much closer to each other than to the pixel, so a thin stroke between two background colors keeps
 //     both its edges, like the halo of King Kai in Buu's Fury. Two shades are no junction: where E is a
 //     close shade of one neighbor (under XBRZ_JUNC_TONE of the neighbors' distance) the corner is the edge of
-//     E's area, like a highlight beside antialiased red; where the two neighbors are shades of one gray or hue
-//     (their hue under XBRZ_JUNC_HUE apart) much closer to each other than to E (XBRZ_JUNC_SHADE), they are one
-//     outline; and a shade of E's own gray or hue along the cut counts as E's color going on, so an outline in
-//     two grays that steps by a darker joint bends as in xBRZ (the hood in a SNES portrait).
+//     E's area, like a highlight beside antialiased red; where the two neighbors are shades of one gray (both
+//     nearly gray, under XBRZ_JUNC_GRAY, and their hue under XBRZ_JUNC_HUE apart) much closer to each other than
+//     to E (XBRZ_JUNC_SHADE), they are one outline; and, for a nearly gray E, a shade of E's own gray along the
+//     cut counts as E's color going on, so an outline in two grays that steps by a darker joint bends as in xBRZ
+//     (the hood in a SNES portrait). Two shades of a color are not taken for one outline, so a belt and the
+//     cloth above it meet a buckle with square corners on both sides (Isaac in Golden Sun).
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
 //     straight line of three of its color along the pixel's side, where the corner's other neighbor
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
@@ -307,6 +310,9 @@
 // 44. The end of a dark 1-pixel stroke: where E ends a stroke 1 pixel wide and the 7 pixels around that end
 //     are XBRZ_END44 or more from it and lighter, E's two corners at the end are cut, so a dark mark ends
 //     round at both ends, like a pupil under a white eyelid (Isaac's eye) or the end of a font's shadow.
+//     Not a corner past which E's color goes on by a knight's move, where the pixel diagonal to E cuts its
+//     corner toward it: the stroke turns there as an outline (rule 37), so it leaves no tip of the other color
+//     (the flame of a fire horse).
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 // 11 to 44 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
