@@ -328,8 +328,12 @@
 //     beside it (2 pixels left, right, above and below) checkers of the same two colors is not cut, so a
 //     checker texture stays square up to an outline that crosses it (xBRZ's 4x4 window turns the checker
 //     next to an outline into zigzags).
+// 47. A notch in a straight stroke: where E's corner would be cut in the color of a lone pixel beside it
+//     that is a close shade of E, while E's color goes on straight past its other neighbor and diagonally
+//     past the lone pixel, and the color on E's far side is XBRZ_FAR47 or more away, the corner stays square,
+//     so a shade at the bend of a stroke does not cut a notch into its straight side (a wizard's staff).
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 46 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 47 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.

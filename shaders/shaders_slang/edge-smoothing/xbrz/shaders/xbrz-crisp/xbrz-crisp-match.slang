@@ -329,8 +329,12 @@
 //     beside it (2 pixels left, right, above and below) checkers of the same two colors is not cut, so a
 //     checker texture stays square up to an outline that crosses it (xBRZ's 4x4 window turns the checker
 //     next to an outline into zigzags).
+// 47. A notch in a straight stroke: where E's corner would be cut in the color of a lone pixel beside it
+//     that is a close shade of E, while E's color goes on straight past its other neighbor and diagonally
+//     past the lone pixel, and the color on E's far side is XBRZ_FAR47 or more away, the corner stays square,
+//     so a shade at the bend of a stroke does not cut a notch into its straight side (a wizard's staff).
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 46 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 47 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -803,6 +807,8 @@ vec4 domes43(vec2 coord, vec4 lost)
 // left square are cut as plain corners, so the end of a dark mark is round like its other end (a pupil under a
 // white eyelid, the end of a font's shadow).
 #define XBRZ_END44 100.0
+#define XBRZ_NOTCH47 60.0  // 47. a close shade of the stroke
+#define XBRZ_FAR47 80.0    // 47. the color on the stroke's other side
 #define LUMA_W44 vec3(0.2627, 0.6780, 0.0593)
 float far44(vec3 E, float lE, vec2 o)
 {
@@ -914,6 +920,36 @@ void main()
     res = diagStroke41(coord, res, loneE);
   // 44 (only where E has a side neighbor XBRZ_END44 or more away)
   if (max(max(sB, sD), max(sF, sH)) >= XBRZ_END44) res = strokeEnd44(coord, res);
+  // 47. a notch in the straight side of a stroke in shades: E's corner is cut in the color of a side neighbor A
+  // that is a lone pixel (none of its 8 neighbors has its color) and a close shade of E (under XBRZ_NOTCH47),
+  // while the other side neighbor B is a close shade too (no farther from E than 1.2 times A) and E's color goes
+  // on exactly past B and diagonally past A, the pixel on E's other side from A is far (XBRZ_FAR47 or more) and
+  // B's corner at the point is not cut: the stroke runs straight there, so the corner stays square (the ochre
+  // tip on a wizard's yellow staff)
+  {
+    vec4 cutM = cut4(res), secM = FLAG(res, 8.0), sqM = vec4(0.0);
+    for (int k = 0; k < 4; k++)
+    {
+      vec2 c = k == 0 ? vec2(-1.0, -1.0) : k == 1 ? vec2(1.0, -1.0) : k == 2 ? vec2(1.0, 1.0) : vec2(-1.0, 1.0);
+      vec4 m = vtxCorner(c);
+      if (dot(cutM, m) < 0.5) continue;
+      // a: the side whose color the corner takes, b: the other side
+      bool s1 = dot(secM, m) > 0.5;
+      bool paintV = (k == 0 || k == 2) ? s1 : !s1;
+      vec2 a = paintV ? vec2(0.0, c.y) : vec2(c.x, 0.0), b = paintV ? vec2(c.x, 0.0) : vec2(0.0, c.y);
+      vec3 Ac = at3(a);
+      float dB = dist255(nE, at3(b)), dA = dist255(nE, Ac);
+      if (dA >= XBRZ_NOTCH47 || dB >= XBRZ_NOTCH47 || dB >= 1.2 * dA || dist255(nE, at3(-a)) < XBRZ_FAR47
+          || dist255(nE, at3(2.0 * b)) >= XBRZ_SAME_M || dist255(nE, at3(a - b)) >= XBRZ_SAME_M || dist255(Ac, at3(c)) < XBRZ_SAME_M)
+        continue;
+      bool loneA = true;
+      for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++)
+        if ((i != 0 || j != 0) && dist255(Ac, at3(a + vec2(float(i), float(j)))) < XBRZ_SAME_M) loneA = false;
+      if (!loneA || BLEND(dot(INFO_AT(b.x, b.y), vtxCorner(c - 2.0 * b))) > 0.5) continue;
+      sqM += m;
+    }
+    res *= 1.0 - min(sqM, vec4(1.0));
+  }
   // 45. the dark side of a mid-tone stroke's end: E ends a 1-pixel stroke (it goes on one way, within XBRZ_SAME_M), only
   // one of the two corners at the end is cut, the three pixels around that corner are close darker-or-lighter tones of
   // E (XBRZ_MINC to XBRZ_MATCH_EDGE from it) and the pixel on the other side of E is 80 or more away: the stroke is the
