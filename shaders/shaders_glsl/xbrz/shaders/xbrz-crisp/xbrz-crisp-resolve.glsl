@@ -124,6 +124,10 @@
 //     opposite neighbors match, like the stripes of a background), and otherwise the line is drawn at
 //     45 degrees in its own color. A single pixel keeps its shape instead of being pierced by a spike
 //     of a third color, like the wine pixel at a junction of four colors in Golden Sun's village.
+//     Where three stripes run side by side at 2:1 (E's color goes on along the line on one side and the
+//     paint color on the other), the line is drawn in its own color whether it is lighter or not, and even
+//     where rule 2 blocked the corner, so a 1-pixel stripe between two others runs on unbroken (a black
+//     stroke between magenta and blue, a dashed dark line on a slope).
 // 17. A line drawn on one side only: where xBRZ cuts a corner with a line between two lone pixels
 //     (neither goes on along the line and the pixel's own color does not repeat along it) but the
 //     pixel across the line draws the same line in the first pixel's color, and the three colors are
@@ -277,6 +281,9 @@
 //     P must not be a shade between the outline and the pixel.
 //     The other neighbor and the pixel past P may also be two shades of one outline, much closer to each
 //     other than to P, like a shoulder in Golden Sun's battles.
+//     Not where the other neighbor's color goes on at the pixel diagonal to E: it runs straight on there and
+//     does not turn, and the corner would be a loose tip of it (a blue dot on a black block). Where it runs
+//     straight on both ways and E is the corner of a solid block of its color, the corner stays square.
 // 38. A junction of four colors: where a side neighbor that the resolve pass keeps whole meets E and two
 //     more pixels at a point where all four colors differ by more than XBRZ_JUNC4, and the pixel diagonal to
 //     E cuts its corner there, E's corner there stays square too (unless it is a 2:1 line), so it does not
@@ -313,8 +320,16 @@
 //     Not a corner past which E's color goes on by a knight's move, where the pixel diagonal to E cuts its
 //     corner toward it: the stroke turns there as an outline (rule 37), so it leaves no tip of the other color
 //     (the flame of a fire horse).
+// 45. The end of a mid-tone stroke: where E ends a stroke 1 pixel wide, only one corner at the end is cut,
+//     with a 2:1 line, the three pixels around that corner are close tones of E (XBRZ_MINC to
+//     XBRZ_MATCH_EDGE from it, the two side ones two different tones) and the pixel on E's other side is 80
+//     or more away, the corner stays square, so the stroke ends square (a gray seam on Isaac's shoulder).
+// 46. A checkerboard keeps its squares: a 2x2 checker of two colors with three or more of the 2x2 blocks
+//     beside it (2 pixels left, right, above and below) checkers of the same two colors is not cut, so a
+//     checker texture stays square up to an outline that crosses it (xBRZ's 4x4 window turns the checker
+//     next to an outline into zigzags).
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 44 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 46 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -1141,6 +1156,18 @@ void main()
       bool face = s1 ? (cD.y > 0.5 && sD.y < 0.5) : (cH.y > 0.5 && sH.y > 0.5);
       flipK.w = float(face && kin37(O, K, P) && dist255(O, P) >= 24.0 && dist255(P, E) >= XBRZ_JUNCTION && dist255(O, P) + dist255(P, E) >= 1.15 * dist255(O, E) && dist255(O, E) >= XBRZ_JUNCTION);
     }
+    // (not where O's color goes on past the point at the pixel diagonal to E: O runs straight on along E's side there,
+    // the contour does not turn by a knight's move, and the corner would be a loose tip of O)
+    vec4 straightO = vec4(lessThan(vec4(dist255(A, sec.x > 0.5 ? D : B), dist255(C, sec.y > 0.5 ? B : F), dist255(I, sec.z > 0.5 ? F : H), dist255(G, sec.w > 0.5 ? H : D)), vec4(XBRZ_SAME)));
+    // where O runs straight on both ways past the point (a line of O beside E) and E is the corner of a solid block of
+    // its color (its far sides and the pixel across from the corner), the corner takes neither color: it stays square,
+    // so no tip of P sticks into the block
+    vec4 lineO = vec4(lessThan(vec4(sec.x > 0.5 ? dist255(G, D) : dist255(C, B), sec.y > 0.5 ? dist255(A, B) : dist255(I, F),
+                                    sec.z > 0.5 ? dist255(C, F) : dist255(G, H), sec.w > 0.5 ? dist255(I, H) : dist255(A, D)), vec4(XBRZ_SAME)));
+    vec4 block37 = vec4(lessThan(vec4(max(max(dist255(E, F), dist255(E, H)), dist255(E, I)), max(max(dist255(E, D), dist255(E, H)), dist255(E, G)),
+                                      max(max(dist255(E, B), dist255(E, D)), dist255(E, A)), max(max(dist255(E, B), dist255(E, F)), dist255(E, C))), vec4(XBRZ_SAME)));
+    blendResult *= 1.0 - flipK * straightO * lineO * block37;
+    flipK *= 1.0 - straightO;
     sec = abs(sec - flipK);
   }
       // ---- 24. A line with nothing to go on to ----

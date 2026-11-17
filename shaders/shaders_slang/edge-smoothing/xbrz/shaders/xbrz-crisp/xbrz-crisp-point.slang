@@ -8,7 +8,7 @@
 // use that decision. This pass does the same: each pixel decides the point at its bottom-right corner and
 // writes the blend type of the 4 pixels there in the alpha channel, next to its own color, so pass 0 reads
 // the decisions of the 4 points around a pixel with the colors it reads anyway. The rules that decide a
-// point (31 and 36) run here too. Every later pass reads the image from this pass's color.
+// point (31, 36 and 46) run here too. Every later pass reads the image from this pass's color.
 /*
    Hyllian's xBR-vertex code and texel mapping
    Copyright (C) 2011/2016 Hyllian - sergiogdb@gmail.com
@@ -225,6 +225,22 @@ vec2 crossWin(vec2 coord, vec2 b, vec3 tl, vec3 tr, vec3 bl, vec3 br)
   return vec2(0.0);
 }
 
+// ============================================================================================
+// 46. A checkerboard keeps its squares
+// ============================================================================================
+// the 2x2 whose top-left pixel is at b + o is a checker of the colors c1 and c2 (either phase)
+bool chk46(vec2 coord, vec2 o, vec3 c1, vec3 c2)
+{
+  vec3 p00 = PC(o), p10 = PC(o + vec2(1.0, 0.0)), p01 = PC(o + vec2(0.0, 1.0)), p11 = PC(o + vec2(1.0, 1.0));
+  return eq(p00, p11) && eq(p10, p01) && ((eq(p00, c1) && eq(p10, c2)) || (eq(p00, c2) && eq(p10, c1)));
+}
+// how many of the four 2x2 blocks beside the 2x2 at b (left, right, above, below) are checkers of its two colors
+float checker46(vec2 coord, vec2 b, vec3 c1, vec3 c2)
+{
+  return float(chk46(coord, b + vec2(-2.0, 0.0), c1, c2)) + float(chk46(coord, b + vec2(2.0, 0.0), c1, c2))
+       + float(chk46(coord, b + vec2(0.0, -2.0), c1, c2)) + float(chk46(coord, b + vec2(0.0, 2.0), c1, c2));
+}
+
 // xBRZ decides each point where 4 pixels meet (its preprocessing) from the 4x4 pixels around it. The
 // 2x2 at the point is f g / j k, with xBRZ's letters (the 4x4 without its corners a, d, m and p):
 //   -|b|c|-
@@ -277,6 +293,10 @@ ivec4 pointBlend(vec2 coord, vec2 b, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg
     if (k36.y > 0.5) { r.x = BLEND_NORMAL; r.w = BLEND_NORMAL; } else if (k36.x > 0.5) { r.x = BLEND_NONE; r.w = BLEND_NONE; }
     if (k36.x > 0.5) { r.y = BLEND_NORMAL; r.z = BLEND_NORMAL; } else if (k36.y > 0.5) { r.y = BLEND_NONE; r.z = BLEND_NONE; }
   }
+  // 46. a 2x2 checker of two colors inside a checker texture (three or more of the 2x2 blocks beside it are
+  // checkers of the same two colors) keeps its corners square, as in the rest of the texture
+  if (CRISP_RULES && XBRZ_MINC > 0.0 && eq(kf,kk) && eq(kg,kj) && neq(kf,kg) && checker46(coord, b, kf, kg) >= 3.0)
+    r = ivec4(BLEND_NONE);
   return r;
 }
 

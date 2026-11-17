@@ -125,6 +125,10 @@
 //     opposite neighbors match, like the stripes of a background), and otherwise the line is drawn at
 //     45 degrees in its own color. A single pixel keeps its shape instead of being pierced by a spike
 //     of a third color, like the wine pixel at a junction of four colors in Golden Sun's village.
+//     Where three stripes run side by side at 2:1 (E's color goes on along the line on one side and the
+//     paint color on the other), the line is drawn in its own color whether it is lighter or not, and even
+//     where rule 2 blocked the corner, so a 1-pixel stripe between two others runs on unbroken (a black
+//     stroke between magenta and blue, a dashed dark line on a slope).
 // 17. A line drawn on one side only: where xBRZ cuts a corner with a line between two lone pixels
 //     (neither goes on along the line and the pixel's own color does not repeat along it) but the
 //     pixel across the line draws the same line in the first pixel's color, and the three colors are
@@ -278,6 +282,9 @@
 //     P must not be a shade between the outline and the pixel.
 //     The other neighbor and the pixel past P may also be two shades of one outline, much closer to each
 //     other than to P, like a shoulder in Golden Sun's battles.
+//     Not where the other neighbor's color goes on at the pixel diagonal to E: it runs straight on there and
+//     does not turn, and the corner would be a loose tip of it (a blue dot on a black block). Where it runs
+//     straight on both ways and E is the corner of a solid block of its color, the corner stays square.
 // 38. A junction of four colors: where a side neighbor that the resolve pass keeps whole meets E and two
 //     more pixels at a point where all four colors differ by more than XBRZ_JUNC4, and the pixel diagonal to
 //     E cuts its corner there, E's corner there stays square too (unless it is a 2:1 line), so it does not
@@ -314,8 +321,16 @@
 //     Not a corner past which E's color goes on by a knight's move, where the pixel diagonal to E cuts its
 //     corner toward it: the stroke turns there as an outline (rule 37), so it leaves no tip of the other color
 //     (the flame of a fire horse).
+// 45. The end of a mid-tone stroke: where E ends a stroke 1 pixel wide, only one corner at the end is cut,
+//     with a 2:1 line, the three pixels around that corner are close tones of E (XBRZ_MINC to
+//     XBRZ_MATCH_EDGE from it, the two side ones two different tones) and the pixel on E's other side is 80
+//     or more away, the corner stays square, so the stroke ends square (a gray seam on Isaac's shoulder).
+// 46. A checkerboard keeps its squares: a 2x2 checker of two colors with three or more of the 2x2 blocks
+//     beside it (2 pixels left, right, above and below) checkers of the same two colors is not cut, so a
+//     checker texture stays square up to an outline that crosses it (xBRZ's 4x4 window turns the checker
+//     next to an outline into zigzags).
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 44 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 46 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -899,5 +914,32 @@ void main()
     res = diagStroke41(coord, res, loneE);
   // 44 (only where E has a side neighbor XBRZ_END44 or more away)
   if (max(max(sB, sD), max(sF, sH)) >= XBRZ_END44) res = strokeEnd44(coord, res);
+  // 45. the dark side of a mid-tone stroke's end: E ends a 1-pixel stroke (it goes on one way, within XBRZ_SAME_M), only
+  // one of the two corners at the end is cut, the three pixels around that corner are close darker-or-lighter tones of
+  // E (XBRZ_MINC to XBRZ_MATCH_EDGE from it) and the pixel on the other side of E is 80 or more away: the stroke is the
+  // edge of the far color, and the corner is left square so the stroke ends square (a gray seam on Isaac's shoulder)
+  {
+    vec4 cw = cut4(res) * FLAG(res, 4.0) * abs(FLAG(res, 16.0) - FLAG(res, 64.0));
+    vec4 cAny = cut4(res);
+    vec4 sq = vec4(0.0);
+    for (int k = 0; k < 4; k++)
+    {
+      vec2 u = k == 0 ? vec2(0.0, -1.0) : k == 1 ? vec2(1.0, 0.0) : k == 2 ? vec2(0.0, 1.0) : vec2(-1.0, 0.0);
+      if (dist255(nE, at3(u)) >= XBRZ_SAME_M) continue;
+      vec2 s = vec2(-u.y, u.x);
+      for (int j = 0; j < 2; j++)
+      {
+        vec2 sd = j == 0 ? s : -s;
+        vec2 c = sd - u;
+        vec4 m = vtxCorner(c);
+        if (dot(cw, m) < 0.5 || dot(cAny, vtxCorner(-sd - u)) > 0.5) continue;
+        float dS = dist255(nE, at3(sd)), dF = dist255(nE, at3(-u)), dG = dist255(nE, at3(c));
+        if (max(max(dS, dF), dG) >= XBRZ_MATCH_EDGE || min(dS, dF) < XBRZ_MINC || dist255(nE, at3(-sd)) < 80.0
+            || dist255(at3(sd), at3(-u)) < XBRZ_MINC) continue;
+        sq += m;
+      }
+    }
+    res *= 1.0 - min(sq, vec4(1.0));
+  }
   FRAG_OUT = res / 255.0;
 }

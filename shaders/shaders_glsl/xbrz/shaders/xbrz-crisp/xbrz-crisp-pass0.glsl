@@ -124,6 +124,10 @@
 //     opposite neighbors match, like the stripes of a background), and otherwise the line is drawn at
 //     45 degrees in its own color. A single pixel keeps its shape instead of being pierced by a spike
 //     of a third color, like the wine pixel at a junction of four colors in Golden Sun's village.
+//     Where three stripes run side by side at 2:1 (E's color goes on along the line on one side and the
+//     paint color on the other), the line is drawn in its own color whether it is lighter or not, and even
+//     where rule 2 blocked the corner, so a 1-pixel stripe between two others runs on unbroken (a black
+//     stroke between magenta and blue, a dashed dark line on a slope).
 // 17. A line drawn on one side only: where xBRZ cuts a corner with a line between two lone pixels
 //     (neither goes on along the line and the pixel's own color does not repeat along it) but the
 //     pixel across the line draws the same line in the first pixel's color, and the three colors are
@@ -277,6 +281,9 @@
 //     P must not be a shade between the outline and the pixel.
 //     The other neighbor and the pixel past P may also be two shades of one outline, much closer to each
 //     other than to P, like a shoulder in Golden Sun's battles.
+//     Not where the other neighbor's color goes on at the pixel diagonal to E: it runs straight on there and
+//     does not turn, and the corner would be a loose tip of it (a blue dot on a black block). Where it runs
+//     straight on both ways and E is the corner of a solid block of its color, the corner stays square.
 // 38. A junction of four colors: where a side neighbor that the resolve pass keeps whole meets E and two
 //     more pixels at a point where all four colors differ by more than XBRZ_JUNC4, and the pixel diagonal to
 //     E cuts its corner there, E's corner there stays square too (unless it is a 2:1 line), so it does not
@@ -313,8 +320,16 @@
 //     Not a corner past which E's color goes on by a knight's move, where the pixel diagonal to E cuts its
 //     corner toward it: the stroke turns there as an outline (rule 37), so it leaves no tip of the other color
 //     (the flame of a fire horse).
+// 45. The end of a mid-tone stroke: where E ends a stroke 1 pixel wide, only one corner at the end is cut,
+//     with a 2:1 line, the three pixels around that corner are close tones of E (XBRZ_MINC to
+//     XBRZ_MATCH_EDGE from it, the two side ones two different tones) and the pixel on E's other side is 80
+//     or more away, the corner stays square, so the stroke ends square (a gray seam on Isaac's shoulder).
+// 46. A checkerboard keeps its squares: a 2x2 checker of two colors with three or more of the 2x2 blocks
+//     beside it (2 pixels left, right, above and below) checkers of the same two colors is not cut, so a
+//     checker texture stays square up to an outline that crosses it (xBRZ's 4x4 window turns the checker
+//     next to an outline into zigzags).
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 44 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 46 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -1506,7 +1521,7 @@ vec4 lineInOtherColor(vec4 res, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, 
   vec4 sh = FLAG(r, 16.0), st = FLAG(r, 64.0), sec = FLAG(r, 8.0);
   // a shallow line is drawn along the first candidate's color and a steep one along the second's; the
   // corner is painted with the other candidate, which differs from it by more than XBRZ_TINT
-  vec4 tint = vec4(lessThan(r, vec4(128.0))) * vec4(greaterThan(BLEND(r), vec4(0.0))) * FLAG(r, 4.0) *
+  vec4 tint = vec4(greaterThan(BLEND(r), vec4(0.0))) * FLAG(r, 4.0) *
               abs(sh - st) * (sh * sec + st * (1.0 - sec)) * vec4(greaterThan(pair * 255.0, vec4(XBRZ_TINT)));
   // no corner can change: skip the rest (tint is only multiplied from here)
   if (dot(tint, vec4(1.0)) <= 0.0)
@@ -1520,6 +1535,20 @@ vec4 lineInOtherColor(vec4 res, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, 
   vec4 dE2 = vec4(dEB, dEF, dEH, dED);
   vec4 dP = mix(dE1, dE2, sec), dL = mix(dE2, dE1, sec);
   tint *= vec4(greaterThan(dP + pair, XBRZ_TINT_RAMP * dL));
+  // 16b. three stripes in a row: E's color goes on along the line on one side, the paint color on the other
+  // (a band of 2:1 stripes): the line is drawn in its own color, lighter or not
+  vec3 pX = st.x > 0.5 ? D : B, pY = st.y > 0.5 ? B : F, pZ = st.z > 0.5 ? F : H, pW = st.w > 0.5 ? H : D;
+  vec4 eOn = vec4(min(DistYCbCr(E, st.x > 0.5 ? N_m1_p2 : N_p2_m1), DistYCbCr(E, st.x > 0.5 ? N_p1_m2 : N_m2_p1)),
+                  min(DistYCbCr(E, st.y > 0.5 ? N_m2_m1 : N_p1_p2), DistYCbCr(E, st.y > 0.5 ? N_p2_p1 : N_m1_m2)),
+                  min(DistYCbCr(E, st.z > 0.5 ? N_p1_m2 : N_m2_p1), DistYCbCr(E, st.z > 0.5 ? N_m1_p2 : N_p2_m1)),
+                  min(DistYCbCr(E, st.w > 0.5 ? N_p2_p1 : N_m1_m2), DistYCbCr(E, st.w > 0.5 ? N_m2_m1 : N_p1_p2)));
+  vec4 pOn = vec4(DistYCbCr(pX, st.x > 0.5 ? N_p0_m2 : N_m2_p0), DistYCbCr(pY, st.y > 0.5 ? N_p2_p0 : N_p0_m2),
+                  DistYCbCr(pZ, st.z > 0.5 ? N_p0_p2 : N_p2_p0), DistYCbCr(pW, st.w > 0.5 ? N_m2_p0 : N_p0_p2));
+  vec4 stripes = vec4(lessThan(eOn, vec4(EQUAL_COLOR_TOLERANCE))) * vec4(lessThan(pOn, vec4(EQUAL_COLOR_TOLERANCE)));
+  stripes *= (DistYCbCr(D, F) < EQUAL_COLOR_TOLERANCE || DistYCbCr(B, H) < EQUAL_COLOR_TOLERANCE) ? 0.0 : 1.0;
+  // a corner blocked by rule 2 takes part only in a band of stripes
+  tint *= max(vec4(lessThan(r, vec4(128.0))), stripes);
+  vec4 tint0 = tint;
   // a line darker than E is drawn in its own color; a lighter one, or any line through an E that sits in a
   // straight line of one color (its two opposite neighbors match), leaves the corner square
   vec4 lumC1 = vec4(dot(D, lumaW), dot(B, lumaW), dot(F, lumaW), dot(H, lumaW));
@@ -1536,11 +1565,14 @@ vec4 lineInOtherColor(vec4 res, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, 
     dark *= vec4(greaterThanEqual(mix(lumC2, lumC1, st), vec4(XBRZ_TINT_DARK)));
     tint *= dark;
   }
+  dark = max(dark, stripes);
+  tint = max(tint, tint0 * stripes);
   vec4 flip = st - sec;  // +1: paint the second candidate, -1: the first
   // a lone E's line is drawn at 45 degrees (16); an outline keeps its shape and only takes its own color (18)
   vec4 shape = lone ? 16.0 * sh + 64.0 * st + 32.0 * FLAG(r, 32.0) : vec4(0.0);
   res -= tint * dark * (shape - 8.0 * flip);
   res *= 1.0 - tint * (1.0 - dark);
+  res -= 128.0 * vec4(greaterThanEqual(r, vec4(128.0))) * tint * dark;
   return res;
 }
 
