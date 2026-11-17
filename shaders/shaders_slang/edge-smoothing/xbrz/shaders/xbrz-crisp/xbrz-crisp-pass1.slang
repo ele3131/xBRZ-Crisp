@@ -333,8 +333,13 @@
 //     that is a close shade of E, while E's color goes on straight past its other neighbor and diagonally
 //     past the lone pixel, and the color on E's far side is XBRZ_FAR47 or more away, the corner stays square,
 //     so a shade at the bend of a stroke does not cut a notch into its straight side (a wizard's staff).
+// 48. One slope beside a lone shade: where E's corner is cut by a shallow or steep line whose long side runs
+//     along the edge E shares with the neighbor A whose color it takes, and A's corner at the other end of
+//     that edge is cut at 45 degrees in E's color, while A and E are close shades (under XBRZ_SHADE48) and one
+//     of them is a lone pixel in a stroke of the other's color, E's corner is cut at 45 degrees too: the two
+//     cuts lie on one straight diagonal, so a light pixel in a staff keeps its slant with no step in its middle.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 47 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 48 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.

@@ -333,8 +333,13 @@
 //     that is a close shade of E, while E's color goes on straight past its other neighbor and diagonally
 //     past the lone pixel, and the color on E's far side is XBRZ_FAR47 or more away, the corner stays square,
 //     so a shade at the bend of a stroke does not cut a notch into its straight side (a wizard's staff).
+// 48. One slope beside a lone shade: where E's corner is cut by a shallow or steep line whose long side runs
+//     along the edge E shares with the neighbor A whose color it takes, and A's corner at the other end of
+//     that edge is cut at 45 degrees in E's color, while A and E are close shades (under XBRZ_SHADE48) and one
+//     of them is a lone pixel in a stroke of the other's color, E's corner is cut at 45 degrees too: the two
+//     cuts lie on one straight diagonal, so a light pixel in a staff keeps its slant with no step in its middle.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 47 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 48 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -809,6 +814,7 @@ vec4 domes43(vec2 coord, vec4 lost)
 #define XBRZ_END44 100.0
 #define XBRZ_NOTCH47 60.0  // 47. a close shade of the stroke
 #define XBRZ_FAR47 80.0    // 47. the color on the stroke's other side
+#define XBRZ_SHADE48 60.0  // 48. A and E are close shades
 #define LUMA_W44 vec3(0.2627, 0.6780, 0.0593)
 float far44(vec3 E, float lE, vec2 o)
 {
@@ -976,6 +982,54 @@ void main()
       }
     }
     res *= 1.0 - min(sq, vec4(1.0));
+  }
+  // 48. one slope beside a lone shade: E's corner is cut along a shallow or steep line whose long side runs along
+  // the edge E shares with the side neighbor A whose color it takes, A and E are close shades (XBRZ_SAME_M to
+  // XBRZ_SHADE48 apart) and one of them is a lone pixel (none of its 8 neighbors has its color) with the other's
+  // color going on past it in line; where A's corner at the other end of that edge is cut at 45 degrees in E's
+  // color, E's corner is drawn at 45 degrees too, so the two cuts make one straight diagonal (no step in the
+  // middle of a light pixel on a wizard's staff)
+  {
+    vec4 cutM = cut4(res) * FLAG(res, 4.0), secM = FLAG(res, 8.0), shM = FLAG(res, 16.0), stM = FLAG(res, 64.0);
+    vec4 lngM = FLAG(res, 32.0) + FLAG(res, 128.0);
+    vec4 dropS = vec4(0.0), dropT = vec4(0.0);
+    for (int k = 0; k < 4; k++)
+    {
+      vec2 c = k == 0 ? vec2(-1.0, -1.0) : k == 1 ? vec2(1.0, -1.0) : k == 2 ? vec2(1.0, 1.0) : vec2(-1.0, 1.0);
+      vec4 m = vtxCorner(c);
+      float sh = dot(shM, m), st = dot(stM, m);
+      if (dot(cutM, m) < 0.5 || sh + st != 1.0 || dot(lngM, m) > 0.5) continue;
+      // a: the side whose color the corner takes; the long side of the line runs along the edge with A
+      // (shallow is horizontal for corners x and z, steep for y and w)
+      bool xz = k == 0 || k == 2;
+      bool paintV = xz ? dot(secM, m) > 0.5 : dot(secM, m) < 0.5;
+      bool hLong = xz ? sh > 0.5 : st > 0.5;
+      if (hLong != paintV) continue;
+      vec2 a = paintV ? vec2(0.0, c.y) : vec2(c.x, 0.0);
+      vec3 Ac = at3(a);
+      float dA = dist255(nE, Ac);
+      if (dA < XBRZ_SAME_M || dA >= XBRZ_SHADE48) continue;
+      // q: the lone pixel (E or A), whose stroke color goes on past it on its other side
+      bool hit = false;
+      for (int h = 0; h < 2; h++)
+      {
+        vec2 q = h == 0 ? vec2(0.0) : a;
+        vec3 Q = h == 0 ? nE : Ac, Sc = h == 0 ? Ac : nE;
+        if (dist255(Sc, at3(h == 0 ? -a : 2.0 * a)) >= XBRZ_SAME_M) continue;
+        bool lone = true;
+        for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++)
+          if ((i != 0 || j != 0) && dist255(Q, at3(q + vec2(float(i), float(j)))) < XBRZ_SAME_M) lone = false;
+        if (lone) hit = true;
+      }
+      if (!hit) continue;
+      // A's corner at the other end of the edge: cut at 45 degrees, in E's color
+      vec4 rA = INFO_AT(a.x, a.y), mA = vtxCorner(-c);
+      if (BLEND(dot(rA, mA)) < 0.5 || dot(FLAG(rA, 16.0) + FLAG(rA, 64.0), mA) > 0.5) continue;
+      bool pVA = xz ? dot(FLAG(rA, 8.0), mA) > 0.5 : dot(FLAG(rA, 8.0), mA) < 0.5;
+      if (pVA != paintV) continue;
+      if (sh > 0.5) dropS += m; else dropT += m;
+    }
+    res -= 16.0 * dropS + 64.0 * dropT;
   }
   FRAG_OUT = res / 255.0;
 }
