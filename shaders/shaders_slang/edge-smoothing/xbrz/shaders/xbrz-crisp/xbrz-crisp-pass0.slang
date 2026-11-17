@@ -110,7 +110,10 @@
 //     wood, shading) keep xBRZ's lines. The thin end also goes to a pixel that is a close shade of the step
 //     pixel (under XBRZ_THIN_TONE), in place of a cut of its own where it is a close shade of one neighbor of the
 //     corner, so an antialiased side of a stroke runs as straight as a side in one color (a highlight on
-//     red armor).
+//     red armor). Where the pixel past the line's far end is an area of a third color (clearly different from
+//     the pixel and both neighbors at the corner, with a side neighbor in its own color; a checker is no area),
+//     the corner keeps xBRZ's line, so a hood's light edge is not drawn up against the blue beside it (the boy
+//     in Final Fantasy Tactics Advance).
 // 15. Lone pixel and L-shape tests on strong edges: xBRZ draws no line through a pixel that already
 //     has another corner cut and differs from the pixel across it, so a lone pixel keeps its shape, and
 //     only rounds a corner, without a line, where one color wraps around it in an L. Where the pixel
@@ -174,7 +177,10 @@
 //     to E (XBRZ_JUNC_SHADE), they are one outline; and, for a nearly gray E, a shade of E's own gray along the
 //     cut counts as E's color going on, so an outline in two grays that steps by a darker joint bends as in xBRZ
 //     (the hood in a SNES portrait). Two shades of a color are not taken for one outline, so a belt and the
-//     cloth above it meet a buckle with square corners on both sides (Isaac in Golden Sun).
+//     cloth above it meet a buckle with square corners on both sides (Isaac in Golden Sun). Where the pixel is
+//     the middle step of a strong ramp between the area whose color the corner takes and the area on its other
+//     side, both going on past it in line, it is no junction, so a light cheek meets orange and brown round (the
+//     boy in Final Fantasy Tactics Advance); and the end of a 1-pixel diagonal stroke keeps its cut.
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
 //     straight line of three of its color along the pixel's side, where the corner's other neighbor
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
@@ -338,8 +344,18 @@
 //     that edge is cut at 45 degrees in E's color, while A and E are close shades (under XBRZ_SHADE48) and one
 //     of them is a lone pixel in a stroke of the other's color, E's corner is cut at 45 degrees too: the two
 //     cuts lie on one straight diagonal, so a light pixel in a staff keeps its slant with no step in its middle.
+// 49. A 1-pixel diagonal bar ends even: where E ends a stroke 1 pixel wide that goes on only diagonally (its
+//     color goes on at one diagonal, and E and the next pixel are XBRZ_BAR49 or more from all their other
+//     neighbors), lighter or darker than both pixels beside it and drawn joined, E's two side corners are cut at
+//     45 degrees in the color beside the stroke and its end corner at 45 degrees in the nearer neighbor, so the
+//     stroke is an even bar with a straight end (a light stroke on the boy's shoulder in Final Fantasy Tactics
+//     Advance). The end stays as it is where the stroke runs on into a region on its own side of the sides'
+//     shades (a dark stroke into an outline) or into one region that holds both pixels at the end corner (a dark
+//     line that meets a white branch), and no corner is cut where a neighbor already draws the stroke's color
+//     across it. A neighbor's corner at the point where a side cut paints that neighbor is not cut in the color
+//     from the stroke's other side, so that color does not wrap around the bar's end.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 48 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 49 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.

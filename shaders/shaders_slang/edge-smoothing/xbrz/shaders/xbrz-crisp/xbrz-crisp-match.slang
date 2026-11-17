@@ -110,7 +110,10 @@
 //     wood, shading) keep xBRZ's lines. The thin end also goes to a pixel that is a close shade of the step
 //     pixel (under XBRZ_THIN_TONE), in place of a cut of its own where it is a close shade of one neighbor of the
 //     corner, so an antialiased side of a stroke runs as straight as a side in one color (a highlight on
-//     red armor).
+//     red armor). Where the pixel past the line's far end is an area of a third color (clearly different from
+//     the pixel and both neighbors at the corner, with a side neighbor in its own color; a checker is no area),
+//     the corner keeps xBRZ's line, so a hood's light edge is not drawn up against the blue beside it (the boy
+//     in Final Fantasy Tactics Advance).
 // 15. Lone pixel and L-shape tests on strong edges: xBRZ draws no line through a pixel that already
 //     has another corner cut and differs from the pixel across it, so a lone pixel keeps its shape, and
 //     only rounds a corner, without a line, where one color wraps around it in an L. Where the pixel
@@ -174,7 +177,10 @@
 //     to E (XBRZ_JUNC_SHADE), they are one outline; and, for a nearly gray E, a shade of E's own gray along the
 //     cut counts as E's color going on, so an outline in two grays that steps by a darker joint bends as in xBRZ
 //     (the hood in a SNES portrait). Two shades of a color are not taken for one outline, so a belt and the
-//     cloth above it meet a buckle with square corners on both sides (Isaac in Golden Sun).
+//     cloth above it meet a buckle with square corners on both sides (Isaac in Golden Sun). Where the pixel is
+//     the middle step of a strong ramp between the area whose color the corner takes and the area on its other
+//     side, both going on past it in line, it is no junction, so a light cheek meets orange and brown round (the
+//     boy in Final Fantasy Tactics Advance); and the end of a 1-pixel diagonal stroke keeps its cut.
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
 //     straight line of three of its color along the pixel's side, where the corner's other neighbor
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
@@ -338,8 +344,18 @@
 //     that edge is cut at 45 degrees in E's color, while A and E are close shades (under XBRZ_SHADE48) and one
 //     of them is a lone pixel in a stroke of the other's color, E's corner is cut at 45 degrees too: the two
 //     cuts lie on one straight diagonal, so a light pixel in a staff keeps its slant with no step in its middle.
+// 49. A 1-pixel diagonal bar ends even: where E ends a stroke 1 pixel wide that goes on only diagonally (its
+//     color goes on at one diagonal, and E and the next pixel are XBRZ_BAR49 or more from all their other
+//     neighbors), lighter or darker than both pixels beside it and drawn joined, E's two side corners are cut at
+//     45 degrees in the color beside the stroke and its end corner at 45 degrees in the nearer neighbor, so the
+//     stroke is an even bar with a straight end (a light stroke on the boy's shoulder in Final Fantasy Tactics
+//     Advance). The end stays as it is where the stroke runs on into a region on its own side of the sides'
+//     shades (a dark stroke into an outline) or into one region that holds both pixels at the end corner (a dark
+//     line that meets a white branch), and no corner is cut where a neighbor already draws the stroke's color
+//     across it. A neighbor's corner at the point where a side cut paints that neighbor is not cut in the color
+//     from the stroke's other side, so that color does not wrap around the bar's end.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 48 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 11 to 49 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
 //#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
@@ -821,6 +837,50 @@ float far44(vec3 E, float lE, vec2 o)
   vec3 q = P(o.x, o.y);
   return float(dist255(E, q) >= XBRZ_END44 && dot(q, LUMA_W44) >= lE);
 }
+// ---- Rule 49: a 1-pixel diagonal bar ----
+#define XBRZ_BAR49 60.0  // 49. the bar stands this far from every pixel around it but the next one along it
+float barLuma(vec3 a) { return dot(a, vec3(0.2627, 0.6780, 0.0593)); }
+// the pixel at o ends a 1-pixel diagonal bar: its color goes on at one diagonal c only, the next pixel there is
+// 1 pixel wide too (it goes on only along the bar), the bar is lighter or darker than both pixels beside it,
+// and the bar is drawn joined at E's corner c (both side neighbors cut their corners there); returns c, or 0
+vec2 barEnd(vec2 coord, vec2 o)
+{
+  vec3 E = at3(o);
+  float n = 0.0;
+  vec2 c = vec2(0.0);
+  for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++)
+  {
+    vec2 d = vec2(float(i), float(j));
+    if ((i != 0 || j != 0) && dist255(E, at3(o + d)) < XBRZ_BAR49) { n += 1.0; c = d; }
+  }
+  if (n != 1.0 || c.x == 0.0 || c.y == 0.0 || dist255(E, at3(o + c)) >= XBRZ_SAME_M) return vec2(0.0);
+  for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++)
+  {
+    vec2 d = vec2(float(i), float(j));
+    if ((i != 0 || j != 0) && d != -c && d != c && dist255(E, at3(o + c + d)) < XBRZ_BAR49) return vec2(0.0);
+  }
+  if (dist255(E, at3(o + 2.0 * c)) < XBRZ_BAR49 && dist255(E, at3(o + 2.0 * c)) >= XBRZ_SAME_M) return vec2(0.0);
+  float lE = barLuma(E), l1 = barLuma(at3(o + vec2(c.x, 0.0))), l2 = barLuma(at3(o + vec2(0.0, c.y)));
+  if ((lE - l1) * (lE - l2) <= 0.0) return vec2(0.0);
+  if (BLEND(dot(INFO_AT(o.x + c.x, o.y), vtxCorner(vec2(-c.x, c.y)))) < 0.5 ||
+      BLEND(dot(INFO_AT(o.x, o.y + c.y), vtxCorner(vec2(c.x, -c.y)))) < 0.5) return vec2(0.0);
+  return c;
+}
+// the corner k of the pixel at q is cut in a color within XBRZ_SAME_M of C (from the resolve pass)
+bool cutsIn(vec2 coord, vec2 q, vec2 k, vec3 C)
+{
+  float w = dot(INFO_AT(q.x, q.y), vtxCorner(k));
+  if (BLEND(w) < 0.5) return false;
+  bool hz = k.x * k.y > 0.0, sec = FLAG(w, 8.0) > 0.5;
+  vec2 p = (hz == sec) ? vec2(0.0, k.y) : vec2(k.x, 0.0);
+  return dist255(at3(q + p), C) < XBRZ_SAME_M;
+}
+// a neighbor at E's corner k already draws E's color across that point (the bar goes on there)
+bool goesOn(vec2 coord, vec2 k, vec3 E)
+{
+  return cutsIn(coord, vec2(k.x, 0.0), vec2(-k.x, k.y), E) || cutsIn(coord, vec2(0.0, k.y), vec2(k.x, -k.y), E) ||
+         cutsIn(coord, k, -k, E);
+}
 vec4 strokeEnd44(vec2 coord, vec4 res)
 {
   vec4 s = vec4(sB, sF, sH, sD);
@@ -1030,6 +1090,53 @@ void main()
       if (sh > 0.5) dropS += m; else dropT += m;
     }
     res -= 16.0 * dropS + 64.0 * dropT;
+  }
+  // 49. a 1-pixel diagonal bar ends even: E's two side corners are cut at 45 degrees in the color beside the
+  // next pixel and its end corner at 45 degrees in the nearer neighbor; a neighbor's corner at the point where
+  // the bar's side cut paints that neighbor is not cut in the color from the bar's other side
+  {
+    vec3 E = nE;
+    vec2 c = barEnd(coord, vec2(0.0));
+    if (c != vec2(0.0))
+    {
+      vec2 s1 = vec2(c.x, -c.y), s2 = vec2(-c.x, c.y), e = -c;
+      vec4 m1 = vtxCorner(s1), m2 = vtxCorner(s2), me = vtxCorner(e);
+      // the bar runs into one region R that holds both pixels at its end corner: it ends as xBRZ draws it, with
+      // no side cuts (a dark line that meets a white branch keeps touching it)
+      vec3 R1 = at3(vec2(e.x, 0.0)), R2 = at3(vec2(0.0, e.y));
+      bool plug = dist255(R1, R2) < XBRZ_SAME_M && dist255(R1, at3(vec2(c.x, 0.0))) >= XBRZ_SAME_M &&
+                  dist255(R1, at3(vec2(0.0, c.y))) >= XBRZ_SAME_M;
+      if (!plug && BLEND(dot(res, m1)) < 0.5 && !goesOn(coord, s1, E)) res = mix(res, vec4(s1.x * s1.y > 0.0 ? 5.0 : 13.0), m1);
+      if (!plug && BLEND(dot(res, m2)) < 0.5 && !goesOn(coord, s2, E)) res = mix(res, vec4(s2.x * s2.y > 0.0 ? 13.0 : 5.0), m2);
+      // the end is cut unless the bar runs on into a region on its own side of the sides' shades (a dark bar into
+      // an outline), where it stays joined
+      float lE = barLuma(E), lA = barLuma(at3(e)), lS = 0.5 * (barLuma(at3(vec2(c.x, 0.0))) + barLuma(at3(vec2(0.0, c.y))));
+      if (FLAG(dot(res, me), 4.0) < 0.5 && (lA - lS) * (lE - lS) <= 0.0 && !goesOn(coord, e, E))
+      {
+        vec3 Nh = at3(vec2(e.x, 0.0)), Nv = at3(vec2(0.0, e.y));
+        bool hz = e.x * e.y > 0.0;
+        float dPri = dist255(E, hz ? Nh : Nv), dSec = dist255(E, hz ? Nv : Nh);
+        res = mix(res, vec4(dPri <= dSec ? 5.0 : 13.0), me);
+      }
+    }
+    for (int q = 0; q < 4; q++)
+    {
+      vec2 n = q == 0 ? vec2(0.0, -1.0) : q == 1 ? vec2(1.0, 0.0) : q == 2 ? vec2(0.0, 1.0) : vec2(-1.0, 0.0);
+      vec2 cn = barEnd(coord, n);
+      if (cn == vec2(0.0)) continue;
+      // the bar end's side corner that paints E: s1 paints its horizontal neighbor, s2 its vertical one
+      vec2 sE = -n == vec2(cn.x, 0.0) ? vec2(cn.x, -cn.y) : -n == vec2(0.0, cn.y) ? vec2(-cn.x, cn.y) : vec2(0.0);
+      if (sE == vec2(0.0)) continue;
+      vec2 k = sE + 2.0 * n;             // E's corner at that point
+      vec4 mk = vtxCorner(k);
+      float wk = dot(res, mk);
+      if (BLEND(wk) < 0.5) continue;
+      bool hz = k.x * k.y > 0.0, sec = FLAG(wk, 8.0) > 0.5;
+      vec2 pk = (hz == sec) ? vec2(0.0, k.y) : vec2(k.x, 0.0);
+      // only where that third color is the one on the bar's other side, wrapping around the bar's end
+      vec3 other = -n == vec2(cn.x, 0.0) ? at3(n + vec2(0.0, cn.y)) : at3(n + vec2(cn.x, 0.0));
+      if (dist255(at3(pk), at3(n)) >= XBRZ_SAME_M && dist255(at3(pk), other) < XBRZ_SAME_M) res = mix(res, vec4(0.0), mk);
+    }
   }
   FRAG_OUT = res / 255.0;
 }
