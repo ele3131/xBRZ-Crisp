@@ -20,7 +20,7 @@
 // decisions from those of its 4 points, the resolve pass, also once per game pixel, finishes the rules
 // that need the neighbours' decisions, and the output pass (pass 1) only draws the corners.
 //#crisp{
-// The match pass, between the resolve pass and pass 1, runs rules 26, 27 and 38 to 44.
+// The match pass, between the resolve pass and pass 1, runs rules 26, 27 and 38 to 49.
 //#crisp}
 //
 // 1. Minimum contrast (XBRZ_MINC): a corner whose two colors differ by less than XBRZ_MINC (x/255,
@@ -404,7 +404,6 @@
 // * of the file, but you are not obligated to do so. If you do not wish to   *
 // * do so, delete this exception statement from your version.                *
 // ****************************************************************************
-
 //#crisp{
 // Matching pass of xbrz-crisp (OpenGL / GLES): once per input pixel, between the resolve pass and pass 1 (rule 26)
 //#crisp}
@@ -425,15 +424,19 @@
 #endif
 
 #ifdef GL_ES
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#define COMPAT_PRECISION highp
+#else
+precision mediump float;
 #define COMPAT_PRECISION mediump
+#endif
 #else
 #define COMPAT_PRECISION
 #endif
 
 COMPAT_ATTRIBUTE vec4 VertexCoord;
-COMPAT_ATTRIBUTE vec4 COLOR;
 COMPAT_ATTRIBUTE vec4 TexCoord;
-COMPAT_VARYING vec4 COL0;
 COMPAT_VARYING vec4 TEX0;
 
 uniform mat4 MVPMatrix;
@@ -441,7 +444,7 @@ uniform mat4 MVPMatrix;
 void main()
 {
     gl_Position = MVPMatrix * VertexCoord;
-    TEX0.xy = TexCoord.xy * 1.0001;
+    TEX0.xy = TexCoord.xy;
 }
 
 #elif defined(FRAGMENT)
@@ -449,10 +452,11 @@ void main()
 #ifdef GL_ES
 #ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
+#define COMPAT_PRECISION highp
 #else
 precision mediump float;
-#endif
 #define COMPAT_PRECISION mediump
+#endif
 #else
 #define COMPAT_PRECISION
 #endif
@@ -509,93 +513,99 @@ vec2 ocoord, c0;
 #define FLAG(r, f) mod(floor((r) / (f)), 2.0)
 vec4 cut4(vec4 w) { return vec4(greaterThan(BLEND(w), vec4(0.0))); }
 
+// Rec. 2020 luma weights and chroma difference scales, shared across passes
+const vec3 LUMA_W = vec3(0.2627, 0.6780, 0.0593);
+const float SCALE_B = 0.5 / (1.0 - 0.0593);
+const float SCALE_R = 0.5 / (1.0 - 0.2627);
+
+float luma(vec3 c) { return dot(c, LUMA_W); }
+
+float distSqYCbCr(vec3 pixA, vec3 pixB)
+{
+  vec3 diff = pixA - pixB;
+  float Y = dot(diff, LUMA_W);
+  float Cb = SCALE_B * (diff.b - Y);
+  float Cr = SCALE_R * (diff.r - Y);
+  return (Y * Y) + (Cb * Cb) + (Cr * Cr);
+}
+
 float distYCbCr(vec3 pixA, vec3 pixB)
 {
-  const vec3 w = vec3(0.2627, 0.6780, 0.0593);
-  vec3 diff = pixA - pixB;
-  float Y = dot(diff, w);
-  float Cb = 0.5 / (1.0 - 0.0593) * (diff.b - Y);
-  float Cr = 0.5 / (1.0 - 0.2627) * (diff.r - Y);
-  return sqrt(Y * Y + Cb * Cb + Cr * Cr);
+  return sqrt(distSqYCbCr(pixA, pixB));
 }
-float dist255(vec3 a, vec3 b) { return distYCbCr(a, b) * 255.0; }
+
+float dist255(vec3 pixA, vec3 pixB)
+{
+  return distYCbCr(pixA, pixB) * 255.0;
+}
 #define XBRZ_SAME_M 15.0 // two pixels within this are one color (sameColor of the resolve pass); rule 41
 
 // ---- Rule 26: matching corners ----
-// A corner that pass 0 cuts and the resolve pass leaves square is cut again where the square corner
-// would leave a burr in a diagonal: in a clean line between two colors whose neighbors on both sides
-// along the cut are cut (a gap), or where the pixel diagonal to E across the corner's point cuts the
-// facing corner with a 45-degree line and E's corner had no line (a crossed cut).
 #define XBRZ_MATCH_EDGE 40.0  // E differs from one of the corner's two neighbors by more than this
 #define XBRZ_MATCH_WRAP 50.0  // gap: the corner's two neighbors are within this of each other
 #define XBRZ_MATCH_LINE 30.0  // gap: so are the same two pixels of both neighbors along the cut
 
-
 // ---- Rule 27: a bar at a vertex ----
-// Two arms of an outline of color C end a knight's move apart (L = G - u and UR = G + u - v) with the gap
-// pixel G between them, and T = G - v is the tip of a bar of another color that comes down to the vertex.
-// Where pass 0 cuts G's corner toward T and L along a line in T's color, T's color runs on past the
-// vertex as a spike: the corner becomes a plain 45-degree cut in T's color where G's color lies between
-// T's and C's (an in-between tone), and otherwise G's corners under T stay square, so the bar ends flat.
-#define XBRZ_VERTEX_TOL 15.0   // the arms' pixels have C within this
-#define XBRZ_VERTEX_EDGE 40.0  // G and T differ from C by more than this
-#define XBRZ_VERTEX_BAR 15.0   // the bar's pixels have T's color within this
+#define XBRZ_VERTEX_TOL 15.0  // the arms' pixels have C within this
+#define XBRZ_VERTEX_EDGE 40.0 // G and T differ from C by more than this
+#define XBRZ_VERTEX_BAR 15.0  // the bar's pixels have T's color within this
 
-// one-hot corner of direction c (x TL, y TR, z BR, w BL)
 // E and its 8 neighbors in the original (nA to nI, named as in pass 0), read once in main for all the rules
 // below, and E's distances to its 4 side neighbors (sB, sD, sF, sH, in x/255)
 vec3 nA, nB, nC, nD, nE, nF, nG, nH, nI;
 float sB, sD, sF, sH;
-// the pixel at offset o (each coordinate -1, 0 or 1) from the 3x3 read in main
-#define at3(o) P((o).x, (o).y)
+
+// the pixel at offset o: served from the 3x3 registers when within (-1..1, -1..1), texture P otherwise
+vec3 at3(vec2 o)
+{
+  if (abs(o.x) <= 1.0 && abs(o.y) <= 1.0)
+  {
+    if (o.y < -0.5) return o.x < -0.5 ? nA : (o.x > 0.5 ? nC : nB);
+    if (o.y >  0.5) return o.x < -0.5 ? nG : (o.x > 0.5 ? nI : nH);
+    return o.x < -0.5 ? nD : (o.x > 0.5 ? nF : nE);
+  }
+  return P(o.x, o.y);
+}
+
 vec4 vtxCorner(vec2 c) { return vec4(c.x < 0.0 && c.y < 0.0, c.x > 0.0 && c.y < 0.0, c.x > 0.0 && c.y > 0.0, c.x < 0.0 && c.y > 0.0); }
-// pass 1 takes the horizontal neighbor for corners x and z and the vertical one for y and w, or the other with flag 8
 bool vtxSec(vec2 c, vec2 n) { return (c.x * c.y > 0.0) != (abs(n.x) > 0.5); }
 bool vtxSame(vec3 a, vec3 b) { return dist255(a, b) <= XBRZ_VERTEX_TOL; }
-// the vertex around G = E: L and UR have color C and go on to G - 2u + v and G + 2u; G, T, G + u and
-// G - u - v are not C; T's color goes on for two more pixels away from G (a bar, not the 2-pixel round
-// end of a shape, which keeps xBRZ's curve)
+
 bool vtxAt(vec2 u, vec2 v)
 {
   vec3 C = at3(-u), G = nE, T = at3(-v);
-  return vtxSame(C, P(u.x - v.x, u.y - v.y)) && vtxSame(C, P(v.x - 2.0 * u.x, v.y - 2.0 * u.y)) && vtxSame(C, P(2.0 * u.x, 2.0 * u.y))
+  return vtxSame(C, at3(u - v)) && vtxSame(C, P(v.x - 2.0 * u.x, v.y - 2.0 * u.y)) && vtxSame(C, P(2.0 * u.x, 2.0 * u.y))
       && dist255(C, G) > XBRZ_VERTEX_EDGE && dist255(C, T) > XBRZ_VERTEX_EDGE
       && !vtxSame(C, at3(u)) && !vtxSame(C, at3(-u - v))
       && dist255(T, P(-2.0 * v.x, -2.0 * v.y)) <= XBRZ_VERTEX_BAR && dist255(T, P(-3.0 * v.x, -3.0 * v.y)) <= XBRZ_VERTEX_BAR;
 }
-// G's color lies between T's and C's, in color and in brightness
+
 bool vtxBetween(vec3 g, vec3 t, vec3 c)
 {
   vec3 tc = t - c;
   float k = dot(g - c, tc) / max(dot(tc, tc), 1e-6);
-  const vec3 wY = vec3(0.2627, 0.6780, 0.0593);
-  float yt = dot(t, wY), yc = dot(c, wY), kY = (dot(g, wY) - yc) / (abs(yt - yc) > 1e-3 ? yt - yc : 1e-3);
+  float yt = luma(t), yc = luma(c), kY = (luma(g) - yc) / (abs(yt - yc) > 1e-3 ? yt - yc : 1e-3);
   return k > 0.15 && k < 0.85 && dist255(c + k * tc, g) < 24.0 && abs(yt - yc) > 1e-3 && kY > 0.15 && kY < 0.85;
 }
+
 void vtx(vec2 u, vec2 v, inout vec4 res)
 {
   vec2 c = -u - v;
   vec4 m = vtxCorner(c);
   float w = dot(res, m);
-  // G's corner toward T and L is cut along a line in T's color
   if (BLEND(w) < 0.5 || FLAG(w, 4.0) < 0.5 || (FLAG(w, 8.0) > 0.5) != vtxSec(c, -v) || !vtxAt(u, v)) return;
   if (vtxBetween(nE, at3(-v), at3(-u)))
     res = mix(res, vec4(vtxSec(c, -v) ? 9.0 : 1.0), m);
   else
   {
     res = mix(res, vec4(0.0), m);
-    // G's other corner under T loses a cut in T's color too
     vec2 c2 = u - v;
     vec4 m2 = vtxCorner(c2);
     if ((FLAG(dot(res, m2), 8.0) > 0.5) == vtxSec(c2, -v)) res = mix(res, vec4(0.0), m2);
   }
 }
+
 // ---- Rule 38: a pixel kept whole at a junction of four colors ----
-// Where the resolve pass keeps a pixel whole (all four corners square, at least one of them cut by pass 0), and
-// that pixel and E meet with two more pixels at a point where all four colors clearly differ (all six pairs by
-// more than XBRZ_JUNC4) and the pixel diagonal to E cuts its corner at that point, E's corner there stays square
-// too (unless it is a shallow or steep line): it would paint the whole pixel's color, or end as a lone ramp of a
-// third color against the whole pixel's square side.
 #define XBRZ_JUNC4 30.0
 float keptWhole(vec2 coord, vec2 n)
 {
@@ -603,7 +613,7 @@ float keptWhole(vec2 coord, vec2 n)
   vec4 w0 = W0_AT(n.x, n.y);
   return float(dot(cut4(r), vec4(1.0)) < 0.5 && dot(cut4(w0) * FLAG(w0, 4.0), vec4(1.0)) > 0.5);
 }
-#define XBRZ_STEP38 0.5 // 38. two shades of one stroke: under this fraction as far apart as the other colors
+#define XBRZ_STEP38 0.5
 vec4 junc4(vec2 coord, vec4 res)
 {
   vec3 E = nE;
@@ -616,35 +626,26 @@ vec4 junc4(vec2 coord, vec4 res)
     vec4 m = vtxCorner(c);
     float w = dot(res, m);
     if (BLEND(w) < 0.5 || FLAG(w, 16.0) + FLAG(w, 64.0) > 0.5) continue;
-    // the blend color is the horizontal neighbor for x and z and the vertical one for y and w, or the other with flag 8
     bool horiz = (c.x * c.y > 0.0) != (FLAG(w, 8.0) > 0.5);
     vec2 p = horiz ? vec2(c.x, 0.0) : vec2(0.0, c.y), q = horiz ? vec2(0.0, c.y) : vec2(c.x, 0.0);
     float wp = p.x < -0.5 ? wD : p.x > 0.5 ? wF : p.y < -0.5 ? wB : wH;
     float wq = q.x < -0.5 ? wD : q.x > 0.5 ? wF : q.y < -0.5 ? wB : wH;
-    // E paints the whole pixel's color (wp), or E's cut ends against the whole pixel's square side (wq)
     if (wp + wq < 0.5) continue;
-    // the pixel diagonal to E cuts its corner at the same point too (the two cuts join P and Q across the point)
     if (BLEND(dot(INFO_AT(c.x, c.y), vtxCorner(-c))) < 0.5) continue;
-    // a junction of four different colors
     vec3 Pc = at3(p), Qc = at3(q), X = at3(c);
     float dPQ = dist255(Pc, Qc);
     float lo5 = min(min(min(dist255(E, Pc), dist255(E, Qc)), min(dist255(E, X), dist255(Pc, X))), dist255(Qc, X));
     if (min(lo5, dPQ) <= XBRZ_JUNC4) continue;
-    // unless the two colors the cut joins are two shades of one stroke (under XBRZ_STEP38 as far apart as the
-    // other colors), like the dark brown and brown outline of a hood: the cut is the stroke's bend, as in xBRZ
     if (dPQ < XBRZ_STEP38 * lo5) continue;
-    // or the two side neighbors' colors go on away from the point, one along each side
     if (dist255(P(0.0, 2.0 * c.y), at3(vec2(0.0, c.y))) < XBRZ_SAME_M && dist255(at3(vec2(c.x, -c.y)), at3(vec2(c.x, 0.0))) < XBRZ_SAME_M) continue;
     res = mix(res, vec4(0.0), m);
   }
   return res;
 }
+
 // ---- Rule 39: a pixel exactly between its two corner colors ----
-// Where E's two neighbors at a corner are equally far from E (an exact tie) and E lies on the straight
-// ramp between them (it is the middle step of an antialiasing ramp), neither color has a better claim to
-// the corner when the pixel across the corner is a fourth color, so it stays square and E touches both, like the light pink under the white of an eye.
-#define XBRZ_FAR39 100.0 // 39. a near tie needs the pixel across the corner this far from the three
-#define XBRZ_MID39 0.1   // 39. E's distances to the two neighbors differ by less than this fraction
+#define XBRZ_FAR39 100.0
+#define XBRZ_MID39 0.1
 vec4 tieRamp(vec4 res)
 {
   vec3 E = nE;
@@ -655,11 +656,9 @@ vec4 tieRamp(vec4 res)
     float wc = dot(res, m);
     if (BLEND(wc) < 0.5) continue;
     vec3 Nh = at3(vec2(c.x, 0.0)), Nv = at3(vec2(0.0, c.y));
-    float a = c.x > 0.0 ? sF : sD, b = c.y > 0.0 ? sH : sB;   // dist255(E, Nh) and dist255(E, Nv)
+    float a = c.x > 0.0 ? sF : sD, b = c.y > 0.0 ? sH : sB;
     vec3 X = at3(c);
     float xd = min(dist255(X, Nh), min(dist255(X, Nv), dist255(X, E)));
-    // an exact tie with a fourth color across the corner, or a near tie (within XBRZ_MID39) with a far one (a highlight)
-    // (a near tie only on a plain cut or a 45-degree line: a 2:1 line goes on through the neighbors)
     bool tie = abs(a - b) < 0.01 ? xd > 20.0 : abs(a - b) < XBRZ_MID39 * max(a, b) && xd > XBRZ_FAR39 && FLAG(wc, 16.0) + FLAG(wc, 64.0) < 0.5;
     if (tie && min(a, b) > 20.0 && dist255(Nh, Nv) > 1.8 * max(a, b)) res = mix(res, vec4(0.0), m);
   }
@@ -667,10 +666,6 @@ vec4 tieRamp(vec4 res)
 }
 
 // ---- Rule 40: a dot separates what is around it ----
-// A lone dot (a pixel that differs from all 8 of its neighbors by XBRZ_DOT40 or more, like a nostril between
-// skin tones) whose ring of neighbors holds a color K in two or more separate groups (the shadow under an eye
-// and a mouth, on two sides of the nose) keeps them apart: a corner next to the dot (or of the dot) that would
-// paint K stays square, so K is not drawn as one stroke through the dot.
 #define XBRZ_DOT40 40.0
 #define XBRZ_DOTK40 8.0
 bool dot40(vec2 n, vec3 K)
@@ -678,37 +673,33 @@ bool dot40(vec2 n, vec3 K)
   vec3 c = at3(n);
   if (dist255(c, K) < XBRZ_DOT40) return false;
   float g = 0.0;
-  const vec3 lw = vec3(0.2627, 0.6780, 0.0593);
-  float lk = dot(K, lw);
-  if (dot(c, lw) >= lk) return false; // the dot is darker than K, and K darker than the rest of the ring
-  // ring in circular order: TL T TR R BR B BL L
+  float lk = luma(K);
+  if (luma(c) >= lk) return false;
   vec2 r[8];
   r[0] = vec2(-1.0, -1.0); r[1] = vec2(0.0, -1.0); r[2] = vec2(1.0, -1.0); r[3] = vec2(1.0, 0.0);
   r[4] = vec2(1.0, 1.0); r[5] = vec2(0.0, 1.0); r[6] = vec2(-1.0, 1.0); r[7] = vec2(-1.0, 0.0);
-  vec3 q = P(n.x - 1.0, n.y);
-  float nc = 0.0; // distinct colors in the ring
+  vec3 q = at3(n + vec2(-1.0, 0.0));
+  float nc = 0.0;
   vec3 u0 = q, u1 = q, u2 = q;
   bool prev = dist255(q, K) < XBRZ_DOTK40;
   for (int i = 0; i < 8; i++)
   {
-    vec3 p = P(n.x + r[i].x, n.y + r[i].y);
-    if (dist255(c, p) < XBRZ_DOT40) return false; // not a lone dot
+    vec3 p = at3(n + r[i]);
+    if (dist255(c, p) < XBRZ_DOT40) return false;
     bool k = dist255(p, K) < XBRZ_DOTK40;
     bool fresh = nc < 0.5 || (dist255(p, u0) >= XBRZ_DOTK40 && (nc < 1.5 || dist255(p, u1) >= XBRZ_DOTK40) && (nc < 2.5 || dist255(p, u2) >= XBRZ_DOTK40));
     if (fresh) { if (nc > 2.5) return false; if (nc < 0.5) u0 = p; else if (nc < 1.5) u1 = p; else u2 = p; nc += 1.0; }
     if (k && !prev) g += 1.0;
-    if (!k && dot(p, lw) <= lk) return false; // K is not darker than the rest of the ring
+    if (!k && luma(p) <= lk) return false;
     prev = k;
   }
   return g > 1.5;
 }
 vec4 dots40(vec4 res)
 {
-  // E itself can only be the dot when it differs from all 8 neighbors by XBRZ_DOT40 or more (dot40 tests the
-  // same distances), so that is tested once here instead of in each corner's call
-  float r8 = min(min(min(dist255(nE, nA), dist255(nE, nB)), min(dist255(nE, nC), dist255(nE, nF))),
-                 min(min(dist255(nE, nI), dist255(nE, nH)), min(dist255(nE, nG), dist255(nE, nD))));
-  bool loneDot = r8 >= XBRZ_DOT40;
+  float r8Sq = min(min(min(distSqYCbCr(nE, nA), distSqYCbCr(nE, nB)), min(distSqYCbCr(nE, nC), distSqYCbCr(nE, nF))),
+                   min(min(distSqYCbCr(nE, nI), distSqYCbCr(nE, nH)), min(distSqYCbCr(nE, nG), distSqYCbCr(nE, nD))));
+  bool loneDot = sqrt(r8Sq) * 255.0 >= XBRZ_DOT40;
   for (int i = 0; i < 4; i++)
   {
     vec2 c = i == 0 ? vec2(-1.0, -1.0) : i == 1 ? vec2(1.0, -1.0) : i == 2 ? vec2(1.0, 1.0) : vec2(-1.0, 1.0);
@@ -719,56 +710,37 @@ vec4 dots40(vec4 res)
     vec3 K = horiz ? at3(vec2(c.x, 0.0)) : at3(vec2(0.0, c.y));
     vec2 o = horiz ? vec2(0.0, c.y) : vec2(c.x, 0.0);
     if (dot40(o, K)) res = mix(res, vec4(0.0), m);
-    else if (loneDot && dot40(vec2(0.0), K)) res = mix(res, vec4(3.0 + 8.0 * FLAG(w, 8.0)), m); // the dot itself: rule 23's small tip
+    else if (loneDot && dot40(vec2(0.0), K)) res = mix(res, vec4(3.0 + 8.0 * FLAG(w, 8.0)), m);
   }
   return res;
 }
+
 // ---- Rule 41: a 1-pixel diagonal stroke keeps an even edge ----
-// A 1-pixel diagonal stroke or stripe (its color goes on at diagonal neighbors and at none of the 4 side
-// neighbors) should keep straight edges. Two corners break them:
-// a) the stroke's outer corner, left square when the two side neighbors at it have different colors, so a dark
-//    stroke (darker than both) gets a square bump. That corner is cut along the stroke's edge and takes the side
-//    neighbor whose color is across the corner, like the black outline under the red at Harry's knees.
-// b) the two corners at the ends of the edge between E and a side neighbor N, drawn as 2:1 lines that lean
-//    opposite ways (one shallow, one steep), where one of them joins two pixels of a stripe of N's or E's color:
-//    they squeeze the stripe into a thin tip that runs down the edge (the olive stripe on the Golden Sun
-//    slime). The joining corner is drawn at 45 degrees and the stripe pixel's own corner as a plain cut.
 bool lone41(vec2 p)
 {
   vec3 c = at3(p);
-  return dist255(c, P(p.x - 1.0, p.y)) >= XBRZ_SAME_M && dist255(c, P(p.x + 1.0, p.y)) >= XBRZ_SAME_M
-      && dist255(c, P(p.x, p.y - 1.0)) >= XBRZ_SAME_M && dist255(c, P(p.x, p.y + 1.0)) >= XBRZ_SAME_M;
+  return dist255(c, at3(p + vec2(-1.0, 0.0))) >= XBRZ_SAME_M && dist255(c, at3(p + vec2(1.0, 0.0))) >= XBRZ_SAME_M
+      && dist255(c, at3(p + vec2(0.0, -1.0))) >= XBRZ_SAME_M && dist255(c, at3(p + vec2(0.0, 1.0))) >= XBRZ_SAME_M;
 }
-float lineType41(float w) { return FLAG(w, 4.0) * (FLAG(w, 16.0) - FLAG(w, 64.0)); } // +1 shallow only, -1 steep only
-// a) what to add to E's square corner c (0 to leave it): E is the stroke pixel, its other corner on the stroke's
-// side is already cut along it, and exactly one side neighbor at c has the color across the corner
-float edge41(vec2 c, vec4 r0, vec3 E, float w)
+float lineType41(float w) { return FLAG(w, 4.0) * (FLAG(w, 16.0) - FLAG(w, 64.0)); }
+float edge41(vec2 c, vec4 r0, vec3 E)
 {
   if (BLEND(dot(r0, vtxCorner(-c))) < 0.5) return 0.0;
   if (dist255(E, at3(vec2(c.x, -c.y))) >= XBRZ_SAME_M || dist255(E, at3(vec2(-c.x, c.y))) >= XBRZ_SAME_M) return 0.0;
   vec3 V = at3(vec2(0.0, c.y)), H = at3(vec2(c.x, 0.0)), X = at3(c);
   if (dist255(E, X) < XBRZ_SAME_M) return 0.0;
-  vec3 lw = vec3(0.299, 0.587, 0.114);
-  if (dot(E, lw) > min(dot(V, lw), dot(H, lw)) - 0.03) return 0.0;
+  if (luma(E) > min(luma(V), luma(H)) - 0.03) return 0.0;
   bool kH = dist255(X, H) < XBRZ_SAME_M, kV = dist255(X, V) < XBRZ_SAME_M;
   if (kH == kV) return 0.0;
-  // the other side neighbor O is not a parallel stroke (its color does not go on along the stroke) nor the end
-  // of a straight run of its color pointing at E (the cut would clip the run's end)
   vec2 o = kH ? vec2(0.0, c.y) : vec2(c.x, 0.0);
   vec3 O = at3(o);
   if (dist255(O, P(2.0 * o.x, 2.0 * o.y)) < XBRZ_SAME_M) return 0.0;
-  if (dist255(O, P(o.x + c.x, o.y - c.y)) < XBRZ_SAME_M || dist255(O, P(o.x - c.x, o.y + c.y)) < XBRZ_SAME_M) return 0.0;
+  if (dist255(O, at3(o + vec2(c.x, -c.y))) < XBRZ_SAME_M || dist255(O, at3(o + vec2(-c.x, c.y))) < XBRZ_SAME_M) return 0.0;
   bool sec = vtxSec(c, kH ? vec2(c.x, 0.0) : vec2(0.0, c.y));
-  return 1.0 + 4.0 + (sec ? 8.0 : 0.0) - mod(floor(w / 8.0), 2.0) * 8.0;
+  return sec ? 13.0 : 5.0;
 }
+
 // ---- 42. A step in a 45-degree edge ----
-// E's corner c is square while the same corner of both pixels along the edge, (c.x, -c.y) and (-c.x, c.y),
-// is cut along a 45-degree line (a line with neither or both of the 2:1 flags) in the color K of the far
-// side. E's two neighbors at c and the pixel across c are that one color K, which differs from E by
-// XBRZ_MINC or more, and E's other two neighbors are not K (E is the convex tip of its side): the edge is
-// a straight 45-degree line and E's square corner is a step in it (xBRZ leaves it square where a far pixel
-// of its ring tips a near tie the other way). E's corner is cut along the same 45-degree line.
-// the neighbor whose color fills corner c of a pixel with word w (as pass 1 takes it)
 vec2 paintOf(vec2 c, float w) { return ((c.x * c.y > 0.0) != (FLAG(w, 8.0) > 0.5)) ? vec2(c.x, 0.0) : vec2(0.0, c.y); }
 vec4 edgeStep42(vec2 coord, vec4 res)
 {
@@ -786,12 +758,13 @@ vec4 edgeStep42(vec2 coord, vec4 res)
       vec2 q = j == 0 ? vec2(c.x, -c.y) : vec2(-c.x, c.y);
       float wq = dot(INFO_AT(q.x, q.y), m);
       vec2 p = q + paintOf(c, wq);
-      if (BLEND(wq) < 0.5 || FLAG(wq, 4.0) < 0.5 || FLAG(wq, 16.0) != FLAG(wq, 64.0) || dist255(P(p.x, p.y), K) >= XBRZ_SAME_M) ok = 0.0;
+      if (BLEND(wq) < 0.5 || FLAG(wq, 4.0) < 0.5 || FLAG(wq, 16.0) != FLAG(wq, 64.0) || dist255(at3(p), K) >= XBRZ_SAME_M) ok = 0.0;
     }
-    res += m * 5.0 * ok;
+    if (ok > 0.5) res = mix(res, vec4(5.0 + 8.0 * FLAG(dot(res, m), 8.0)), m);
   }
   return res;
 }
+
 vec4 diagStroke41(vec2 coord, vec4 res, bool loneE)
 {
   vec3 E = nE;
@@ -801,8 +774,7 @@ vec4 diagStroke41(vec2 coord, vec4 res, bool loneE)
     vec2 c = i == 0 ? vec2(-1.0, -1.0) : i == 1 ? vec2(1.0, -1.0) : i == 2 ? vec2(1.0, 1.0) : vec2(-1.0, 1.0);
     vec4 m = vtxCorner(c);
     float w = dot(r0, m);
-    if (BLEND(w) < 0.5 && loneE) { res += m * edge41(c, r0, E, w); w = dot(res, m); }
-    // b) a pinch: c and the facing corner of a side neighbor N are 2:1 lines leaning opposite ways
+    if (BLEND(w) < 0.5 && loneE) { float e41 = edge41(c, r0, E); if (e41 > 0.0) { res = mix(res, vec4(e41), m); w = e41; } }
     float t = lineType41(w);
     if (BLEND(w) < 0.5 || abs(t) < 0.5) continue;
     for (int j = 0; j < 2; j++)
@@ -810,24 +782,19 @@ vec4 diagStroke41(vec2 coord, vec4 res, bool loneE)
       vec2 n = j == 0 ? vec2(c.x, 0.0) : vec2(0.0, c.y);
       float wn = dot(INFO_AT(n.x, n.y), vtxCorner(-c));
       if (BLEND(wn) < 0.5 || lineType41(wn) != -t) continue;
-      vec2 o = c - n;                       // E's other neighbor at corner c
+      vec2 o = c - n;
       vec3 N = at3(n);
-      // E's corner joins N to O, two pixels of a 1-pixel diagonal stripe of N's color
       if (!loneE && dist255(N, at3(o)) < XBRZ_SAME_M && lone41(n) && lone41(o))
       { res -= m * (16.0 * FLAG(w, 16.0) + 64.0 * FLAG(w, 64.0)); break; }
-      // E is the stripe pixel and N's corner joins E to the next stripe pixel (diagonal to E across N's corner)
-      vec2 q = -c + c * abs(n); // from N, its other neighbor at its corner -c
+      vec2 q = -c + c * abs(n);
       if (loneE && dist255(E, at3(n + q)) < XBRZ_SAME_M && lone41(n + q))
       { res -= m * (4.0 + 16.0 * FLAG(w, 16.0) + 64.0 * FLAG(w, 64.0)); break; }
     }
   }
   return res;
 }
+
 // ---- Rule 43: a dome ----
-// Corner c of E, whose pass 0 cut the resolve pass took back (lost), is cut again when E and its
-// neighbor along the run (-s) are one color, a cap color U runs over both and past each end (v, c, v - s, v - 2s),
-// the run ends on both sides in one color S (s and -2s), E, S and U are XBRZ_MINC or more apart, and the mirror
-// corner of the run's other pixel is cut: the cap of a 2-pixel run ends round on both sides.
 float dome43(vec2 coord, vec2 c, vec2 s, vec2 v)
 {
   if (dist255(at3(-s), nE) >= XBRZ_SAME_M) return 0.0;
@@ -841,7 +808,6 @@ float dome43(vec2 coord, vec2 c, vec2 s, vec2 v)
 vec4 domes43(vec2 coord, vec4 lost)
 {
   vec4 d = vec4(0.0);
-  // j: the corner (j / 2) and the run's direction (even: along x, odd: along y)
   for (int j = 0; j < 8; j++)
   {
     int i = j / 2;
@@ -854,28 +820,20 @@ vec4 domes43(vec2 coord, vec4 lost)
   }
   return d;
 }
+
 // ---- Rule 44: the end of a dark 1-pixel stroke ----
-// Where E ends a stroke 1 pixel wide (one side neighbor, the next pixel of the stroke, within XBRZ_SAME_M of E) and
-// the 7 pixels around that end (the one in front, the two beside E, the two diagonal in front and the two beside
-// the next pixel) are all XBRZ_END44 or more from E and lighter than it, E's two corners at the end that pass 0
-// left square are cut as plain corners, so the end of a dark mark is round like its other end (a pupil under a
-// white eyelid, the end of a font's shadow).
 #define XBRZ_END44 100.0
-#define XBRZ_NOTCH47 60.0  // 47. a close shade of the stroke
-#define XBRZ_FAR47 80.0    // 47. the color on the stroke's other side
-#define XBRZ_SHADE48 60.0  // 48. A and E are close shades
-#define LUMA_W44 vec3(0.2627, 0.6780, 0.0593)
+#define XBRZ_NOTCH47 60.0
+#define XBRZ_FAR47 80.0
+#define XBRZ_SHADE48 60.0
 float far44(vec3 E, float lE, vec2 o)
 {
-  vec3 q = P(o.x, o.y);
-  return float(dist255(E, q) >= XBRZ_END44 && dot(q, LUMA_W44) >= lE);
+  vec3 q = at3(o);
+  return float(dist255(E, q) >= XBRZ_END44 && luma(q) >= lE);
 }
+
 // ---- Rule 49: a 1-pixel diagonal bar ----
-#define XBRZ_BAR49 60.0  // 49. the bar stands this far from every pixel around it but the next one along it
-float barLuma(vec3 a) { return dot(a, vec3(0.2627, 0.6780, 0.0593)); }
-// the pixel at o ends a 1-pixel diagonal bar: its color goes on at one diagonal c only, the next pixel there is
-// 1 pixel wide too (it goes on only along the bar), the bar is lighter or darker than both pixels beside it,
-// and the bar is drawn joined at E's corner c (both side neighbors cut their corners there); returns c, or 0
+#define XBRZ_BAR49 60.0
 vec2 barEnd(vec2 coord, vec2 o)
 {
   vec3 E = at3(o);
@@ -892,14 +850,15 @@ vec2 barEnd(vec2 coord, vec2 o)
     vec2 d = vec2(float(i), float(j));
     if ((i != 0 || j != 0) && d != -c && d != c && dist255(E, at3(o + c + d)) < XBRZ_BAR49) return vec2(0.0);
   }
-  if (dist255(E, at3(o + 2.0 * c)) < XBRZ_BAR49 && dist255(E, at3(o + 2.0 * c)) >= XBRZ_SAME_M) return vec2(0.0);
-  float lE = barLuma(E), l1 = barLuma(at3(o + vec2(c.x, 0.0))), l2 = barLuma(at3(o + vec2(0.0, c.y)));
+  float d2 = dist255(E, at3(o + 2.0 * c));
+  if (d2 < XBRZ_BAR49 && d2 >= XBRZ_SAME_M) return vec2(0.0);
+  float lE = luma(E), l1 = luma(at3(o + vec2(c.x, 0.0))), l2 = luma(at3(o + vec2(0.0, c.y)));
   if ((lE - l1) * (lE - l2) <= 0.0) return vec2(0.0);
   if (BLEND(dot(INFO_AT(o.x + c.x, o.y), vtxCorner(vec2(-c.x, c.y)))) < 0.5 ||
       BLEND(dot(INFO_AT(o.x, o.y + c.y), vtxCorner(vec2(c.x, -c.y)))) < 0.5) return vec2(0.0);
   return c;
 }
-// the corner k of the pixel at q is cut in a color within XBRZ_SAME_M of C (from the resolve pass)
+
 bool cutsIn(vec2 coord, vec2 q, vec2 k, vec3 C)
 {
   float w = dot(INFO_AT(q.x, q.y), vtxCorner(k));
@@ -908,22 +867,22 @@ bool cutsIn(vec2 coord, vec2 q, vec2 k, vec3 C)
   vec2 p = (hz == sec) ? vec2(0.0, k.y) : vec2(k.x, 0.0);
   return dist255(at3(q + p), C) < XBRZ_SAME_M;
 }
-// a neighbor at E's corner k already draws E's color across that point (the bar goes on there)
+
 bool goesOn(vec2 coord, vec2 k, vec3 E)
 {
   return cutsIn(coord, vec2(k.x, 0.0), vec2(-k.x, k.y), E) || cutsIn(coord, vec2(0.0, k.y), vec2(k.x, -k.y), E) ||
          cutsIn(coord, k, -k, E);
 }
+
 vec4 strokeEnd44(vec2 coord, vec4 res)
 {
   vec4 s = vec4(sB, sF, sH, sD);
-  // one side neighbor goes on with E and the other three are far: E is the end of a 1-pixel stroke
   if (dot(vec4(lessThan(s, vec4(XBRZ_SAME_M))), vec4(1.0)) != 1.0 || dot(vec4(greaterThanEqual(s, vec4(XBRZ_END44))), vec4(1.0)) != 3.0)
     return res;
   vec2 v = sB < XBRZ_SAME_M ? vec2(0.0, -1.0) : sF < XBRZ_SAME_M ? vec2(1.0, 0.0) : sH < XBRZ_SAME_M ? vec2(0.0, 1.0) : vec2(-1.0, 0.0);
   vec2 u = vec2(v.y, v.x);
   vec3 E = nE;
-  float lE = dot(E, LUMA_W44);
+  float lE = luma(E);
   if (far44(E, lE, -v) * far44(E, lE, u) * far44(E, lE, -u) * far44(E, lE, v + u) * far44(E, lE, v - u) *
       far44(E, lE, u - v) * far44(E, lE, -u - v) < 0.5)
     return res;
@@ -932,13 +891,10 @@ vec4 strokeEnd44(vec2 coord, vec4 res)
     vec2 c = k == 0 ? u - v : -u - v;
     vec4 m = vtxCorner(c);
     if (BLEND(dot(res, m)) > 0.5) continue;
-    // the stroke turns at this corner: E's color goes on by a knight's move past it, and the pixel diagonal to E there
-    // cuts its corner toward that pixel, so the outline runs on along the cut (as rule 37 draws it)
     vec2 k1 = c - v, k2 = 2.0 * c + v;
     vec4 wG = INFO_AT(c.x, c.y);
-    if ((dist255(E, P(k1.x, k1.y)) < XBRZ_SAME_M && BLEND(dot(wG, vtxCorner(-c - 2.0 * v))) > 0.5)
-        || (dist255(E, P(k2.x, k2.y)) < XBRZ_SAME_M && BLEND(dot(wG, vtxCorner(c + 2.0 * v))) > 0.5)) continue;
-    // a plain cut in the nearer of the corner's two neighbors (pass 1 takes the horizontal one for x and z)
+    if ((dist255(E, at3(k1)) < XBRZ_SAME_M && BLEND(dot(wG, vtxCorner(-c - 2.0 * v))) > 0.5)
+        || (dist255(E, at3(k2)) < XBRZ_SAME_M && BLEND(dot(wG, vtxCorner(c + 2.0 * v))) > 0.5)) continue;
     vec3 Nh = at3(vec2(c.x, 0.0)), Nv = at3(vec2(0.0, c.y));
     bool hz = c.x * c.y > 0.0;
     float dPri = dist255(E, hz ? Nh : Nv), dSec = dist255(E, hz ? Nv : Nh);
@@ -946,6 +902,7 @@ vec4 strokeEnd44(vec2 coord, vec4 res)
   }
   return res;
 }
+
 void main()
 {
   vec2 pos = fract(vTexCoord * SRC_SIZE.xy) - vec2(0.5, 0.5);
@@ -953,27 +910,38 @@ void main()
   ocoord = coord * SRC_SIZE.xy * ORIG_SIZE.zw;
   c0 = coord * SRC_SIZE.xy * P0_SIZE.zw;
   vec4 res = INFO_AT(0.0, 0.0);
-  // every rule of this pass is off with XBRZ_MINC 0
   if (XBRZ_MINC <= 0.0)
   {
     FRAG_OUT = res / 255.0;
     return;
   }
   vec4 w0 = W0_AT(0.0, 0.0);
-  nA = P(-1.0, -1.0); nB = P(0.0, -1.0); nC = P(1.0, -1.0);
+  nB = P(0.0, -1.0);
   nD = P(-1.0, 0.0);  nE = P(0.0, 0.0);  nF = P(1.0, 0.0);
-  nG = P(-1.0, 1.0);  nH = P(0.0, 1.0);  nI = P(1.0, 1.0);
+  nH = P(0.0, 1.0);
   sB = dist255(nE, nB); sD = dist255(nE, nD); sF = dist255(nE, nF); sH = dist255(nE, nH);
+
+  // Fast path: when neither pass 0 nor resolve cuts any corner and E lacks contrast for rules 42, 44 and 49a,
+  // no rule in this pass can change res
+  float minSide = min(min(sB, sD), min(sF, sH));
+  float maxSide = max(max(sB, sD), max(sF, sH));
+  if (dot(cut4(res) + cut4(w0), vec4(1.0)) == 0.0 && max(sD, sF) < XBRZ_MINC && maxSide < XBRZ_END44 && minSide < XBRZ_BAR49)
+  {
+    FRAG_OUT = res / 255.0;
+    return;
+  }
+
+  nA = P(-1.0, -1.0); nC = P(1.0, -1.0);
+  nG = P(-1.0, 1.0);  nI = P(1.0, 1.0);
+
   vec4 lost = cut4(w0) * (1.0 - cut4(res));
   if (dot(lost, vec4(1.0)) > 0.0)
   {
     vec4 rA = INFO_AT(-1.0, -1.0), rC = INFO_AT(1.0, -1.0), rI = INFO_AT(1.0, 1.0), rG = INFO_AT(-1.0, 1.0);
-    vec3 E = nE, B = nB, D = nD, F = nF, H = nH;
+    vec3 B = nB, D = nD, F = nF, H = nH;
     float dB = sB, dD = sD, dF = sF, dH = sH;
     vec4 strong = vec4(greaterThan(max(vec4(dB, dB, dF, dH), vec4(dD, dF, dH, dD)), vec4(XBRZ_MATCH_EDGE)));
 
-    // gap: the same corner of both neighbors along the cut is cut, E's corner nearly wraps (its two
-    // neighbors are close) and so do the neighbors' corners, so the cut is one boundary between two colors
     vec4 gap = vec4(cut4(rC).x * cut4(rG).x, cut4(rI).y * cut4(rA).y, cut4(rC).z * cut4(rG).z, cut4(rI).w * cut4(rA).w);
     vec4 wrapE = vec4(lessThan(vec4(dist255(B, D), dist255(B, F), dist255(F, H), dist255(H, D)), vec4(XBRZ_MATCH_WRAP)));
     float wCx = dist255(P(1.0, -2.0), B), wGx = dist255(D, P(-2.0, 1.0));
@@ -982,25 +950,18 @@ void main()
     float wAw = dist255(D, P(-2.0, -1.0)), wIw = dist255(P(1.0, 2.0), H);
     vec4 wrapN = vec4(lessThan(vec4(max(wCx, wGx), max(wAy, wIy), max(wCz, wGz), max(wAw, wIw)), vec4(XBRZ_MATCH_LINE)));
 
-    // crossed cut: the pixel diagonal to E across the corner's point cuts the facing corner with a
-    // 45-degree line (shallow and steep), and pass 0 drew E's corner with no line
     vec4 part = vec4(cut4(rA).z, cut4(rC).w, cut4(rI).x, cut4(rG).y);
     vec4 l45 = vec4(FLAG(rA, 16.0).z * FLAG(rA, 64.0).z, FLAG(rC, 16.0).w * FLAG(rC, 64.0).w,
                     FLAG(rI, 16.0).x * FLAG(rI, 64.0).x, FLAG(rG, 16.0).y * FLAG(rG, 64.0).y);
 
     vec4 fix = lost * strong * max(gap * wrapE * wrapN, part * l45 * (1.0 - FLAG(w0, 4.0)));
-    // 43 (a corner of a 2-pixel run under a cap)
-    // (only where both side neighbors at the corner are XBRZ_MINC or more from E,
     vec4 far43 = vec4(greaterThanEqual(min(vec4(dD, dF, dF, dD), vec4(dB, dB, dH, dH)), vec4(XBRZ_MINC)));
-    // and the run goes on to the other side neighbor along x or along y (x: F or H, y: D or H, z: D or B, w: F or B)
     far43 *= vec4(lessThan(min(vec4(dF, dD, dD, dF), vec4(dH, dH, dB, dB)), vec4(XBRZ_SAME_M)));
     if (dot(lost, far43) > 0.0) fix = max(fix, domes43(coord, lost * far43));
-    // pass 0's corner back, in the resolve's word (cut, line, second color, shallow, steep)
     vec4 back = 1.0 + 4.0 * FLAG(w0, 4.0) + 8.0 * FLAG(w0, 8.0) + 16.0 * FLAG(w0, 16.0) + 64.0 * FLAG(w0, 64.0);
     res = mix(res, back, fix);
   }
-  // rule 27: a bar at a vertex ends flat (or in a plain cut where the gap pixel is an in-between tone)
-  // (only a corner cut along a line can be the spike)
+  // rule 27
   if (dot(cut4(res) * FLAG(res, 4.0), vec4(1.0)) > 0.0)
   {
     vtx(vec2( 1.0, 0.0), vec2(0.0,  1.0), res); vtx(vec2(-1.0, 0.0), vec2(0.0,  1.0), res);
@@ -1008,171 +969,158 @@ void main()
     vtx(vec2(0.0,  1.0), vec2( 1.0, 0.0), res); vtx(vec2(0.0, -1.0), vec2( 1.0, 0.0), res);
     vtx(vec2(0.0,  1.0), vec2(-1.0, 0.0), res); vtx(vec2(0.0, -1.0), vec2(-1.0, 0.0), res);
   }
-  // 42 (only where E differs from a horizontal neighbor by XBRZ_MINC or more, which the rule needs)
+  // 42
   if (max(sD, sF) >= XBRZ_MINC) res = edgeStep42(coord, res);
-  // rules 38 to 41 (38 a junction of four colors, 39 a tie on a ramp, 40 a dot that separates, 41 a 1-pixel
-  // diagonal stroke's edge)
+  // rules 38 to 41
   if (dot(cut4(res), vec4(1.0)) > 0.0) res = junc4(coord, res);
   if (dot(cut4(res), vec4(1.0)) > 0.0) res = tieRamp(res);
   if (dot(cut4(res), vec4(1.0)) > 0.0) res = dots40(res);
-  // 41 (a: E is a 1-pixel stroke, apart from its 4 side neighbors; b: a corner drawn as a 2:1 line)
-  bool loneE = min(min(sB, sD), min(sF, sH)) >= XBRZ_SAME_M;
-  if (loneE || dot(cut4(res) * FLAG(res, 4.0) * abs(FLAG(res, 16.0) - FLAG(res, 64.0)), vec4(1.0)) > 0.0)
+  bool loneE = minSide >= XBRZ_SAME_M;
+  if (dot(cut4(res), vec4(1.0)) > 0.0 && (loneE || dot(cut4(res) * FLAG(res, 4.0) * abs(FLAG(res, 16.0) - FLAG(res, 64.0)), vec4(1.0)) > 0.0))
     res = diagStroke41(coord, res, loneE);
-  // 44 (only where E has a side neighbor XBRZ_END44 or more away)
-  if (max(max(sB, sD), max(sF, sH)) >= XBRZ_END44) res = strokeEnd44(coord, res);
-  // 47. a notch in the straight side of a stroke in shades: E's corner is cut in the color of a side neighbor A
-  // that is a lone pixel (none of its 8 neighbors has its color) and a close shade of E (under XBRZ_NOTCH47),
-  // while the other side neighbor B is a close shade too (no farther from E than 1.2 times A) and E's color goes
-  // on exactly past B and diagonally past A, the pixel on E's other side from A is far (XBRZ_FAR47 or more) and
-  // B's corner at the point is not cut: the stroke runs straight there, so the corner stays square (the ochre
-  // tip on a wizard's yellow staff)
+  // 44
+  if (maxSide >= XBRZ_END44) res = strokeEnd44(coord, res);
+  // 47, 45, 48 (all require at least one cut corner in res)
+  if (dot(cut4(res), vec4(1.0)) > 0.0)
   {
-    vec4 cutM = cut4(res), secM = FLAG(res, 8.0), sqM = vec4(0.0);
-    for (int k = 0; k < 4; k++)
+    // 47. a notch in the straight side of a stroke in shades
     {
-      vec2 c = k == 0 ? vec2(-1.0, -1.0) : k == 1 ? vec2(1.0, -1.0) : k == 2 ? vec2(1.0, 1.0) : vec2(-1.0, 1.0);
-      vec4 m = vtxCorner(c);
-      if (dot(cutM, m) < 0.5) continue;
-      // a: the side whose color the corner takes, b: the other side
-      bool s1 = dot(secM, m) > 0.5;
-      bool paintV = (k == 0 || k == 2) ? s1 : !s1;
-      vec2 a = paintV ? vec2(0.0, c.y) : vec2(c.x, 0.0), b = paintV ? vec2(c.x, 0.0) : vec2(0.0, c.y);
-      vec3 Ac = at3(a);
-      float dB = dist255(nE, at3(b)), dA = dist255(nE, Ac);
-      if (dA >= XBRZ_NOTCH47 || dB >= XBRZ_NOTCH47 || dB >= 1.2 * dA || dist255(nE, at3(-a)) < XBRZ_FAR47
-          || dist255(nE, at3(2.0 * b)) >= XBRZ_SAME_M || dist255(nE, at3(a - b)) >= XBRZ_SAME_M || dist255(Ac, at3(c)) < XBRZ_SAME_M)
-        continue;
-      bool loneA = true;
-      for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++)
-        if ((i != 0 || j != 0) && dist255(Ac, at3(a + vec2(float(i), float(j)))) < XBRZ_SAME_M) loneA = false;
-      if (!loneA || BLEND(dot(INFO_AT(b.x, b.y), vtxCorner(c - 2.0 * b))) > 0.5) continue;
-      sqM += m;
-    }
-    res *= 1.0 - min(sqM, vec4(1.0));
-  }
-  // 45. the dark side of a mid-tone stroke's end: E ends a 1-pixel stroke (it goes on one way, within XBRZ_SAME_M), only
-  // one of the two corners at the end is cut, the three pixels around that corner are close darker-or-lighter tones of
-  // E (XBRZ_MINC to XBRZ_MATCH_EDGE from it) and the pixel on the other side of E is 80 or more away: the stroke is the
-  // edge of the far color, and the corner is left square so the stroke ends square (a gray seam on Isaac's shoulder)
-  {
-    vec4 cw = cut4(res) * FLAG(res, 4.0) * abs(FLAG(res, 16.0) - FLAG(res, 64.0));
-    vec4 cAny = cut4(res);
-    vec4 sq = vec4(0.0);
-    for (int k = 0; k < 4; k++)
-    {
-      vec2 u = k == 0 ? vec2(0.0, -1.0) : k == 1 ? vec2(1.0, 0.0) : k == 2 ? vec2(0.0, 1.0) : vec2(-1.0, 0.0);
-      if (dist255(nE, at3(u)) >= XBRZ_SAME_M) continue;
-      vec2 s = vec2(-u.y, u.x);
-      for (int j = 0; j < 2; j++)
+      vec4 cutM = cut4(res), secM = FLAG(res, 8.0), sqM = vec4(0.0);
+      for (int k = 0; k < 4; k++)
       {
-        vec2 sd = j == 0 ? s : -s;
-        vec2 c = sd - u;
+        vec2 c = k == 0 ? vec2(-1.0, -1.0) : k == 1 ? vec2(1.0, -1.0) : k == 2 ? vec2(1.0, 1.0) : vec2(-1.0, 1.0);
         vec4 m = vtxCorner(c);
-        if (dot(cw, m) < 0.5 || dot(cAny, vtxCorner(-sd - u)) > 0.5) continue;
-        float dS = dist255(nE, at3(sd)), dF = dist255(nE, at3(-u)), dG = dist255(nE, at3(c));
-        if (max(max(dS, dF), dG) >= XBRZ_MATCH_EDGE || min(dS, dF) < XBRZ_MINC || dist255(nE, at3(-sd)) < 80.0
-            || dist255(at3(sd), at3(-u)) < XBRZ_MINC) continue;
-        sq += m;
-      }
-    }
-    res *= 1.0 - min(sq, vec4(1.0));
-  }
-  // 48. one slope beside a lone shade: E's corner is cut along a shallow or steep line whose long side runs along
-  // the edge E shares with the side neighbor A whose color it takes, A and E are close shades (XBRZ_SAME_M to
-  // XBRZ_SHADE48 apart) and one of them is a lone pixel (none of its 8 neighbors has its color) with the other's
-  // color going on past it in line; where A's corner at the other end of that edge is cut at 45 degrees in E's
-  // color, E's corner is drawn at 45 degrees too, so the two cuts make one straight diagonal (no step in the
-  // middle of a light pixel on a wizard's staff)
-  {
-    vec4 cutM = cut4(res) * FLAG(res, 4.0), secM = FLAG(res, 8.0), shM = FLAG(res, 16.0), stM = FLAG(res, 64.0);
-    vec4 lngM = FLAG(res, 32.0) + FLAG(res, 128.0);
-    vec4 dropS = vec4(0.0), dropT = vec4(0.0);
-    for (int k = 0; k < 4; k++)
-    {
-      vec2 c = k == 0 ? vec2(-1.0, -1.0) : k == 1 ? vec2(1.0, -1.0) : k == 2 ? vec2(1.0, 1.0) : vec2(-1.0, 1.0);
-      vec4 m = vtxCorner(c);
-      float sh = dot(shM, m), st = dot(stM, m);
-      if (dot(cutM, m) < 0.5 || sh + st != 1.0 || dot(lngM, m) > 0.5) continue;
-      // a: the side whose color the corner takes; the long side of the line runs along the edge with A
-      // (shallow is horizontal for corners x and z, steep for y and w)
-      bool xz = k == 0 || k == 2;
-      bool paintV = xz ? dot(secM, m) > 0.5 : dot(secM, m) < 0.5;
-      bool hLong = xz ? sh > 0.5 : st > 0.5;
-      if (hLong != paintV) continue;
-      vec2 a = paintV ? vec2(0.0, c.y) : vec2(c.x, 0.0);
-      vec3 Ac = at3(a);
-      float dA = dist255(nE, Ac);
-      if (dA < XBRZ_SAME_M || dA >= XBRZ_SHADE48) continue;
-      // q: the lone pixel (E or A), whose stroke color goes on past it on its other side
-      bool hit = false;
-      for (int h = 0; h < 2; h++)
-      {
-        vec2 q = h == 0 ? vec2(0.0) : a;
-        vec3 Q = h == 0 ? nE : Ac, Sc = h == 0 ? Ac : nE;
-        if (dist255(Sc, at3(h == 0 ? -a : 2.0 * a)) >= XBRZ_SAME_M) continue;
-        bool lone = true;
+        if (dot(cutM, m) < 0.5) continue;
+        bool s1 = dot(secM, m) > 0.5;
+        bool paintV = (k == 0 || k == 2) ? s1 : !s1;
+        vec2 a = paintV ? vec2(0.0, c.y) : vec2(c.x, 0.0), b = paintV ? vec2(c.x, 0.0) : vec2(0.0, c.y);
+        vec3 Ac = at3(a);
+        float dB = dist255(nE, at3(b)), dA = dist255(nE, Ac);
+        if (dA >= XBRZ_NOTCH47 || dB >= XBRZ_NOTCH47 || dB >= 1.2 * dA || dist255(nE, at3(-a)) < XBRZ_FAR47
+            || dist255(nE, at3(2.0 * b)) >= XBRZ_SAME_M || dist255(nE, at3(a - b)) >= XBRZ_SAME_M || dist255(Ac, at3(c)) < XBRZ_SAME_M)
+          continue;
+        bool loneA = true;
         for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++)
-          if ((i != 0 || j != 0) && dist255(Q, at3(q + vec2(float(i), float(j)))) < XBRZ_SAME_M) lone = false;
-        if (lone) hit = true;
+          if ((i != 0 || j != 0) && dist255(Ac, at3(a + vec2(float(i), float(j)))) < XBRZ_SAME_M) loneA = false;
+        if (!loneA || BLEND(dot(INFO_AT(b.x, b.y), vtxCorner(c - 2.0 * b))) > 0.5) continue;
+        sqM += m;
       }
-      if (!hit) continue;
-      // A's corner at the other end of the edge: cut at 45 degrees, in E's color
-      vec4 rA = INFO_AT(a.x, a.y), mA = vtxCorner(-c);
-      if (BLEND(dot(rA, mA)) < 0.5 || dot(FLAG(rA, 16.0) + FLAG(rA, 64.0), mA) > 0.5) continue;
-      bool pVA = xz ? dot(FLAG(rA, 8.0), mA) > 0.5 : dot(FLAG(rA, 8.0), mA) < 0.5;
-      if (pVA != paintV) continue;
-      if (sh > 0.5) dropS += m; else dropT += m;
+      res *= 1.0 - min(sqM, vec4(1.0));
     }
-    res -= 16.0 * dropS + 64.0 * dropT;
+    // 45. the dark side of a mid-tone stroke's end
+    if (dot(cut4(res) * FLAG(res, 4.0) * abs(FLAG(res, 16.0) - FLAG(res, 64.0)), vec4(1.0)) > 0.0)
+    {
+      vec4 cw = cut4(res) * FLAG(res, 4.0) * abs(FLAG(res, 16.0) - FLAG(res, 64.0));
+      vec4 cAny = cut4(res);
+      vec4 sq = vec4(0.0);
+      for (int k = 0; k < 4; k++)
+      {
+        vec2 u = k == 0 ? vec2(0.0, -1.0) : k == 1 ? vec2(1.0, 0.0) : k == 2 ? vec2(0.0, 1.0) : vec2(-1.0, 0.0);
+        if (dist255(nE, at3(u)) >= XBRZ_SAME_M) continue;
+        vec2 s = vec2(-u.y, u.x);
+        for (int j = 0; j < 2; j++)
+        {
+          vec2 sd = j == 0 ? s : -s;
+          vec2 c = sd - u;
+          vec4 m = vtxCorner(c);
+          if (dot(cw, m) < 0.5 || dot(cAny, vtxCorner(-sd - u)) > 0.5) continue;
+          float dS = dist255(nE, at3(sd)), dF = dist255(nE, at3(-u)), dG = dist255(nE, at3(c));
+          if (max(max(dS, dF), dG) >= XBRZ_MATCH_EDGE || min(dS, dF) < XBRZ_MINC || dist255(nE, at3(-sd)) < 80.0
+              || dist255(at3(sd), at3(-u)) < XBRZ_MINC) continue;
+          sq += m;
+        }
+      }
+      res *= 1.0 - min(sq, vec4(1.0));
+    }
+    // 48. one slope beside a lone shade
+    if (dot(cut4(res) * FLAG(res, 4.0), vec4(1.0)) > 0.0)
+    {
+      vec4 cutM = cut4(res) * FLAG(res, 4.0), secM = FLAG(res, 8.0), shM = FLAG(res, 16.0), stM = FLAG(res, 64.0);
+      vec4 lngM = FLAG(res, 32.0) + FLAG(res, 128.0);
+      vec4 dropS = vec4(0.0), dropT = vec4(0.0);
+      for (int k = 0; k < 4; k++)
+      {
+        vec2 c = k == 0 ? vec2(-1.0, -1.0) : k == 1 ? vec2(1.0, -1.0) : k == 2 ? vec2(1.0, 1.0) : vec2(-1.0, 1.0);
+        vec4 m = vtxCorner(c);
+        float sh = dot(shM, m), st = dot(stM, m);
+        if (dot(cutM, m) < 0.5 || sh + st != 1.0 || dot(lngM, m) > 0.5) continue;
+        bool xz = k == 0 || k == 2;
+        bool paintV = xz ? dot(secM, m) > 0.5 : dot(secM, m) < 0.5;
+        bool hLong = xz ? sh > 0.5 : st > 0.5;
+        if (hLong != paintV) continue;
+        vec2 a = paintV ? vec2(0.0, c.y) : vec2(c.x, 0.0);
+        vec3 Ac = at3(a);
+        float dA = dist255(nE, Ac);
+        if (dA < XBRZ_SAME_M || dA >= XBRZ_SHADE48) continue;
+        bool hit = false;
+        for (int h = 0; h < 2; h++)
+        {
+          vec2 q = h == 0 ? vec2(0.0) : a;
+          vec3 Q = h == 0 ? nE : Ac, Sc = h == 0 ? Ac : nE;
+          if (dist255(Sc, at3(h == 0 ? -a : 2.0 * a)) >= XBRZ_SAME_M) continue;
+          bool lone = true;
+          for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++)
+            if ((i != 0 || j != 0) && dist255(Q, at3(q + vec2(float(i), float(j)))) < XBRZ_SAME_M) lone = false;
+          if (lone) hit = true;
+        }
+        if (!hit) continue;
+        vec4 rA = INFO_AT(a.x, a.y), mA = vtxCorner(-c);
+        if (BLEND(dot(rA, mA)) < 0.5 || dot(FLAG(rA, 16.0) + FLAG(rA, 64.0), mA) > 0.5) continue;
+        bool pVA = xz ? dot(FLAG(rA, 8.0), mA) > 0.5 : dot(FLAG(rA, 8.0), mA) < 0.5;
+        if (pVA != paintV) continue;
+        if (sh > 0.5) dropS += m; else dropT += m;
+      }
+      res -= 16.0 * dropS + 64.0 * dropT;
+    }
   }
-  // 49. a 1-pixel diagonal bar ends even: E's two side corners are cut at 45 degrees in the color beside the
-  // next pixel and its end corner at 45 degrees in the nearer neighbor; a neighbor's corner at the point where
-  // the bar's side cut paints that neighbor is not cut in the color from the bar's other side
+  // 49. a 1-pixel diagonal bar ends even
   {
     vec3 E = nE;
-    vec2 c = barEnd(coord, vec2(0.0));
-    if (c != vec2(0.0))
+    if (minSide >= XBRZ_BAR49)
     {
-      vec2 s1 = vec2(c.x, -c.y), s2 = vec2(-c.x, c.y), e = -c;
-      vec4 m1 = vtxCorner(s1), m2 = vtxCorner(s2), me = vtxCorner(e);
-      // the bar runs into one region R that holds both pixels at its end corner: it ends as xBRZ draws it, with
-      // no side cuts (a dark line that meets a white branch keeps touching it)
-      vec3 R1 = at3(vec2(e.x, 0.0)), R2 = at3(vec2(0.0, e.y));
-      bool plug = dist255(R1, R2) < XBRZ_SAME_M && dist255(R1, at3(vec2(c.x, 0.0))) >= XBRZ_SAME_M &&
-                  dist255(R1, at3(vec2(0.0, c.y))) >= XBRZ_SAME_M;
-      if (!plug && BLEND(dot(res, m1)) < 0.5 && !goesOn(coord, s1, E)) res = mix(res, vec4(s1.x * s1.y > 0.0 ? 5.0 : 13.0), m1);
-      if (!plug && BLEND(dot(res, m2)) < 0.5 && !goesOn(coord, s2, E)) res = mix(res, vec4(s2.x * s2.y > 0.0 ? 13.0 : 5.0), m2);
-      // the end is cut unless the bar runs on into a region on its own side of the sides' shades (a dark bar into
-      // an outline), where it stays joined
-      float lE = barLuma(E), lA = barLuma(at3(e)), lS = 0.5 * (barLuma(at3(vec2(c.x, 0.0))) + barLuma(at3(vec2(0.0, c.y))));
-      if (FLAG(dot(res, me), 4.0) < 0.5 && (lA - lS) * (lE - lS) <= 0.0 && !goesOn(coord, e, E))
+      vec2 c = barEnd(coord, vec2(0.0));
+      if (c != vec2(0.0))
       {
-        vec3 Nh = at3(vec2(e.x, 0.0)), Nv = at3(vec2(0.0, e.y));
-        bool hz = e.x * e.y > 0.0;
-        float dPri = dist255(E, hz ? Nh : Nv), dSec = dist255(E, hz ? Nv : Nh);
-        res = mix(res, vec4(dPri <= dSec ? 5.0 : 13.0), me);
+        vec2 s1 = vec2(c.x, -c.y), s2 = vec2(-c.x, c.y), e = -c;
+        vec4 m1 = vtxCorner(s1), m2 = vtxCorner(s2), me = vtxCorner(e);
+        vec3 R1 = at3(vec2(e.x, 0.0)), R2 = at3(vec2(0.0, e.y));
+        bool plug = dist255(R1, R2) < XBRZ_SAME_M && dist255(R1, at3(vec2(c.x, 0.0))) >= XBRZ_SAME_M &&
+                    dist255(R1, at3(vec2(0.0, c.y))) >= XBRZ_SAME_M;
+        if (!plug && BLEND(dot(res, m1)) < 0.5 && !goesOn(coord, s1, E)) res = mix(res, vec4(s1.x * s1.y > 0.0 ? 5.0 : 13.0), m1);
+        if (!plug && BLEND(dot(res, m2)) < 0.5 && !goesOn(coord, s2, E)) res = mix(res, vec4(s2.x * s2.y > 0.0 ? 13.0 : 5.0), m2);
+        float lE = luma(E), lA = luma(at3(e)), lS = 0.5 * (luma(at3(vec2(c.x, 0.0))) + luma(at3(vec2(0.0, c.y))));
+        if ((BLEND(dot(res, me)) < 0.5 || FLAG(dot(res, me), 4.0) < 0.5) && (lA - lS) * (lE - lS) <= 0.0 && !goesOn(coord, e, E))
+        {
+          vec3 Nh = at3(vec2(e.x, 0.0)), Nv = at3(vec2(0.0, e.y));
+          bool hz = e.x * e.y > 0.0;
+          float dPri = dist255(E, hz ? Nh : Nv), dSec = dist255(E, hz ? Nv : Nh);
+          res = mix(res, vec4(dPri <= dSec ? 5.0 : 13.0), me);
+        }
       }
     }
-    for (int q = 0; q < 4; q++)
+    if (dot(cut4(res), vec4(1.0)) > 0.0)
     {
-      vec2 n = q == 0 ? vec2(0.0, -1.0) : q == 1 ? vec2(1.0, 0.0) : q == 2 ? vec2(0.0, 1.0) : vec2(-1.0, 0.0);
-      vec2 cn = barEnd(coord, n);
-      if (cn == vec2(0.0)) continue;
-      // the bar end's side corner that paints E: s1 paints its horizontal neighbor, s2 its vertical one
-      vec2 sE = -n == vec2(cn.x, 0.0) ? vec2(cn.x, -cn.y) : -n == vec2(0.0, cn.y) ? vec2(-cn.x, cn.y) : vec2(0.0);
-      if (sE == vec2(0.0)) continue;
-      vec2 k = sE + 2.0 * n;             // E's corner at that point
-      vec4 mk = vtxCorner(k);
-      float wk = dot(res, mk);
-      if (BLEND(wk) < 0.5) continue;
-      bool hz = k.x * k.y > 0.0, sec = FLAG(wk, 8.0) > 0.5;
-      vec2 pk = (hz == sec) ? vec2(0.0, k.y) : vec2(k.x, 0.0);
-      // only where that third color is the one on the bar's other side, wrapping around the bar's end
-      vec3 other = -n == vec2(cn.x, 0.0) ? at3(n + vec2(0.0, cn.y)) : at3(n + vec2(cn.x, 0.0));
-      if (dist255(at3(pk), at3(n)) >= XBRZ_SAME_M && dist255(at3(pk), other) < XBRZ_SAME_M) res = mix(res, vec4(0.0), mk);
+      for (int q = 0; q < 4; q++)
+      {
+        float sqDist = q == 0 ? sB : (q == 1 ? sF : (q == 2 ? sH : sD));
+        if (sqDist < XBRZ_BAR49) continue;
+        vec2 n = q == 0 ? vec2(0.0, -1.0) : q == 1 ? vec2(1.0, 0.0) : q == 2 ? vec2(0.0, 1.0) : vec2(-1.0, 0.0);
+        vec2 cn = barEnd(coord, n);
+        if (cn == vec2(0.0)) continue;
+        vec2 sE = -n == vec2(cn.x, 0.0) ? vec2(cn.x, -cn.y) : -n == vec2(0.0, cn.y) ? vec2(-cn.x, cn.y) : vec2(0.0);
+        if (sE == vec2(0.0)) continue;
+        vec2 k = sE + 2.0 * n;
+        vec4 mk = vtxCorner(k);
+        float wk = dot(res, mk);
+        if (BLEND(wk) < 0.5) continue;
+        bool hz = k.x * k.y > 0.0, sec = FLAG(wk, 8.0) > 0.5;
+        vec2 pk = (hz == sec) ? vec2(0.0, k.y) : vec2(k.x, 0.0);
+        vec3 other = -n == vec2(cn.x, 0.0) ? at3(n + vec2(0.0, cn.y)) : at3(n + vec2(cn.x, 0.0));
+        if (dist255(at3(pk), at3(n)) >= XBRZ_SAME_M && dist255(at3(pk), other) < XBRZ_SAME_M) res = mix(res, vec4(0.0), mk);
+      }
     }
   }
   FRAG_OUT = res / 255.0;
 }
+
 #endif

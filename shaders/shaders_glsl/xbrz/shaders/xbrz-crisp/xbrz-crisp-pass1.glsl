@@ -20,7 +20,7 @@
 // decisions from those of its 4 points, the resolve pass, also once per game pixel, finishes the rules
 // that need the neighbours' decisions, and the output pass (pass 1) only draws the corners.
 //#crisp{
-// The match pass, between the resolve pass and pass 1, runs rules 26, 27 and 38 to 44.
+// The match pass, between the resolve pass and pass 1, runs rules 26, 27 and 38 to 49.
 //#crisp}
 //
 // 1. Minimum contrast (XBRZ_MINC): a corner whose two colors differ by less than XBRZ_MINC (x/255,
@@ -404,7 +404,6 @@
 // * of the file, but you are not obligated to do so. If you do not wish to   *
 // * do so, delete this exception statement from your version.                *
 // ****************************************************************************
-
 //#crisp{
 // Pass 1 of xbrz-crisp (OpenGL / GLES)
 //#crisp}
@@ -423,15 +422,19 @@
 #endif
 
 #ifdef GL_ES
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#define COMPAT_PRECISION highp
+#else
+precision mediump float;
 #define COMPAT_PRECISION mediump
+#endif
 #else
 #define COMPAT_PRECISION
 #endif
 
 COMPAT_ATTRIBUTE vec4 VertexCoord;
-COMPAT_ATTRIBUTE vec4 COLOR;
 COMPAT_ATTRIBUTE vec4 TexCoord;
-COMPAT_VARYING vec4 COL0;
 COMPAT_VARYING vec4 TEX0;
 
 uniform mat4 MVPMatrix;
@@ -447,10 +450,11 @@ void main()
 #ifdef GL_ES
 #ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
+#define COMPAT_PRECISION highp
 #else
 precision mediump float;
-#endif
 #define COMPAT_PRECISION mediump
+#endif
 #else
 #define COMPAT_PRECISION
 #endif
@@ -499,16 +503,6 @@ uniform COMPAT_PRECISION vec2 PassPrev4InputSize;
 #define INFO(uv) COMPAT_TEXTURE(Texture, uv)
 #define INFO_STEP SRC_SIZE.zw
 
-float distYCbCr(vec3 pixA, vec3 pixB)
-{
-  const vec3 w = vec3(0.2627, 0.6780, 0.0593);
-  vec3 diff = pixA - pixB;
-  float Y = dot(diff, w);
-  float Cb = 0.5 / (1.0 - 0.0593) * (diff.b - Y);
-  float Cr = 0.5 / (1.0 - 0.2627) * (diff.r - Y);
-  return sqrt(Y * Y + Cb * Cb + Cr * Cr);
-}
-
 float get_left_ratio(vec2 center, vec2 origin, vec2 direction, vec2 scale)
 {
   vec2 P0 = center - origin;
@@ -528,6 +522,41 @@ float get_left_ratio(vec2 center, vec2 origin, vec2 direction, vec2 scale)
 //#crisp{
 #define XBRZ_TIPK 0.1  // 23. a loose pixel's tip: the cut line moves out by this
 //#crisp}
+
+// Evaluates the coverage ratio of a cut corner in the canonical bottom-right (z) frame; the other
+// corners pass pos and scale rotated by multiples of 90 degrees.
+float cornerRatio(vec2 p, vec2 sc, float doLine, float sh, float st, float bothL
+//#crisp{
+                  , float tipK, float lg, float shA
+//#crisp}
+                  )
+{
+  vec2 origin = vec2(0.0, 1.0 / sqrt(2.0));
+//#crisp{
+  origin *= tipK;
+//#crisp}
+  vec2 direction = vec2(1.0, -1.0);
+  if (doLine > 0.0)
+  {
+    origin = sh > 0.0 ? vec2(0.0, 0.25) : vec2(0.0, 0.5);
+    direction.x += sh;
+    direction.y -= st;
+//#crisp{
+    if (lg > 0.0)
+    {
+      if (sh > 0.0) origin = vec2(0.5, 0.0);
+      origin += shA * (sh > 0.0 ? vec2(1.0, 0.0) : vec2(0.0, 1.0));
+      direction.x += sh * lg;
+      direction.y -= st * lg;
+    }
+//#crisp}
+  }
+  float ratio = get_left_ratio(p, origin, direction, sc);
+  if (bothL > 0.0)
+    ratio = max(get_left_ratio(p, vec2(0.0, 0.25), vec2(1.0, -1.0) + vec2(1.0, 0.0), sc),
+                get_left_ratio(p, vec2(0.0, 0.5), vec2(1.0, -1.0) + vec2(0.0, -1.0), sc));
+  return ratio;
+}
 
 void main()
 {
@@ -549,8 +578,6 @@ void main()
   //               w|z|
   vec4 blendResult = BLEND(info);
 
-  // the decisions are final: the resolve pass applied the parts of rules 1, 2 and 9 that need the neighbours
-
   // most output pixels have no corner to blend, and only need these two reads
   if (blendResult.x + blendResult.y + blendResult.z + blendResult.w <= 0.0)
   {
@@ -559,160 +586,76 @@ void main()
   }
 
 //#crisp{
-  // BLEND 3 (a loose pixel, rule 23): a plain corner with a smaller tip (the cut line moves out by XBRZ_TIPK)
-  vec4 tip = 1.0 + XBRZ_TIPK * vec4(equal(BLEND(info), vec4(3.0)));
+  vec4 tip = 1.0 + XBRZ_TIPK * vec4(equal(blendResult, vec4(3.0)));
 //#crisp}
   vec4 doLineBlend = FLAG(info, 4.0);
   vec4 secondPix = FLAG(info, 8.0);
   vec4 haveShallowLine = FLAG(info, 16.0);
   vec4 haveSteepLine = FLAG(info, 64.0);
-  // a corner with both a shallow and a steep line: xBRZ draws the two lines together (their union), so the
-  // cut runs to the far end of both edges with a bend where the lines meet
   vec4 bothLines = doLineBlend * haveShallowLine * haveSteepLine;
 //#crisp{
-  // 14. Straight steps: a 3:1 (+32) or 4:1 (+128) line; a thin end (BLEND 2) starts 1 pixel further along
   vec4 longL = FLAG(info, 32.0) + 2.0 * FLAG(info, 128.0);
   vec4 shiftA = vec4(equal(blendResult, vec4(2.0))) * vec4(greaterThan(longL, vec4(0.0)));
-  bothLines *= vec4(equal(longL, vec4(0.0)));  // a 3:1 or 4:1 step keeps its own line
+  bothLines *= vec4(equal(longL, vec4(0.0)));
 //#crisp}
 
   // ============================================================================================
-  // xBRZ: drawing the corners
+  // xBRZ: drawing the corners (0, 90, 180, 270 degrees); neighbor color is fetched only when ratio > 0
   // ============================================================================================
-  // Corners are applied in the same order as the original xBRZ (0, 90, 180, 270 degrees). The first
-  // pass picked each blend colour ("dist(e,f) <= dist(e,h) ? f : h"); its offset is chosen first, so
-  // each corner reads one pixel.
-
-  // Pixel Tap Mapping: -|-|-
-  //                    -|E|F
-  //                    -|H|-
-  if(blendResult.z > 0.0)
+  if (blendResult.z > 0.0)
   {
-    vec2 origin = vec2(0.0, 1.0 / sqrt(2.0));
+    float ratio = cornerRatio(pos, scale, doLineBlend.z, haveShallowLine.z, haveSteepLine.z, bothLines.z
 //#crisp{
-    origin *= tip.z;
+                              , tip.z, longL.z, shiftA.z
 //#crisp}
-    vec2 direction = vec2(1.0, -1.0);
-    if(doLineBlend.z > 0.0)
+                              );
+    if (ratio > 0.0)
     {
-      origin = haveShallowLine.z > 0.0? vec2(0.0, 0.25) : vec2(0.0, 0.5);
-      direction.x += haveShallowLine.z;
-      direction.y -= haveSteepLine.z;
-//#crisp{
-      if (longL.z > 0.0)
-      {
-        if (haveShallowLine.z > 0.0) origin = vec2(0.5, 0.0);
-        origin += shiftA.z * (haveShallowLine.z > 0.0 ? vec2(1.0, 0.0) : vec2(0.0, 1.0));
-        direction.x += haveShallowLine.z * longL.z;
-        direction.y -= haveSteepLine.z * longL.z;
-      }
-//#crisp}
+      vec2 bo = (secondPix.z > 0.0) ? vec2( 0., 1.) : vec2( 1., 0.);
+      res = mix(res, P(bo.x, bo.y), ratio);
     }
-    vec2 bo = (secondPix.z > 0.0) ? vec2( 0., 1.) : vec2( 1., 0.);
-    vec3 blendPix = P(bo.x, bo.y);
-    float ratio = get_left_ratio(pos, origin, direction, scale);
-    if (bothLines.z > 0.0)
-      ratio = max(get_left_ratio(pos, vec2(0.0, 0.25), vec2(1.0, -1.0) + vec2(1.0, 0.0), scale), get_left_ratio(pos, vec2(0.0, 0.5), vec2(1.0, -1.0) + vec2(0.0, -1.0), scale));
-    res = mix(res, blendPix, ratio);
   }
 
-  // Pixel Tap Mapping: -|B|-
-  //                    -|E|F
-  //                    -|-|-
-  if(blendResult.y > 0.0)
+  if (blendResult.y > 0.0)
   {
-    vec2 origin = vec2(1.0 / sqrt(2.0), 0.0);
+    float ratio = cornerRatio(vec2(-pos.y, pos.x), scale.yx, doLineBlend.y, haveShallowLine.y, haveSteepLine.y, bothLines.y
 //#crisp{
-    origin *= tip.y;
+                              , tip.y, longL.y, shiftA.y
 //#crisp}
-    vec2 direction = vec2(-1.0, -1.0);
-    if(doLineBlend.y > 0.0)
+                              );
+    if (ratio > 0.0)
     {
-      origin = haveShallowLine.y > 0.0? vec2(0.25, 0.0) : vec2(0.5, 0.0);
-      direction.y -= haveShallowLine.y;
-      direction.x -= haveSteepLine.y;
-//#crisp{
-      if (longL.y > 0.0)
-      {
-        if (haveShallowLine.y > 0.0) origin = vec2(0.0, -0.5);
-        origin += shiftA.y * (haveShallowLine.y > 0.0 ? vec2(0.0, -1.0) : vec2(1.0, 0.0));
-        direction.y -= haveShallowLine.y * longL.y;
-        direction.x -= haveSteepLine.y * longL.y;
-      }
-//#crisp}
+      vec2 bo = (secondPix.y > 0.0) ? vec2( 1., 0.) : vec2( 0.,-1.);
+      res = mix(res, P(bo.x, bo.y), ratio);
     }
-    vec2 bo = (secondPix.y > 0.0) ? vec2( 1., 0.) : vec2( 0.,-1.);
-    vec3 blendPix = P(bo.x, bo.y);
-    float ratio = get_left_ratio(pos, origin, direction, scale);
-    if (bothLines.y > 0.0)
-      ratio = max(get_left_ratio(pos, vec2(0.25, 0.0), vec2(-1.0, -1.0) + vec2(0.0, -1.0), scale), get_left_ratio(pos, vec2(0.5, 0.0), vec2(-1.0, -1.0) + vec2(-1.0, 0.0), scale));
-    res = mix(res, blendPix, ratio);
   }
 
-  // Pixel Tap Mapping: -|B|-
-  //                    D|E|-
-  //                    -|-|-
-  if(blendResult.x > 0.0)
+  if (blendResult.x > 0.0)
   {
-    vec2 origin = vec2(0.0, -1.0 / sqrt(2.0));
+    float ratio = cornerRatio(-pos, scale, doLineBlend.x, haveShallowLine.x, haveSteepLine.x, bothLines.x
 //#crisp{
-    origin *= tip.x;
+                              , tip.x, longL.x, shiftA.x
 //#crisp}
-    vec2 direction = vec2(-1.0, 1.0);
-    if(doLineBlend.x > 0.0)
+                              );
+    if (ratio > 0.0)
     {
-      origin = haveShallowLine.x > 0.0? vec2(0.0, -0.25) : vec2(0.0, -0.5);
-      direction.x -= haveShallowLine.x;
-      direction.y += haveSteepLine.x;
-//#crisp{
-      if (longL.x > 0.0)
-      {
-        if (haveShallowLine.x > 0.0) origin = vec2(-0.5, 0.0);
-        origin += shiftA.x * (haveShallowLine.x > 0.0 ? vec2(-1.0, 0.0) : vec2(0.0, -1.0));
-        direction.x -= haveShallowLine.x * longL.x;
-        direction.y += haveSteepLine.x * longL.x;
-      }
-//#crisp}
+      vec2 bo = (secondPix.x > 0.0) ? vec2( 0.,-1.) : vec2(-1., 0.);
+      res = mix(res, P(bo.x, bo.y), ratio);
     }
-    vec2 bo = (secondPix.x > 0.0) ? vec2( 0.,-1.) : vec2(-1., 0.);
-    vec3 blendPix = P(bo.x, bo.y);
-    float ratio = get_left_ratio(pos, origin, direction, scale);
-    if (bothLines.x > 0.0)
-      ratio = max(get_left_ratio(pos, vec2(0.0, -0.25), vec2(-1.0, 1.0) + vec2(-1.0, 0.0), scale), get_left_ratio(pos, vec2(0.0, -0.5), vec2(-1.0, 1.0) + vec2(0.0, 1.0), scale));
-    res = mix(res, blendPix, ratio);
   }
 
-  // Pixel Tap Mapping: -|-|-
-  //                    D|E|-
-  //                    -|H|-
-  if(blendResult.w > 0.0)
+  if (blendResult.w > 0.0)
   {
-    vec2 origin = vec2(-1.0 / sqrt(2.0), 0.0);
+    float ratio = cornerRatio(vec2(pos.y, -pos.x), scale.yx, doLineBlend.w, haveShallowLine.w, haveSteepLine.w, bothLines.w
 //#crisp{
-    origin *= tip.w;
+                              , tip.w, longL.w, shiftA.w
 //#crisp}
-    vec2 direction = vec2(1.0, 1.0);
-    if(doLineBlend.w > 0.0)
+                              );
+    if (ratio > 0.0)
     {
-      origin = haveShallowLine.w > 0.0? vec2(-0.25, 0.0) : vec2(-0.5, 0.0);
-      direction.y += haveShallowLine.w;
-      direction.x += haveSteepLine.w;
-//#crisp{
-      if (longL.w > 0.0)
-      {
-        if (haveShallowLine.w > 0.0) origin = vec2(0.0, 0.5);
-        origin += shiftA.w * (haveShallowLine.w > 0.0 ? vec2(0.0, 1.0) : vec2(-1.0, 0.0));
-        direction.y += haveShallowLine.w * longL.w;
-        direction.x += haveSteepLine.w * longL.w;
-      }
-//#crisp}
+      vec2 bo = (secondPix.w > 0.0) ? vec2(-1., 0.) : vec2( 0., 1.);
+      res = mix(res, P(bo.x, bo.y), ratio);
     }
-    vec2 bo = (secondPix.w > 0.0) ? vec2(-1., 0.) : vec2( 0., 1.);
-    vec3 blendPix = P(bo.x, bo.y);
-    float ratio = get_left_ratio(pos, origin, direction, scale);
-    if (bothLines.w > 0.0)
-      ratio = max(get_left_ratio(pos, vec2(-0.25, 0.0), vec2(1.0, 1.0) + vec2(0.0, 1.0), scale), get_left_ratio(pos, vec2(-0.5, 0.0), vec2(1.0, 1.0) + vec2(1.0, 0.0), scale));
-    res = mix(res, blendPix, ratio);
   }
 
   FRAG_OUT = vec4(res, 1.0);

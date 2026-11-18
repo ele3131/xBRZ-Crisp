@@ -44,7 +44,6 @@
 // * of the file, but you are not obligated to do so. If you do not wish to   *
 // * do so, delete this exception statement from your version.                *
 // ****************************************************************************
-
 layout(push_constant) uniform Push
 {
 	vec4 SourceSize;
@@ -67,9 +66,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #pragma parameter XBRZ_MINC "xBRZ: minimum contrast to round a corner (x/255, 0 = off)" 20 0 80 2
 //#plain-default XBRZ_MINC 0
 #pragma parameter XBRZ_DIAG "xBRZ: max color distance on the diagonal (0 = off)" 100 0 160 4
-#define XBRZ_TOL global.XBRZ_TOL
 #define XBRZ_DOM global.XBRZ_DOM
-#define XBRZ_STEEP global.XBRZ_STEEP
 #define XBRZ_MINC global.XBRZ_MINC
 #define XBRZ_DIAG global.XBRZ_DIAG
 
@@ -81,7 +78,7 @@ layout(location = 0) out vec2 vTexCoord;
 void main()
 {
    gl_Position = global.MVP * Position;
-   vTexCoord = TexCoord * 1.0001;
+   vTexCoord = TexCoord;
 }
 
 #pragma stage fragment
@@ -95,132 +92,125 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 #define BLEND_NONE 0
 #define BLEND_NORMAL 1
 #define BLEND_DOMINANT 2
-#ifndef TOL_E
-#define TOL_E XBRZ_TOL
-#endif
 #ifndef DOM_E
 #define DOM_E XBRZ_DOM
 #endif
-#ifndef STEEP_E
-#define STEEP_E XBRZ_STEEP
-#endif
-#define EQUAL_COLOR_TOLERANCE (TOL_E / 255.0)
-// two distances closer than this are a tie (the float colors of equal integer steps differ in the last bits)
-#define TIE_EPS 1e-5
-#define CRISP_RULES (XBRZ_MINC > 0.0 && XBRZ_DIAG > 0.0)
 #define eq(a,b)  (a == b)
 #define neq(a,b) (a != b)
 
-// the luma weights (Rec. 2020) and the scales of the two chroma differences, for DistYCbCr and DistShape
-const vec3 lumaW = vec3(0.2627, 0.6780, 0.0593);
-const float scaleB = 0.5 / (1.0 - 0.0593);
-const float scaleR = 0.5 / (1.0 - 0.2627);
+// Rec. 2020 luma weights and chroma difference scales, shared across passes
+const vec3 LUMA_W = vec3(0.2627, 0.6780, 0.0593);
+const float SCALE_B = 0.5 / (1.0 - 0.0593);
+const float SCALE_R = 0.5 / (1.0 - 0.2627);
 
-float DistYCbCr(vec3 pixA, vec3 pixB)
+float luma(vec3 c) { return dot(c, LUMA_W); }
+
+float distSqYCbCr(vec3 pixA, vec3 pixB)
 {
   vec3 diff = pixA - pixB;
-  float Y = dot(diff.rgb, lumaW);
-  float Cb = scaleB * (diff.b - Y);
-  float Cr = scaleR * (diff.r - Y);
-  return sqrt((Y * Y) + (Cb * Cb) + (Cr * Cr));
+  float Y = dot(diff, LUMA_W);
+  float Cb = SCALE_B * (diff.b - Y);
+  float Cr = SCALE_R * (diff.r - Y);
+  return (Y * Y) + (Cb * Cb) + (Cr * Cr);
 }
+
+float distYCbCr(vec3 pixA, vec3 pixB)
+{
+  return sqrt(distSqYCbCr(pixA, pixB));
+}
+
+float dist255(vec3 pixA, vec3 pixB)
+{
+  return distYCbCr(pixA, pixB) * 255.0;
+}
+#define CRISP_RULES (XBRZ_MINC > 0.0 && XBRZ_DIAG > 0.0)
 
 // ============================================================================================
 // 31. Exact ties
 // ============================================================================================
-// b is the top-left pixel of the 2x2 (offset from the pixel at cc); tieCont returns how many ends of each
-// diagonal (x: top-left to bottom-right, y: top-right to bottom-left) go on as a diagonal stroke 1 pixel wide
-#define PC(v) P((v).x, (v).y)
-bool thinCont(vec2 coord, vec2 p, vec2 dd, vec3 col)
+// At the 2x2 around E's bottom-right point (tl = kf at (0,0), tr = kg at (1,0), bl = kj at (0,1), br = kk at (1,1)),
+// all 8 side neighbors outside the 2x2 are already in registers kb..ko; only the 4 diagonal corners (-1,-1), (2,-1),
+// (-1,2) and (2,2) need texture reads.
+vec2 tieCont(vec2 coord, vec3 tl, vec3 tr, vec3 kb, vec3 kc, vec3 ke, vec3 kh, vec3 ki, vec3 kl, vec3 kn, vec3 ko,
+             vec3 cTL, vec3 cTR, vec3 cBL, vec3 cBR)
 {
-  vec2 q = p + dd;
-  return eq(PC(q), col) && neq(PC(vec2(q.x, p.y)), col) && neq(PC(vec2(p.x, q.y)), col);
-}
-vec2 tieCont(vec2 coord, vec2 b)
-{
-  vec3 tl = PC(b), tr = PC(b + vec2(1.0, 0.0));
-  float s1 = float(thinCont(coord, b, vec2(-1.0, -1.0), tl)) + float(thinCont(coord, b + vec2(1.0, 1.0), vec2(1.0, 1.0), tl));
-  float s2 = float(thinCont(coord, b + vec2(1.0, 0.0), vec2(1.0, -1.0), tr)) + float(thinCont(coord, b + vec2(0.0, 1.0), vec2(-1.0, 1.0), tr));
+  float s1 = float(eq(cTL, tl) && neq(ke, tl) && neq(kb, tl)) + float(eq(cBR, tl) && neq(kl, tl) && neq(ko, tl));
+  float s2 = float(eq(cTR, tr) && neq(kh, tr) && neq(kc, tr)) + float(eq(cBL, tr) && neq(ki, tr) && neq(kn, tr));
   return vec2(s1, s2);
 }
-// how many pixels of each diagonal's color there are in the 8x8 around the 2x2 (the rarer color wins)
-vec2 tieSparse(vec2 coord, vec2 b)
+vec2 tieHeld(vec3 tl, vec3 tr, vec3 kb, vec3 kc, vec3 ke, vec3 kh, vec3 ki, vec3 kl, vec3 kn, vec3 ko,
+             vec3 cTL, vec3 cTR, vec3 cBL, vec3 cBR)
 {
-  vec3 tl = PC(b), tr = PC(b + vec2(1.0, 0.0));
+  float h1 = float((eq(ke, tl) || eq(kb, tl) || eq(cTL, tl)) && (eq(kl, tl) || eq(ko, tl) || eq(cBR, tl)));
+  float h2 = float((eq(kh, tr) || eq(kc, tr) || eq(cTR, tr)) && (eq(ki, tr) || eq(kn, tr) || eq(cBL, tr)));
+  return vec2(h1, h2);
+}
+// how many pixels of each diagonal's color there are in the 8x8 around the 2x2 (the rarer color wins)
+vec2 tieSparse(vec2 coord, vec3 tl, vec3 tr)
+{
   vec2 n = vec2(0.0);
   for (int j = -3; j <= 4; j++) for (int i = -3; i <= 4; i++)
-  { vec3 c = PC(b + vec2(float(i), float(j))); n += vec2(float(eq(c, tl)), float(eq(c, tr))); }
+  { vec3 c = P(float(i), float(j)); n += vec2(float(eq(c, tl)), float(eq(c, tr))); }
   return n;
-}
-// the diagonal that loses (its two corners are cut) must have, at each of its two pixels, a neighbor of its
-// color outside the 2x2 (to the side or diagonally), so no pixel is left alone
-bool sideHeld(vec2 coord, vec2 p, vec2 a, vec3 col) { return eq(PC(p + vec2(a.x, 0.0)), col) || eq(PC(p + vec2(0.0, a.y)), col) || eq(PC(p + a), col); }
-vec2 tieHeld(vec2 coord, vec2 b)
-{
-  vec3 tl = PC(b), tr = PC(b + vec2(1.0, 0.0));
-  float h1 = float(sideHeld(coord, b, vec2(-1.0, -1.0), tl) && sideHeld(coord, b + vec2(1.0, 1.0), vec2(1.0, 1.0), tl));
-  float h2 = float(sideHeld(coord, b + vec2(1.0, 0.0), vec2(1.0, -1.0), tr) && sideHeld(coord, b + vec2(0.0, 1.0), vec2(-1.0, 1.0), tr));
-  return vec2(h1, h2);
 }
 
 // ============================================================================================
 // 36. Crossing strokes
 // ============================================================================================
-// how many of the 5 neighbors of the 2x2 pixel at b + p that lie outside the 2x2 (offsets o1..o5 from b)
-// have the color c (exact) or, with lim > 0, lie within lim of c1 or c2
-float outerN(vec2 coord, vec2 b, vec2 o1, vec2 o2, vec2 o3, vec2 o4, vec2 o5, vec3 c1, vec3 c2, float lim)
+// Each 2x2 pixel has 2 cardinal outer neighbors (s1, s2) and 3 other outer neighbors (a1, a2 in registers kb..ko,
+// plus 1 outer diagonal corner at offset diagOff).
+// - thin: exactly 1 of the 5 outer neighbors matches (within lim of c1 or c2), and it is one of the 2 cardinal ones
+// - mass: at least 2 of the 5 outer neighbors match c (exact), and at least 1 is one of the 2 cardinal ones
+bool shadeIn(vec3 q, vec3 c1, vec3 c2, float lim)
 {
-  float n = 0.0;
-  vec3 q;
-  q = PC(b + o1); n += float(lim > 0.0 ? min(DistYCbCr(q, c1), DistYCbCr(q, c2)) * 255.0 < lim : eq(q, c1));
-  q = PC(b + o2); n += float(lim > 0.0 ? min(DistYCbCr(q, c1), DistYCbCr(q, c2)) * 255.0 < lim : eq(q, c1));
-  q = PC(b + o3); n += float(lim > 0.0 ? min(DistYCbCr(q, c1), DistYCbCr(q, c2)) * 255.0 < lim : eq(q, c1));
-  q = PC(b + o4); n += float(lim > 0.0 ? min(DistYCbCr(q, c1), DistYCbCr(q, c2)) * 255.0 < lim : eq(q, c1));
-  q = PC(b + o5); n += float(lim > 0.0 ? min(DistYCbCr(q, c1), DistYCbCr(q, c2)) * 255.0 < lim : eq(q, c1));
-  return n;
+  return min(dist255(q, c1), dist255(q, c2)) < lim;
 }
-#define S_TL vec2(0.0, -1.0), vec2(-1.0, 0.0), vec2(0.0, -1.0), vec2(-1.0, 0.0), vec2(0.0, -1.0)
-#define S_TR vec2(1.0, -1.0), vec2(2.0, 0.0), vec2(1.0, -1.0), vec2(2.0, 0.0), vec2(1.0, -1.0)
-#define S_BL vec2(-1.0, 1.0), vec2(0.0, 2.0), vec2(-1.0, 1.0), vec2(0.0, 2.0), vec2(-1.0, 1.0)
-#define S_BR vec2(2.0, 1.0), vec2(1.0, 2.0), vec2(2.0, 1.0), vec2(1.0, 2.0), vec2(2.0, 1.0)
-#define O_TL vec2(-1.0, -1.0), vec2(0.0, -1.0), vec2(1.0, -1.0), vec2(-1.0, 0.0), vec2(-1.0, 1.0)
-#define O_TR vec2(0.0, -1.0), vec2(1.0, -1.0), vec2(2.0, -1.0), vec2(2.0, 0.0), vec2(2.0, 1.0)
-#define O_BL vec2(-1.0, 0.0), vec2(-1.0, 1.0), vec2(-1.0, 2.0), vec2(0.0, 2.0), vec2(1.0, 2.0)
-#define O_BR vec2(2.0, 0.0), vec2(2.0, 1.0), vec2(2.0, 2.0), vec2(1.0, 2.0), vec2(0.0, 2.0)
-// a 2x2 where one diagonal has one exact color and the other two close shades of one stroke, both far
-// from the first: returns (1, 0) when the first diagonal (top-left to bottom-right) should join, (0, 1) the
-// second, (0, 0) to leave xBRZ's choice. The stroke of two shades joins where each of its pixels goes on
-// outward by exactly one pixel of its shades (a stroke 1 pixel wide) and a pixel of the exact color has
-// two or more of its own color outward (a mass): a thin stroke breaks more visibly than a mass is nicked.
+bool thinOuter(vec2 coord, vec3 s1, vec3 s2, vec3 a1, vec3 a2, vec2 diagOff, vec3 c1, vec3 c2, float lim)
+{
+  if (shadeIn(s1, c1, c2, lim) == shadeIn(s2, c1, c2, lim)) return false;
+  if (shadeIn(a1, c1, c2, lim) || shadeIn(a2, c1, c2, lim)) return false;
+  return !shadeIn(P(diagOff.x, diagOff.y), c1, c2, lim);
+}
+bool massOuter(vec2 coord, vec3 s1, vec3 s2, vec3 a1, vec3 a2, vec2 diagOff, vec3 c)
+{
+  bool ms1 = eq(s1, c), ms2 = eq(s2, c);
+  if (!ms1 && !ms2) return false;
+  if (ms1 && ms2) return true;
+  if (eq(a1, c) || eq(a2, c)) return true;
+  return eq(P(diagOff.x, diagOff.y), c);
+}
 #define XBRZ_X36_DARK 0.15
 #define XBRZ_X36_DULL 0.6
-// (the four colors of the 2x2 are passed in: they are already among A to I)
-vec2 crossWin(vec2 coord, vec2 b, vec3 tl, vec3 tr, vec3 bl, vec3 br)
+vec2 crossWin(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 tl, vec3 tr, vec3 kh, vec3 ki, vec3 bl, vec3 br, vec3 kl, vec3 kn, vec3 ko)
 {
   if (eq(tl, br) && neq(tr, bl))
   {
-    float far = min(DistYCbCr(tl, tr), DistYCbCr(tl, bl)) * 255.0;
-    if (far < 64.0 || DistYCbCr(tr, bl) * 255.0 >= 0.5 * far) return vec2(0.0);
+    float far = min(dist255(tl, tr), dist255(tl, bl));
+    float dStroke = dist255(tr, bl);
+    if (far < 64.0 || dStroke >= 0.5 * far) return vec2(0.0);
     // a dark outline next to a dull stroke separates two areas: it stays joined
-    if (dot(tl, lumaW) < XBRZ_X36_DARK && max(dot(tr, lumaW), dot(bl, lumaW)) < XBRZ_X36_DULL) return vec2(0.0);
-    float lim = max(30.0, 0.8 * DistYCbCr(tr, bl) * 255.0);
-    bool thin = outerN(coord, b, O_TR, tr, bl, lim) == 1.0 && outerN(coord, b, S_TR, tr, bl, lim) > 0.5
-             && outerN(coord, b, O_BL, tr, bl, lim) == 1.0 && outerN(coord, b, S_BL, tr, bl, lim) > 0.5;
-    bool mass = (outerN(coord, b, O_TL, tl, tl, 0.0) >= 2.0 && outerN(coord, b, S_TL, tl, tl, 0.0) > 0.5)
-             || (outerN(coord, b, O_BR, tl, tl, 0.0) >= 2.0 && outerN(coord, b, S_BR, tl, tl, 0.0) > 0.5);
-    return (thin && mass) ? vec2(0.0, 1.0) : vec2(0.0);
+    if (luma(tl) < XBRZ_X36_DARK && max(luma(tr), luma(bl)) < XBRZ_X36_DULL) return vec2(0.0);
+    float lim = max(30.0, 0.8 * dStroke);
+    bool thin = thinOuter(coord, kc, kh, kb, kl, vec2(2.0, -1.0), tr, bl, lim)
+             && thinOuter(coord, ki, kn, ke, ko, vec2(-1.0, 2.0), tr, bl, lim);
+    if (!thin) return vec2(0.0);
+    bool mass = massOuter(coord, kb, ke, kc, ki, vec2(-1.0, -1.0), tl)
+             || massOuter(coord, kl, ko, kh, kn, vec2(2.0, 2.0), tl);
+    return mass ? vec2(0.0, 1.0) : vec2(0.0);
   }
   if (eq(tr, bl) && neq(tl, br))
   {
-    float far = min(DistYCbCr(tr, tl), DistYCbCr(tr, br)) * 255.0;
-    if (far < 64.0 || DistYCbCr(tl, br) * 255.0 >= 0.5 * far) return vec2(0.0);
-    if (dot(tr, lumaW) < XBRZ_X36_DARK && max(dot(tl, lumaW), dot(br, lumaW)) < XBRZ_X36_DULL) return vec2(0.0);
-    float lim = max(30.0, 0.8 * DistYCbCr(tl, br) * 255.0);
-    bool thin = outerN(coord, b, O_TL, tl, br, lim) == 1.0 && outerN(coord, b, S_TL, tl, br, lim) > 0.5
-             && outerN(coord, b, O_BR, tl, br, lim) == 1.0 && outerN(coord, b, S_BR, tl, br, lim) > 0.5;
-    bool mass = (outerN(coord, b, O_TR, tr, tr, 0.0) >= 2.0 && outerN(coord, b, S_TR, tr, tr, 0.0) > 0.5)
-             || (outerN(coord, b, O_BL, tr, tr, 0.0) >= 2.0 && outerN(coord, b, S_BL, tr, tr, 0.0) > 0.5);
-    return (thin && mass) ? vec2(1.0, 0.0) : vec2(0.0);
+    float far = min(dist255(tr, tl), dist255(tr, br));
+    float dStroke = dist255(tl, br);
+    if (far < 64.0 || dStroke >= 0.5 * far) return vec2(0.0);
+    if (luma(tr) < XBRZ_X36_DARK && max(luma(tl), luma(br)) < XBRZ_X36_DULL) return vec2(0.0);
+    float lim = max(30.0, 0.8 * dStroke);
+    bool thin = thinOuter(coord, kb, ke, kc, ki, vec2(-1.0, -1.0), tl, br, lim)
+             && thinOuter(coord, kl, ko, kh, kn, vec2(2.0, 2.0), tl, br, lim);
+    if (!thin) return vec2(0.0);
+    bool mass = massOuter(coord, kc, kh, kb, kl, vec2(2.0, -1.0), tr)
+             || massOuter(coord, ki, kn, ke, ko, vec2(-1.0, 2.0), tr);
+    return mass ? vec2(1.0, 0.0) : vec2(0.0);
   }
   return vec2(0.0);
 }
@@ -228,17 +218,20 @@ vec2 crossWin(vec2 coord, vec2 b, vec3 tl, vec3 tr, vec3 bl, vec3 br)
 // ============================================================================================
 // 46. A checkerboard keeps its squares
 // ============================================================================================
-// the 2x2 whose top-left pixel is at b + o is a checker of the colors c1 and c2 (either phase)
-bool chk46(vec2 coord, vec2 o, vec3 c1, vec3 c2)
+bool chkPair(vec3 a, vec3 b, vec3 c1, vec3 c2)
 {
-  vec3 p00 = PC(o), p10 = PC(o + vec2(1.0, 0.0)), p01 = PC(o + vec2(0.0, 1.0)), p11 = PC(o + vec2(1.0, 1.0));
-  return eq(p00, p11) && eq(p10, p01) && ((eq(p00, c1) && eq(p10, c2)) || (eq(p00, c2) && eq(p10, c1)));
+  return (eq(a, c1) && eq(b, c2)) || (eq(a, c2) && eq(b, c1));
 }
-// how many of the four 2x2 blocks beside the 2x2 at b (left, right, above, below) are checkers of its two colors
-float checker46(vec2 coord, vec2 b, vec3 c1, vec3 c2)
+// three or more of the four 2x2 blocks beside the 2x2 at (0, 0) are checkers of c1 and c2; each block already has
+// two of its four pixels in registers kb..ko, and stops as soon as two blocks fail
+bool checker46(vec2 coord, vec3 c1, vec3 c2, vec3 kb, vec3 kc, vec3 ke, vec3 kh, vec3 ki, vec3 kl, vec3 kn, vec3 ko)
 {
-  return float(chk46(coord, b + vec2(-2.0, 0.0), c1, c2)) + float(chk46(coord, b + vec2(2.0, 0.0), c1, c2))
-       + float(chk46(coord, b + vec2(0.0, -2.0), c1, c2)) + float(chk46(coord, b + vec2(0.0, 2.0), c1, c2));
+  int miss = 0;
+  if (!(chkPair(ke, ki, c1, c2) && eq(P(-2.0, 0.0), ki) && eq(P(-2.0, 1.0), ke))) miss++;
+  if (!(chkPair(kh, kl, c1, c2) && eq(P( 3.0, 0.0), kl) && eq(P( 3.0, 1.0), kh))) { if (++miss > 1) return false; }
+  if (!(chkPair(kb, kc, c1, c2) && eq(P( 0.0,-2.0), kc) && eq(P( 1.0,-2.0), kb))) { if (++miss > 1) return false; }
+  if (!(chkPair(kn, ko, c1, c2) && eq(P( 0.0, 3.0), ko) && eq(P( 1.0, 3.0), kn))) { if (++miss > 1) return false; }
+  return true;
 }
 
 // xBRZ decides each point where 4 pixels meet (its preprocessing) from the 4x4 pixels around it. The
@@ -248,55 +241,55 @@ float checker46(vec2 coord, vec2 b, vec3 c1, vec3 c2)
 //   i|j|k|l
 //   -|n|o|-
 // pointBlend returns the blend type of each of the 4 pixels at the point, as (f, g, j, k). E reads the
-// points at its 4 corners: its bottom-right corner is f of the point whose top-left pixel is E (b = (0, 0)),
-// its bottom-left g of the point at (-1, 0), its top-right j of the point at (0, -1) and its top-left k of
-// the point at (-1, -1). The two pixels of each distance are in reading order, like the rest of the code,
-// so the compiler computes the 24 distances of the 4 points once.
-ivec4 pointBlend(vec2 coord, vec2 b, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3 kh, vec3 ki, vec3 kj, vec3 kk, vec3 kl, vec3 kn, vec3 ko)
+// points at its 4 corners: its bottom-right corner is f of the point whose top-left pixel is E, its
+// bottom-left g of the point at (-1, 0), its top-right j of the point at (0, -1) and its top-left k of
+// the point at (-1, -1).
+ivec4 pointBlend(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3 kh, vec3 ki, vec3 kj, vec3 kk, vec3 kl, vec3 kn, vec3 ko)
 {
   ivec4 r = ivec4(BLEND_NONE);
-  if (!((eq(kf,kg) && eq(kj,kk)) || (eq(kf,kj) && eq(kg,kk))))
+  // the weighted lengths of the two diagonals, j-g and f-k: the shorter one is drawn
+  float jg = distYCbCr(kf, ki) + distYCbCr(kc, kf) + distYCbCr(kk, kn) + distYCbCr(kh, kk) + (4.0 * distYCbCr(kg, kj));
+  float fk = distYCbCr(ke, kj) + distYCbCr(kj, ko) + distYCbCr(kb, kg) + distYCbCr(kg, kl) + (4.0 * distYCbCr(kf, kk));
+  if (jg < fk)
   {
-    // the weighted lengths of the two diagonals, j-g and f-k: the shorter one is drawn
-    float jg = DistYCbCr(kf, ki) + DistYCbCr(kc, kf) + DistYCbCr(kk, kn) + DistYCbCr(kh, kk) + (4.0 * DistYCbCr(kg, kj));
-    float fk = DistYCbCr(ke, kj) + DistYCbCr(kj, ko) + DistYCbCr(kb, kg) + DistYCbCr(kg, kl) + (4.0 * DistYCbCr(kf, kk));
     int t = (DOM_E * jg < fk) ? BLEND_DOMINANT : BLEND_NORMAL;
-    if (jg < fk)
-    {
-      if (neq(kf,kg) && neq(kf,kj)) r.x = t;
-      if (neq(kk,kj) && neq(kk,kg)) r.w = t;
-    }
-    t = (DOM_E * fk < jg) ? BLEND_DOMINANT : BLEND_NORMAL;
-    if (fk < jg)
-    {
-      if (neq(kg,kf) && neq(kg,kk)) r.y = t;
-      if (neq(kj,kf) && neq(kj,kk)) r.z = t;
-    }
+    if (neq(kf, kg) && neq(kf, kj)) r.x = t;
+    if (neq(kk, kj) && neq(kk, kg)) r.w = t;
+  }
+  else if (fk < jg)
+  {
+    int t = (DOM_E * fk < jg) ? BLEND_DOMINANT : BLEND_NORMAL;
+    if (neq(kg, kf) && neq(kg, kk)) r.y = t;
+    if (neq(kj, kf) && neq(kj, kk)) r.z = t;
+  }
+  if (CRISP_RULES)
+  {
+    bool isChecker = eq(kf, kk) && eq(kg, kj) && neq(kf, kg);
     // 31. an exact tie between two diagonals of one color each
-    if (CRISP_RULES && abs(jg - fk) < 0.001 && jg > 0.0 && eq(kf,kk) && eq(kg,kj) && neq(kf,kg) && DistYCbCr(kf, kg) * 255.0 > 64.0)
+    if (isChecker && abs(jg - fk) < 0.001 && jg > 0.0 && dist255(kf, kg) > 64.0)
     {
-      vec2 c0 = tieCont(coord, b);
+      vec3 cTL = P(-1.0, -1.0), cTR = P(2.0, -1.0), cBL = P(-1.0, 2.0), cBR = P(2.0, 2.0);
+      vec2 c0 = tieCont(coord, kf, kg, kb, kc, ke, kh, ki, kl, kn, ko, cTL, cTR, cBL, cBR);
       if (c0.x != c0.y)
       {
-        vec2 s = tieSparse(coord, b).yx + 0.5 * c0;
-        vec2 h = tieHeld(coord, b);
-        // the diagonal j-g joins (f and k are cut), or f-k joins (g and j are cut)
-        if (s.y > s.x && h.x > 0.5) r = ivec4(BLEND_NORMAL, BLEND_NONE, BLEND_NONE, BLEND_NORMAL);
-        else if (s.x > s.y && h.y > 0.5) r = ivec4(BLEND_NONE, BLEND_NORMAL, BLEND_NORMAL, BLEND_NONE);
+        vec2 h = tieHeld(kf, kg, kb, kc, ke, kh, ki, kl, kn, ko, cTL, cTR, cBL, cBR);
+        if (h.x + h.y > 0.5)
+        {
+          vec2 s = tieSparse(coord, kf, kg).yx + 0.5 * c0;
+          // the diagonal j-g joins (f and k are cut), or f-k joins (g and j are cut)
+          if (s.y > s.x && h.x > 0.5) r = ivec4(BLEND_NORMAL, BLEND_NONE, BLEND_NONE, BLEND_NORMAL);
+          else if (s.x > s.y && h.y > 0.5) r = ivec4(BLEND_NONE, BLEND_NORMAL, BLEND_NORMAL, BLEND_NONE);
+        }
       }
     }
+    // 36. Crossing strokes: k36.y joins j-g, k36.x joins f-k
+    vec2 k36 = crossWin(coord, kb, kc, ke, kf, kg, kh, ki, kj, kk, kl, kn, ko);
+    if (k36.y > 0.5) r = ivec4(BLEND_NORMAL, BLEND_NONE, BLEND_NONE, BLEND_NORMAL);
+    else if (k36.x > 0.5) r = ivec4(BLEND_NONE, BLEND_NORMAL, BLEND_NORMAL, BLEND_NONE);
+    // 46. a 2x2 checker of two colors inside a checker texture keeps its corners square
+    if (isChecker && (r.x + r.y + r.z + r.w > 0) && checker46(coord, kf, kg, kb, kc, ke, kh, ki, kl, kn, ko))
+      r = ivec4(BLEND_NONE);
   }
-  // 36. Crossing strokes: k36.y joins j-g, k36.x joins f-k
-  if (CRISP_RULES && XBRZ_MINC > 0.0)
-  {
-    vec2 k36 = crossWin(coord, b, kf, kg, kj, kk);
-    if (k36.y > 0.5) { r.x = BLEND_NORMAL; r.w = BLEND_NORMAL; } else if (k36.x > 0.5) { r.x = BLEND_NONE; r.w = BLEND_NONE; }
-    if (k36.x > 0.5) { r.y = BLEND_NORMAL; r.z = BLEND_NORMAL; } else if (k36.y > 0.5) { r.y = BLEND_NONE; r.z = BLEND_NONE; }
-  }
-  // 46. a 2x2 checker of two colors inside a checker texture (three or more of the 2x2 blocks beside it are
-  // checkers of the same two colors) keeps its corners square, as in the rest of the texture
-  if (CRISP_RULES && XBRZ_MINC > 0.0 && eq(kf,kk) && eq(kg,kj) && neq(kf,kg) && checker46(coord, b, kf, kg) >= 3.0)
-    r = ivec4(BLEND_NONE);
   return r;
 }
 
@@ -308,7 +301,7 @@ void main()
   ivec4 r = ivec4(BLEND_NONE);
   // where the 2x2 is two rows or two columns of one color nothing blends (and rules 31 and 36 need a
   // diagonal of one color), so the 4x4 is read only at the other points
-  if (!((eq(kf,kg) && eq(kj,kk)) || (eq(kf,kj) && eq(kg,kk))))
-    r = pointBlend(coord, vec2(0.0), P(0., -1.), P(1., -1.), P(-1., 0.), kf, kg, P(2., 0.), P(-1., 1.), kj, kk, P(2., 1.), P(0., 2.), P(1., 2.));
+  if (!((eq(kf, kg) && eq(kj, kk)) || (eq(kf, kj) && eq(kg, kk))))
+    r = pointBlend(coord, P(0., -1.), P(1., -1.), P(-1., 0.), kf, kg, P(2., 0.), P(-1., 1.), kj, kk, P(2., 1.), P(0., 2.), P(1., 2.));
   FRAG_OUT = vec4(kf, float(r.x + 4 * r.y + 16 * r.z + 64 * r.w) / 255.0);
 }
