@@ -649,6 +649,17 @@ bool isAaRampY(vec3 a, vec3 m, vec3 b, float orthoTolSq, float minSpanSq)
 
 bool alike(vec3 a, vec3 b) { return withinEqY255(a, b, XBRZ_ALIKE); }
 
+// D4-invariant tie-breaker when two candidate neighbor distances are equal within TIE_EPS:
+// breaks exact ties by color order (Y, Cb, Cr) so rotations and reflections pick the same color.
+float pickSecond(float d1, float d2, vec3 c1, vec3 c2)
+{
+  if (d1 + TIE_EPS < d2) return 0.0;
+  if (d2 + TIE_EPS < d1) return 1.0;
+  if (abs(c1.x - c2.x) > SAFE_EPS) return float(c2.x < c1.x);
+  if (abs(c1.y - c2.y) > SAFE_EPS) return float(c2.y < c1.y);
+  return float(c2.z < c1.z);
+}
+
 // The distance is symmetric, and below the two pixels of each distance (and of alike and IsPixEqual) are
 // written in one fixed order (A to I, then the ring of pixels two steps away), so the compiler computes
 // each distance only once. The pixels two steps away are read once, at the start of main.
@@ -1253,10 +1264,11 @@ vec4 diagonalStripes(vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F,
                      float dEB, float dED, float dEF, float dEH, vec4 xb, vec4 sq)
 {
   vec4 shape = FLAG(xb, 4.0) * (FLAG(xb, 16.0) + 2.0 * FLAG(xb, 64.0));
-  vec3 Px = dED <= dEB + TIE_EPS ? D : B, Qx = dED <= dEB + TIE_EPS ? B : D;
-  vec3 Py = dEB <= dEF + TIE_EPS ? B : F, Qy = dEB <= dEF + TIE_EPS ? F : B;
-  vec3 Pz = dEF <= dEH + TIE_EPS ? F : H, Qz = dEF <= dEH + TIE_EPS ? H : F;
-  vec3 Pw = dEH <= dED + TIE_EPS ? H : D, Qw = dEH <= dED + TIE_EPS ? D : H;
+  vec4 sec11 = FLAG(xb, 8.0);
+  vec3 Px = sec11.x > 0.5 ? B : D, Qx = sec11.x > 0.5 ? D : B;
+  vec3 Py = sec11.y > 0.5 ? F : B, Qy = sec11.y > 0.5 ? B : F;
+  vec3 Pz = sec11.z > 0.5 ? H : F, Qz = sec11.z > 0.5 ? F : H;
+  vec3 Pw = sec11.w > 0.5 ? D : H, Qw = sec11.w > 0.5 ? H : D;
   sq *= vec4(lessThan(shape, vec4(2.5))) * vec4(onTone(Qx, Px, E), onTone(Qy, Py, E), onTone(Qz, Pz, E), onTone(Qw, Pw, E));
   vec4 r = vec4(0.0);
   for (int k = 0; k < 4; k++)
@@ -1561,7 +1573,7 @@ void main()
   if (blendResult.x >= BLEND_NORMAL) res.x += xbrzCorner(blendResult.x, blendResult.w, blendResult.y, min(dED, dEB), pairSq.x, H, G, F, E, D, C, B, A, N_p1_m2, N_m2_p1);
   if (blendResult.y >= BLEND_NORMAL) res.y += xbrzCorner(blendResult.y, blendResult.x, blendResult.z, min(dEB, dEF), pairSq.y, D, A, H, E, B, I, F, C, N_p2_p1, N_m1_m2);
 
-  vec4 second = vec4(dED <= dEB + TIE_EPS ? 0.0 : 1.0, dEB <= dEF + TIE_EPS ? 0.0 : 1.0, dEF <= dEH + TIE_EPS ? 0.0 : 1.0, dEH <= dED + TIE_EPS ? 0.0 : 1.0);
+  vec4 second = vec4(pickSecond(dED, dEB, D, B), pickSecond(dEB, dEF, B, F), pickSecond(dEF, dEH, F, H), pickSecond(dEH, dED, H, D));
   res += 8.0 * second;
 
   // ============================================================================================

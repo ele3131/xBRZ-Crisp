@@ -923,7 +923,12 @@ void main()
           float hSq = e.x > 0.0 ? sFSq : sDSq, vSq = e.y > 0.0 ? sHSq : sBSq;
           bool hz = e.x * e.y > 0.0;
           float dPri = hz ? hSq : vSq, dSec = hz ? vSq : hSq;
-          res = mix(res, vec4(dPri <= dSec + TIE_EPS ? 5.0 : 13.0), me);
+          vec3 cPri = hz ? R1 : R2, cSec = hz ? R2 : R1;
+          bool pickS = dSec + TIE_EPS < dPri
+                    || (abs(dPri - dSec) <= TIE_EPS
+                        && (abs(cPri.x - cSec.x) > SAFE_EPS ? cSec.x < cPri.x
+                            : (abs(cPri.y - cSec.y) > SAFE_EPS ? cSec.y < cPri.y : cSec.z < cPri.z)));
+          res = mix(res, vec4(pickS ? 13.0 : 5.0), me);
         }
       }
     }
