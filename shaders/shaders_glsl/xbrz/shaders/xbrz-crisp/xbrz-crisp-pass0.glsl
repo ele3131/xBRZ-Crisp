@@ -463,6 +463,9 @@ out COMPAT_PRECISION vec4 FragColor;
 #define FragColor gl_FragColor
 #define COMPAT_TEXTURE texture2D
 #endif
+#if defined(GL_ES) && __VERSION__ >= 300
+precision highp int;
+#endif
 
 uniform COMPAT_PRECISION vec2 OutputSize;
 uniform COMPAT_PRECISION vec2 TextureSize;

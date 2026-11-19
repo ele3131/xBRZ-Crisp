@@ -380,11 +380,18 @@ def check_single_source_sync() -> str:
     return tmp
 
 
-def check_slang_validator(slang_dir: str) -> int:
+def _slang_to_essl310(src: str) -> bytes:
+    """Translate Vulkan-GLSL binding/push_constant decorators to plain ESSL 3.10 for Mesa validation."""
+    src = re.sub(r"layout\s*\(\s*push_constant\s*\)\s*uniform\s+", "layout(std140) uniform ", src)
+    src = re.sub(r"layout\s*\(\s*std140\s*,\s*set\s*=\s*\d+\s*,\s*binding\s*=\s*\d+\s*\)", "layout(std140)", src)
+    src = re.sub(r"layout\s*\(\s*set\s*=\s*\d+\s*,\s*binding\s*=\s*\d+\s*\)\s*", "", src)
+    return src.encode("utf-8")
+
+
+def check_slang_validator(slang_dir: str, gles: HeadlessGLES) -> tuple[int, int]:
     validator = shutil.which("glslangValidator")
-    if not validator:
-        return 0
-    checked = 0
+    checked_spv = 0
+    checked_es31 = 0
     with tempfile.TemporaryDirectory(prefix="xbrz_slang_") as td:
         for fn in sorted(os.listdir(slang_dir)):
             if not fn.endswith(".slang"):
@@ -398,14 +405,29 @@ def check_slang_validator(slang_dir: str) -> int:
             hdr = text[:v_idx]
             v_src = hdr + text[v_idx + len("#pragma stage vertex") : f_idx]
             f_src = hdr + text[f_idx + len("#pragma stage fragment") :]
-            for ext, src in (("vert", v_src), ("frag", f_src)):
-                sp = os.path.join(td, f"{fn}.{ext}")
-                spv = sp + ".spv"
-                with open(sp, "w", encoding="utf-8") as out:
-                    out.write(src)
-                subprocess.check_call([validator, "-V", "-S", ext, sp, "-o", spv], stdout=subprocess.DEVNULL)
-                checked += 1
-    return checked
+            if validator:
+                for ext, src in (("vert", v_src), ("frag", f_src)):
+                    sp = os.path.join(td, f"{fn}.{ext}")
+                    spv = sp + ".spv"
+                    with open(sp, "w", encoding="utf-8") as out:
+                        out.write(src)
+                    subprocess.check_call([validator, "-V", "-S", ext, sp, "-o", spv], stdout=subprocess.DEVNULL)
+                    checked_spv += 1
+            for stype, src in ((gles.GL_VERTEX_SHADER, v_src), (gles.GL_FRAGMENT_SHADER, f_src)):
+                sh = gles.gl.glCreateShader(stype)
+                ptr = ctypes.c_char_p(_slang_to_essl310(src))
+                gles.gl.glShaderSource(sh, 1, ctypes.byref(ptr), None)
+                gles.gl.glCompileShader(sh)
+                ok = ctypes.c_int(0)
+                gles.gl.glGetShaderiv(sh, gles.GL_COMPILE_STATUS, ctypes.byref(ok))
+                if not ok.value:
+                    buf = ctypes.create_string_buffer(4096)
+                    gles.gl.glGetShaderInfoLog(sh, 4096, None, buf)
+                    gles.gl.glDeleteShader(sh)
+                    raise RuntimeError(f"Slang ESSL 3.10 compile error in {fn}:\n{buf.value.decode('utf-8', 'replace')}")
+                gles.gl.glDeleteShader(sh)
+                checked_es31 += 1
+    return checked_spv, checked_es31
 
 
 def main() -> None:
@@ -424,21 +446,24 @@ def main() -> None:
         crisp_glsl = os.path.join(SHADERS_DIR, "shaders_glsl", "xbrz", "shaders", "xbrz-crisp")
         crisp_slang = os.path.join(SHADERS_DIR, "shaders_slang", "edge-smoothing", "xbrz", "shaders", "xbrz-crisp")
         mp_glsl = os.path.join(tmp, "multipass", "glsl-shaders", "xbrz", "shaders", "xbrz-freescale-multipass")
+        mp_slang = os.path.join(tmp, "multipass", "slang-shaders", "edge-smoothing", "xbrz", "shaders", "xbrz-freescale-multipass")
 
         gles = HeadlessGLES()
         try:
-            for hdr, puni in (("#version 100", True), ("#version 100", False), ("#version 300 es", True)):
+            for hdr, puni in (("#version 100", True), ("#version 100", False), ("#version 300 es", True), ("#version 310 es", True)):
                 for p in ("point", "pass0", "resolve", "match", "pass1"):
                     prog = gles.compile_program(os.path.join(crisp_glsl, f"xbrz-crisp-{p}.glsl"), hdr, puni)
                     gles.gl.glDeleteProgram(prog)
                 for p in ("point", "pass0", "resolve", "pass1"):
                     prog = gles.compile_program(os.path.join(mp_glsl, f"xbrz-freescale-{p}.glsl"), hdr, puni)
                     gles.gl.glDeleteProgram(prog)
-            print("[verify] GLSL compilation OK (#version 100 default/uniform + #version 300 es, 5-pass Crisp & 4-pass Multipass)")
+            print("[verify] GLSL compilation OK (#version 100 default/uniform + #version 300 es + #version 310 es, 5-pass Crisp & 4-pass Multipass)")
 
-            n_spv = check_slang_validator(crisp_slang)
-            if n_spv:
-                print(f"[verify] Vulkan SPIR-V validation OK ({n_spv} stages via glslangValidator)")
+            n_spv1, n_es1 = check_slang_validator(crisp_slang, gles)
+            n_spv2, n_es2 = check_slang_validator(mp_slang, gles)
+            print(f"[verify] Slang ESSL 3.10 validation OK ({n_es1 + n_es2} stages across Crisp & Multipass)")
+            if n_spv1 + n_spv2:
+                print(f"[verify] Vulkan SPIR-V validation OK ({n_spv1 + n_spv2} stages via glslangValidator)")
 
             if args.save_baseline or args.diff or args.diff_baseline:
                 import numpy as np

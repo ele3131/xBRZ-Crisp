@@ -454,7 +454,7 @@ bool isLone3x3(vec3 Q, vec2 q)
 void main()
 {
 @MATCH_COORDS@
-  vec4 rawRes = INFO(coord);
+  vec4 rawRes = INFO_CENTER;
   if (XBRZ_MINC <= 0.0)
   {
     FRAG_OUT = rawRes;

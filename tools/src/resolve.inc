@@ -11,7 +11,9 @@
 
 // the first pass's decisions for the four corners of the pixel at (x, y) from E; see the decision
 // word in pass 0 (BLEND is the blend type, FLAG(r, f) one of its flags)
+#ifndef INFO_RAW
 #define INFO_RAW(x, y) INFO(coord + vec2(x, y) * INFO_STEP)
+#endif
 #define INFO_AT(x, y) floor(INFO_RAW(x, y) * 255.0 + 0.5)
 #define BLEND(r) mod(r, 4.0)
 #define FLAG(r, f) mod(floor((r) / (f)), 2.0)

@@ -1,4 +1,6 @@
-#version 450
+#version 310 es
+precision highp float;
+precision highp int;
 //#crisp{
 // xBRZ crisp: xBRZ freescale that only rounds corners between clearly different colors.
 // See xbrz-crisp-pass0 for the full numbered rule catalog and pipeline overview.
@@ -85,18 +87,18 @@ layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 // the input of the first pass (the preset's reference pass), which is the original image unless
 // other shaders run before xBRZ
+ivec2 gIpx = ivec2(0), gMaxI = ivec2(0);
 //#crisp{
 layout(set = 0, binding = 3) uniform sampler2D xbrz_crisp_refpass;
 #define ORIG_SIZE params.xbrz_crisp_refpassSize
-#define P(x,y) texture(xbrz_crisp_refpass, coord + ORIG_SIZE.zw * vec2(x, y)).rgb
+#define P(x,y) texelFetch(xbrz_crisp_refpass, clamp(gIpx + ivec2(int(x), int(y)), ivec2(0), gMaxI), 0).rgb
 //#crisp}
 //#plain layout(set = 0, binding = 3) uniform sampler2D xbrz_fs_refpass;
 //#plain #define ORIG_SIZE params.xbrz_fs_refpassSize
-//#plain #define P(x,y) texture(xbrz_fs_refpass, coord + ORIG_SIZE.zw * vec2(x, y)).rgb
+//#plain #define P(x,y) texelFetch(xbrz_fs_refpass, clamp(gIpx + ivec2(int(x), int(y)), ivec2(0), gMaxI), 0).rgb
 #define OUT_SIZE params.OutputSize
 #define ORIG_INPUT_SIZE ORIG_SIZE
-#define INFO(uv) texture(Source, uv)
-#define INFO_STEP ORIG_SIZE.zw
+#define INFO_RAW(x, y) texelFetch(Source, clamp(gIpx + ivec2(int(x), int(y)), ivec2(0), gMaxI), 0)
 
 // Rec. 2020 luma weights and chroma difference scales, shared across passes
 const vec3 LUMA_W = vec3(0.2627, 0.6780, 0.0593);
@@ -186,7 +188,9 @@ bool isAaRampY(vec3 a, vec3 m, vec3 b, float orthoTolSq, float minSpanSq)
 }
 // the first pass's decisions for the four corners of the pixel at (x, y) from E; see the decision
 // word in pass 0 (BLEND is the blend type, FLAG(r, f) one of its flags)
+#ifndef INFO_RAW
 #define INFO_RAW(x, y) INFO(coord + vec2(x, y) * INFO_STEP)
+#endif
 #define INFO_AT(x, y) floor(INFO_RAW(x, y) * 255.0 + 0.5)
 #define BLEND(r) mod(r, 4.0)
 #define FLAG(r, f) mod(floor((r) / (f)), 2.0)
@@ -230,7 +234,7 @@ bool isAaRampY(vec3 a, vec3 m, vec3 b, float orthoTolSq, float minSpanSq)
 #define XBRZ_HOLD_SAME 30.0    // 28. a neighbor this close in color holds a pixel
 
 // ---- Helpers of the Crisp rules ----
-vec2 coord = vec2(0.0);
+
 
 const vec2 vX = vec2(0., -1.), hX = vec2(-1., 0.), vY = vec2(1., 0.), hY = vec2(0., -1.);
 const vec2 vZ = vec2(0., 1.), hZ = vec2(1., 0.), vW = vec2(-1., 0.), hW = vec2(0., 1.);
@@ -466,11 +470,8 @@ vec4 cutNoWeak(vec4 word) { vec4 bl = BLEND(word); return vec4(greaterThan(bl, v
 
 void main()
 {
-  vec2 pos = fract(vTexCoord * ORIG_SIZE.xy) - vec2(0.5, 0.5);
-//#crisp{
-  coord = vTexCoord - pos * ORIG_SIZE.zw;
-//#crisp}
-//#plain   vec2 coord = vTexCoord - pos * ORIG_SIZE.zw;
+  gMaxI = ivec2(ORIG_SIZE.xy) - ivec2(1);
+  gIpx = clamp(ivec2(floor(vTexCoord * ORIG_SIZE.xy)), ivec2(0), gMaxI);
   vec4 info = INFO_AT(0.0, 0.0);
   vec4 iB = vec4(0.0), iD = vec4(0.0), iF = vec4(0.0), iH = vec4(0.0);
 //#crisp{

@@ -101,6 +101,9 @@ out COMPAT_PRECISION vec4 FragColor;
 #define FragColor gl_FragColor
 #define COMPAT_TEXTURE texture2D
 #endif
+#if defined(GL_ES) && __VERSION__ >= 300
+precision highp int;
+#endif
 
 uniform COMPAT_PRECISION vec2 OutputSize;
 uniform COMPAT_PRECISION vec2 TextureSize;
@@ -121,11 +124,16 @@ uniform COMPAT_PRECISION float XBRZ_MINC;
 uniform sampler2D PassPrev2Texture;
 uniform COMPAT_PRECISION vec2 PassPrev2TextureSize;
 uniform COMPAT_PRECISION vec2 PassPrev2InputSize;
+#define OUT_SIZE OutputSize
+#define ORIG_INPUT_SIZE PassPrev2InputSize
+#if __VERSION__ >= 300
+ivec2 gIpx = ivec2(0), gSrcMaxI = ivec2(0), gOrigMaxI = ivec2(0);
+#define P(x,y) texelFetch(PassPrev2Texture, clamp(gIpx + ivec2(int(x), int(y)), ivec2(0), gOrigMaxI), 0).rgb
+#define INFO_RAW(x, y) texelFetch(Texture, clamp(gIpx + ivec2(int(x), int(y)), ivec2(0), gSrcMaxI), 0)
+#else
 vec2 gSrcInv = vec2(0.0), gSrcMax = vec2(0.0);
 vec2 gOrigInv = vec2(0.0), gOrigMax = vec2(0.0);
-#define OUT_SIZE OutputSize
 #define ORIG_SIZE vec4(PassPrev2TextureSize, gOrigInv)
-#define ORIG_INPUT_SIZE PassPrev2InputSize
 // the first pass's texture and the original's can have different sizes (RetroArch rounds each one
 // up to a power of two on its own, e.g. 256 and 512 with snes9x), so each one is read with its own
 #define SRC_SIZE vec4(TextureSize, gSrcInv)
@@ -134,6 +142,7 @@ vec2 gOrigInv = vec2(0.0), gOrigMax = vec2(0.0);
 #define P(x,y) COMPAT_TEXTURE(PassPrev2Texture, CLAMP_ORIG(ocoord + gOrigInv * vec2(x, y))).rgb
 #define INFO(uv) COMPAT_TEXTURE(Texture, CLAMP_SRC(uv))
 #define INFO_STEP gSrcInv
+#endif
 
 // Rec. 2020 luma weights and chroma difference scales, shared across passes
 const vec3 LUMA_W = vec3(0.2627, 0.6780, 0.0593);
@@ -223,7 +232,9 @@ bool isAaRampY(vec3 a, vec3 m, vec3 b, float orthoTolSq, float minSpanSq)
 }
 // the first pass's decisions for the four corners of the pixel at (x, y) from E; see the decision
 // word in pass 0 (BLEND is the blend type, FLAG(r, f) one of its flags)
+#ifndef INFO_RAW
 #define INFO_RAW(x, y) INFO(coord + vec2(x, y) * INFO_STEP)
+#endif
 #define INFO_AT(x, y) floor(INFO_RAW(x, y) * 255.0 + 0.5)
 #define BLEND(r) mod(r, 4.0)
 #define FLAG(r, f) mod(floor((r) / (f)), 2.0)
@@ -267,7 +278,9 @@ bool isAaRampY(vec3 a, vec3 m, vec3 b, float orthoTolSq, float minSpanSq)
 #define XBRZ_HOLD_SAME 30.0    // 28. a neighbor this close in color holds a pixel
 
 // ---- Helpers of the Crisp rules ----
+#if __VERSION__ < 300
 vec2 ocoord = vec2(0.0);
+#endif
 
 const vec2 vX = vec2(0., -1.), hX = vec2(-1., 0.), vY = vec2(1., 0.), hY = vec2(0., -1.);
 const vec2 vZ = vec2(0., 1.), hZ = vec2(1., 0.), vW = vec2(-1., 0.), hW = vec2(0., 1.);
@@ -503,6 +516,11 @@ vec4 cutNoWeak(vec4 word) { vec4 bl = BLEND(word); return vec4(greaterThan(bl, v
 
 void main()
 {
+#if __VERSION__ >= 300
+  gSrcMaxI = ivec2(InputSize) - ivec2(1);
+  gOrigMaxI = ivec2(ORIG_INPUT_SIZE) - ivec2(1);
+  gIpx = clamp(ivec2(floor(vTexCoord * TextureSize)), ivec2(0), gSrcMaxI);
+#else
   gSrcInv = 1.0 / TextureSize;
   gSrcMax = (InputSize - 0.5) * gSrcInv;
   gOrigInv = 1.0 / PassPrev2TextureSize;
@@ -513,6 +531,7 @@ void main()
   ocoord = coord * TextureSize * gOrigInv;
 //#crisp}
 //#plain   vec2 ocoord = coord * TextureSize * gOrigInv;
+#endif
   vec4 info = INFO_AT(0.0, 0.0);
   vec4 iB = vec4(0.0), iD = vec4(0.0), iF = vec4(0.0), iH = vec4(0.0);
 //#crisp{

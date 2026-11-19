@@ -67,8 +67,10 @@ COMPAT_ATTRIBUTE vec4 VertexCoord;
 COMPAT_ATTRIBUTE vec4 TexCoord;
 COMPAT_VARYING vec4 TEX0;
 COMPAT_VARYING vec4 TEX1;
+#if __VERSION__ < 300
 COMPAT_VARYING vec4 TEX2;
 COMPAT_VARYING vec4 TEX3;
+#endif
 
 uniform mat4 MVPMatrix;
 uniform COMPAT_PRECISION vec2 OutputSize;
@@ -92,12 +94,16 @@ void main()
     vec2 sc = OutputSize / origIn;
     float scArea = (sc.x * sc.y) * 0.7071067811865475;
     float sx2 = sc.x * sc.x, sy2 = sc.y * sc.y;
+#if __VERSION__ >= 300
+    TEX0 = vec4(TexCoord.xy * TextureSize, sc);
+#else
     TEX0 = vec4(TexCoord.xy, sc);
-    TEX1 = vec4(scArea * inversesqrt(vec3(sx2 + sy2, 4.0 * sx2 + sy2, sx2 + 4.0 * sy2)), scArea);
     vec2 srcInv = 1.0 / TextureSize;
     vec2 origInv = 1.0 / origTex;
     TEX2 = vec4(srcInv, origInv);
     TEX3 = vec4((origIn - 0.5) * origInv, TextureSize * origInv);
+#endif
+    TEX1 = vec4(scArea * inversesqrt(vec3(sx2 + sy2, 4.0 * sx2 + sy2, sx2 + 4.0 * sy2)), scArea);
 }
 
 #elif defined(FRAGMENT)
@@ -123,6 +129,9 @@ out COMPAT_PRECISION vec4 FragColor;
 #define FragColor gl_FragColor
 #define COMPAT_TEXTURE texture2D
 #endif
+#if defined(GL_ES) && __VERSION__ >= 300
+precision highp int;
+#endif
 
 uniform COMPAT_PRECISION vec2 OutputSize;
 uniform COMPAT_PRECISION vec2 TextureSize;
@@ -130,11 +139,14 @@ uniform COMPAT_PRECISION vec2 InputSize;
 uniform sampler2D Texture;
 COMPAT_VARYING vec4 TEX0;
 COMPAT_VARYING vec4 TEX1;
+#if __VERSION__ < 300
 COMPAT_VARYING vec4 TEX2;
 COMPAT_VARYING vec4 TEX3;
+#endif
 #define vTexCoord TEX0.xy
 #define FRAG_OUT FragColor
 
+#define MP
 //#crisp{
 // the point pass (four passes back: pass 0, the resolve pass and the match pass come between), whose color is xBRZ's input: the original image unless other shaders run before xBRZ
 uniform sampler2D PassPrev4Texture;
@@ -153,6 +165,15 @@ uniform COMPAT_PRECISION vec2 PassPrev4InputSize;
 //#plain #define ORIG_INPUT_SIZE PassPrev3InputSize
 // the first pass's texture and the original's can have different sizes (RetroArch rounds each one
 // up to a power of two on its own, e.g. 256 and 512 with snes9x), so each one is read with its own
+#if __VERSION__ >= 300
+//#crisp{
+#define P_CENTER texelFetch(PassPrev4Texture, ipx, 0).rgb
+#define P(x,y) texelFetch(PassPrev4Texture, clamp(ipx + ivec2(int(x), int(y)), ivec2(0), maxOrig), 0).rgb
+//#crisp}
+//#plain #define P_CENTER texelFetch(PassPrev3Texture, ipx, 0).rgb
+//#plain #define P(x,y) texelFetch(PassPrev3Texture, clamp(ipx + ivec2(int(x), int(y)), ivec2(0), maxOrig), 0).rgb
+#define INFO_CENTER texelFetch(Texture, ipx, 0)
+#else
 #define CLAMP_ORIG(uv) min((uv), origMax)
 //#crisp{
 #define P_CENTER COMPAT_TEXTURE(PassPrev4Texture, ocoord).rgb
@@ -161,13 +182,17 @@ uniform COMPAT_PRECISION vec2 PassPrev4InputSize;
 //#plain #define P_CENTER COMPAT_TEXTURE(PassPrev3Texture, ocoord).rgb
 //#plain #define P(x,y) COMPAT_TEXTURE(PassPrev3Texture, CLAMP_ORIG(ocoord + origInv * vec2(x, y))).rgb
 #define INFO(uv) COMPAT_TEXTURE(Texture, uv)
+#define INFO_CENTER INFO(coord)
+#endif
 
 const float INV_SQRT2 = 0.7071067811865475;
 
+#if __VERSION__ < 300
 // the first pass's decisions for the four corners of the pixel at (x, y) from E; see the decision
 // word in pass 0 (BLEND is the blend type, FLAG(r, f) one of its flags)
 #define BLEND(r) mod(r, 4.0)
 #define FLAG(r, f) mod(floor((r) / (f)), 2.0)
+#endif
 //#crisp{
 #define XBRZ_TIPK 0.1  // 23. a loose pixel's tip: the cut line moves out by this
 //#crisp}
@@ -182,14 +207,20 @@ void main()
   vec2 scale = TEX0.zw;
   vec3 scK = TEX1.xyz;
   float scArea = TEX1.w;
+#if __VERSION__ >= 300
+  vec2 pos = fract(vTexCoord) - vec2(0.5, 0.5);
+  ivec2 maxOrig = ivec2(ORIG_INPUT_SIZE) - ivec2(1);
+  ivec2 ipx = clamp(ivec2(floor(vTexCoord)), ivec2(0), maxOrig);
+#else
   vec2 srcInv = TEX2.xy;
   vec2 origInv = TEX2.zw;
   vec2 origMax = TEX3.xy;
   vec2 pos = fract(vTexCoord * TextureSize) - vec2(0.5, 0.5);
   vec2 coord = vTexCoord - pos * srcInv;
   vec2 ocoord = coord * TEX3.zw;
+#endif
 
-  vec4 rawInfo = INFO(coord);
+  vec4 rawInfo = INFO_CENTER;
 
   // most output pixels have no corner to blend, and only need these two reads
   if (dot(rawInfo, vec4(1.0)) < 0.5 / 255.0)
@@ -198,9 +229,23 @@ void main()
     return;
   }
 
-  vec4 info = floor(rawInfo * 255.0 + 0.5);
   // info Mapping: x|y|
   //               w|z|
+#if __VERSION__ >= 300
+  uvec4 iw = uvec4(rawInfo * 255.0 + 0.5);
+  uvec4 blU = iw & 3u;
+  MP vec4 blendResult = vec4(blU);
+  MP vec4 isCut = vec4(notEqual(blU, uvec4(0u)));
+  MP vec4 doLineBlend = vec4((iw >> 2u) & 1u);
+  MP vec4 secondPix = vec4((iw >> 3u) & 1u);
+  MP vec4 haveShallowLine = vec4((iw >> 4u) & 1u);
+  MP vec4 haveSteepLine = vec4((iw >> 6u) & 1u);
+//#crisp{
+  MP vec4 tip = 1.0 + XBRZ_TIPK * vec4(equal(blU, uvec4(3u)));
+  MP vec4 longL = vec4(((iw >> 5u) & 1u) | (((iw >> 7u) & 1u) << 1u));
+//#crisp}
+#else
+  vec4 info = floor(rawInfo * 255.0 + 0.5);
   vec4 blendResult = BLEND(info);
   vec4 isCut = vec4(greaterThan(blendResult, vec4(0.0)));
   vec4 doLineBlend = FLAG(info, 4.0);
@@ -211,6 +256,7 @@ void main()
   vec4 tip = 1.0 + XBRZ_TIPK * vec4(equal(blendResult, vec4(3.0)));
   vec4 longL = FLAG(info, 32.0) + 2.0 * FLAG(info, 128.0);
 //#crisp}
+#endif
 
   // Vectorized exact signed distance (pre-scaled by INV_SQRT2) for all 4 corners in canonical BR frame
   vec4 px = vec4(-pos.x, -pos.y,  pos.x,  pos.y);
@@ -233,7 +279,7 @@ void main()
                doLineBlend);
 
 //#crisp{
-  vec4 isLong = isCut * doLineBlend * vec4(greaterThan(longL, vec4(0.0)));
+  MP vec4 isLong = isCut * doLineBlend * vec4(greaterThan(longL, vec4(0.0)));
   if (dot(isLong, vec4(1.0)) > 0.0)
   {
     float sx2 = scale.x * scale.x, sy2 = scale.y * scale.y;
@@ -250,30 +296,30 @@ void main()
 //#crisp}
 
   // Exact smoothstep(-INV_SQRT2, INV_SQRT2, d_raw): d is already multiplied by INV_SQRT2
-  vec4 t = isCut * clamp(d + 0.5, 0.0, 1.0);
-  if (dot(t, vec4(1.0)) <= 1e-6)
+  MP vec4 t = isCut * clamp(d + 0.5, 0.0, 1.0);
+  if (dot(t, vec4(1.0)) <= 1e-4)
   {
     FRAG_OUT = vec4(P_CENTER, 1.0);
     return;
   }
-  vec4 ratios = t * t * (3.0 - 2.0 * t);
+  MP vec4 ratios = t * t * (3.0 - 2.0 * t);
 
   // ============================================================================================
   // xBRZ: drawing the corners (0, 90, 180, 270 degrees); neighbor color is fetched only when ratio > 0
   // ============================================================================================
 //#crisp{
-  float sumR = ratios.x + ratios.y + ratios.z + ratios.w;
-  vec3 accCol = vec3(0.0);
-  float keepE = 1.0;
+  MP float sumR = ratios.x + ratios.y + ratios.z + ratios.w;
+  MP vec3 accCol = vec3(0.0);
+  MP float keepE = 1.0;
   if (ratios.z > 0.0) { vec2 bo = secondPix.z > 0.0 ? vec2( 0., 1.) : vec2( 1., 0.); accCol += ratios.z * P(bo.x, bo.y); keepE *= 1.0 - ratios.z; }
   if (ratios.y > 0.0) { vec2 bo = secondPix.y > 0.0 ? vec2( 1., 0.) : vec2( 0.,-1.); accCol += ratios.y * P(bo.x, bo.y); keepE *= 1.0 - ratios.y; }
   if (ratios.x > 0.0) { vec2 bo = secondPix.x > 0.0 ? vec2( 0.,-1.) : vec2(-1., 0.); accCol += ratios.x * P(bo.x, bo.y); keepE *= 1.0 - ratios.x; }
   if (ratios.w > 0.0) { vec2 bo = secondPix.w > 0.0 ? vec2(-1., 0.) : vec2( 0., 1.); accCol += ratios.w * P(bo.x, bo.y); keepE *= 1.0 - ratios.w; }
-  vec3 res = accCol / sumR;
-  if (keepE > 1e-5) res = mix(P_CENTER, res, 1.0 - keepE);
+  MP vec3 res = accCol / sumR;
+  if (keepE > 1e-4) res = mix(P_CENTER, res, 1.0 - keepE);
   FRAG_OUT = vec4(res, 1.0);
 //#crisp}
-//#plain   vec3 res = P_CENTER;
+//#plain   MP vec3 res = P_CENTER;
 //#plain   if (ratios.z > 0.0) { vec2 bo = secondPix.z > 0.0 ? vec2( 0., 1.) : vec2( 1., 0.); res = mix(res, P(bo.x, bo.y), ratios.z); }
 //#plain   if (ratios.y > 0.0) { vec2 bo = secondPix.y > 0.0 ? vec2( 1., 0.) : vec2( 0.,-1.); res = mix(res, P(bo.x, bo.y), ratios.y); }
 //#plain   if (ratios.x > 0.0) { vec2 bo = secondPix.x > 0.0 ? vec2( 0.,-1.) : vec2(-1., 0.); res = mix(res, P(bo.x, bo.y), ratios.x); }

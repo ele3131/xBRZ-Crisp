@@ -96,6 +96,9 @@ out COMPAT_PRECISION vec4 FragColor;
 #define FragColor gl_FragColor
 #define COMPAT_TEXTURE texture2D
 #endif
+#if defined(GL_ES) && __VERSION__ >= 300
+precision highp int;
+#endif
 
 uniform COMPAT_PRECISION vec2 OutputSize;
 uniform COMPAT_PRECISION vec2 TextureSize;
@@ -114,12 +117,23 @@ uniform COMPAT_PRECISION float XBRZ_MINC;
 uniform sampler2D PassPrev3Texture;
 uniform COMPAT_PRECISION vec2 PassPrev3TextureSize;
 uniform COMPAT_PRECISION vec2 PassPrev3InputSize;
+// pass 0's decisions (two passes back), before the resolve pass changed them
+uniform sampler2D PassPrev2Texture;
+uniform COMPAT_PRECISION vec2 PassPrev2TextureSize;
+#define OUT_SIZE OutputSize
+#define ORIG_INPUT_SIZE PassPrev3InputSize
+#if __VERSION__ >= 300
+ivec2 gIpx = ivec2(0), gSrcMaxI = ivec2(0), gOrigMaxI = ivec2(0);
+#define P(x,y) texelFetch(PassPrev3Texture, clamp(gIpx + ivec2(int(x), int(y)), ivec2(0), gOrigMaxI), 0).rgb
+#define INFO_CENTER texelFetch(Texture, gIpx, 0)
+#define INFO_AT(x, y) floor(texelFetch(Texture, clamp(gIpx + ivec2(int(x), int(y)), ivec2(0), gSrcMaxI), 0) * 255.0 + 0.5)
+#define W0_RAW texelFetch(PassPrev2Texture, gIpx, 0)
+#define W0_AT(x, y) floor(texelFetch(PassPrev2Texture, clamp(gIpx + ivec2(int(x), int(y)), ivec2(0), gSrcMaxI), 0) * 255.0 + 0.5)
+#else
 vec2 gSrcInv = vec2(0.0), gSrcMax = vec2(0.0);
 vec2 gOrigInv = vec2(0.0), gOrigMax = vec2(0.0);
 vec2 gP0Inv = vec2(0.0), gP0Max = vec2(0.0);
-#define OUT_SIZE OutputSize
 #define ORIG_SIZE vec4(PassPrev3TextureSize, gOrigInv)
-#define ORIG_INPUT_SIZE PassPrev3InputSize
 // the first pass's texture and the original's can have different sizes (RetroArch rounds each one
 // up to a power of two on its own, e.g. 256 and 512 with snes9x), so each one is read with its own
 #define SRC_SIZE vec4(TextureSize, gSrcInv)
@@ -127,17 +141,15 @@ vec2 gP0Inv = vec2(0.0), gP0Max = vec2(0.0);
 #define CLAMP_SRC(uv) min((uv), gSrcMax)
 #define P(x,y) COMPAT_TEXTURE(PassPrev3Texture, CLAMP_ORIG(ocoord + gOrigInv * vec2(x, y))).rgb
 #define INFO(uv) COMPAT_TEXTURE(Texture, CLAMP_SRC(uv))
+#define INFO_CENTER INFO(coord)
 #define INFO_STEP gSrcInv
 #define INFO_AT(x, y) floor(INFO(coord + vec2(x, y) * INFO_STEP) * 255.0 + 0.5)
-
-// pass 0's decisions (two passes back), before the resolve pass changed them
-uniform sampler2D PassPrev2Texture;
-uniform COMPAT_PRECISION vec2 PassPrev2TextureSize;
 #define P0_SIZE vec4(PassPrev2TextureSize, gP0Inv)
 #define CLAMP_P0(uv) min((uv), gP0Max)
 #define W0_RAW COMPAT_TEXTURE(PassPrev2Texture, CLAMP_P0(c0))
 #define W0_AT(x, y) floor(COMPAT_TEXTURE(PassPrev2Texture, CLAMP_P0(c0 + vec2(x, y) * gP0Inv)) * 255.0 + 0.5)
 vec2 coord = vec2(0.0), ocoord = vec2(0.0), c0 = vec2(0.0);
+#endif
 
 // the decision word of a corner (see pass 0 and the resolve pass): BLEND is the blend type, FLAG(r, f) one of its flags
 #define BLEND(r) mod(r, 4.0)
@@ -672,6 +684,11 @@ bool isLone3x3(vec3 Q, vec2 q)
 
 void main()
 {
+#if __VERSION__ >= 300
+  gSrcMaxI = ivec2(InputSize) - ivec2(1);
+  gOrigMaxI = ivec2(ORIG_INPUT_SIZE) - ivec2(1);
+  gIpx = clamp(ivec2(floor(vTexCoord * TextureSize)), ivec2(0), gSrcMaxI);
+#else
   gSrcInv = 1.0 / TextureSize;
   gSrcMax = (InputSize - 0.5) * gSrcInv;
   gOrigInv = 1.0 / PassPrev3TextureSize;
@@ -682,7 +699,8 @@ void main()
   coord = vTexCoord - pos * gSrcInv;
   ocoord = coord * TextureSize * gOrigInv;
   c0 = coord * TextureSize * gP0Inv;
-  vec4 rawRes = INFO(coord);
+#endif
+  vec4 rawRes = INFO_CENTER;
   if (XBRZ_MINC <= 0.0)
   {
     FRAG_OUT = rawRes;

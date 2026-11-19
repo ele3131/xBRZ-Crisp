@@ -1,4 +1,6 @@
-#version 450
+#version 310 es
+precision highp float;
+precision highp int;
 //#crisp{
 // xBRZ crisp: xBRZ freescale that only rounds corners between clearly different colors.
 // See xbrz-crisp-pass0 for the full numbered rule catalog and pipeline overview.
@@ -77,20 +79,16 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 // the input of the first pass (the preset's reference pass), which is the original image unless
 // other shaders run before xBRZ
 layout(set = 0, binding = 3) uniform sampler2D xbrz_crisp_refpass;
-#define ORIG_SIZE params.xbrz_crisp_refpassSize
-#define P(x,y) texture(xbrz_crisp_refpass, coord + ORIG_SIZE.zw * vec2(x, y)).rgb
-#define OUT_SIZE params.OutputSize
-#define INFO(uv) texture(Source, uv)
-#define INFO_STEP ORIG_SIZE.zw
-#define INFO_AT(x, y) floor(INFO(coord + vec2(x, y) * INFO_STEP) * 255.0 + 0.5)
-
 // pass 0's decisions, before the resolve pass changed them
 layout(set = 0, binding = 4) uniform sampler2D xbrz_crisp_pass0;
-#define W0_RAW texture(xbrz_crisp_pass0, coord)
-#define W0_AT(x, y) floor(texture(xbrz_crisp_pass0, coord + vec2(x, y) * INFO_STEP) * 255.0 + 0.5)
-
-// the center of the pixel in the original, set in main (the functions read P)
-vec2 coord = vec2(0.0);
+ivec2 gIpx = ivec2(0), gMaxI = ivec2(0);
+#define ORIG_SIZE params.xbrz_crisp_refpassSize
+#define OUT_SIZE params.OutputSize
+#define P(x,y) texelFetch(xbrz_crisp_refpass, clamp(gIpx + ivec2(int(x), int(y)), ivec2(0), gMaxI), 0).rgb
+#define INFO_CENTER texelFetch(Source, gIpx, 0)
+#define INFO_AT(x, y) floor(texelFetch(Source, clamp(gIpx + ivec2(int(x), int(y)), ivec2(0), gMaxI), 0) * 255.0 + 0.5)
+#define W0_RAW texelFetch(xbrz_crisp_pass0, gIpx, 0)
+#define W0_AT(x, y) floor(texelFetch(xbrz_crisp_pass0, clamp(gIpx + ivec2(int(x), int(y)), ivec2(0), gMaxI), 0) * 255.0 + 0.5)
 
 // the decision word of a corner (see pass 0 and the resolve pass): BLEND is the blend type, FLAG(r, f) one of its flags
 #define BLEND(r) mod(r, 4.0)
@@ -625,9 +623,9 @@ bool isLone3x3(vec3 Q, vec2 q)
 
 void main()
 {
-  vec2 pos = fract(vTexCoord * ORIG_SIZE.xy) - vec2(0.5, 0.5);
-  coord = vTexCoord - pos * ORIG_SIZE.zw;
-  vec4 rawRes = INFO(coord);
+  gMaxI = ivec2(ORIG_SIZE.xy) - ivec2(1);
+  gIpx = clamp(ivec2(floor(vTexCoord * ORIG_SIZE.xy)), ivec2(0), gMaxI);
+  vec4 rawRes = INFO_CENTER;
   if (XBRZ_MINC <= 0.0)
   {
     FRAG_OUT = rawRes;

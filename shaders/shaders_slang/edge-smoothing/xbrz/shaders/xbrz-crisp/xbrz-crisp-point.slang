@@ -1,4 +1,6 @@
-#version 450
+#version 310 es
+precision highp float;
+precision highp int;
 //#crisp{
 // xBRZ crisp, point pass (Vulkan / slang): xBRZ's decision at each point where 4 pixels meet, made once.
 //#crisp}
