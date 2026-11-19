@@ -65,20 +65,26 @@ layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out vec2 vScale;
+layout(location = 2) out vec4 vScK;
 
 void main()
 {
    gl_Position = global.MVP * Position;
    vTexCoord = TexCoord;
 //#crisp{
-   vScale = params.OutputSize.xy / params.xbrz_crisp_refpassSize.xy;
+   vec2 sc = params.OutputSize.xy / params.xbrz_crisp_refpassSize.xy;
 //#crisp}
-//#plain    vScale = params.OutputSize.xy / params.xbrz_fs_refpassSize.xy;
+//#plain    vec2 sc = params.OutputSize.xy / params.xbrz_fs_refpassSize.xy;
+   float scArea = (sc.x * sc.y) * 0.7071067811865475;
+   float sx2 = sc.x * sc.x, sy2 = sc.y * sc.y;
+   vScale = sc;
+   vScK = vec4(scArea * inversesqrt(vec3(sx2 + sy2, 4.0 * sx2 + sy2, sx2 + 4.0 * sy2)), scArea);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) in vec2 vScale;
+layout(location = 2) in vec4 vScK;
 layout(location = 0) out vec4 FragColor;
 #define FRAG_OUT FragColor
 layout(set = 0, binding = 2) uniform sampler2D Source;
@@ -116,6 +122,8 @@ void main()
   //                      -|H|-
 
   vec2 scale = vScale;
+  vec3 scK = vScK.xyz;
+  float scArea = vScK.w;
   vec2 pos = fract(vTexCoord * ORIG_SIZE.xy) - vec2(0.5, 0.5);
   vec2 coord = vTexCoord - pos * ORIG_SIZE.zw;
 
@@ -145,9 +153,6 @@ void main()
   // Vectorized exact signed distance (pre-scaled by INV_SQRT2) for all 4 corners in canonical BR frame
   vec4 px = vec4(-pos.x, -pos.y,  pos.x,  pos.y);
   vec4 py = vec4(-pos.y,  pos.x,  pos.y, -pos.x);
-  float scArea = (scale.x * scale.y) * INV_SQRT2;
-  float sx2 = scale.x * scale.x, sy2 = scale.y * scale.y;
-  vec3 scK = scArea * inversesqrt(vec3(sx2 + sy2, 4.0 * sx2 + sy2, sx2 + 4.0 * sy2));
   vec4 kSh = scK.yzyz;
   vec4 kSt = scK.zyzy;
 
@@ -169,6 +174,7 @@ void main()
   vec4 isLong = isCut * doLineBlend * vec4(greaterThan(longL, vec4(0.0)));
   if (dot(isLong, vec4(1.0)) > 0.0)
   {
+    float sx2 = scale.x * scale.x, sy2 = scale.y * scale.y;
     vec4 shiftA = vec4(equal(blendResult, vec4(2.0)));
     vec4 ox = (0.5 + shiftA) * haveShallowLine;
     vec4 oy = (0.5 + shiftA) * (1.0 - haveShallowLine);

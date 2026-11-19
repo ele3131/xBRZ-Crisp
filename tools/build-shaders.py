@@ -128,22 +128,38 @@ precision highp float;
 COMPAT_ATTRIBUTE vec4 VertexCoord;
 COMPAT_ATTRIBUTE vec4 TexCoord;
 COMPAT_VARYING vec4 TEX0;
+COMPAT_VARYING vec4 TEX1;
+COMPAT_VARYING vec4 TEX2;
+COMPAT_VARYING vec4 TEX3;
 
 uniform mat4 MVPMatrix;
 uniform COMPAT_PRECISION vec2 OutputSize;
+uniform COMPAT_PRECISION vec2 TextureSize;
 //#crisp{
+uniform COMPAT_PRECISION vec2 PassPrev4TextureSize;
 uniform COMPAT_PRECISION vec2 PassPrev4InputSize;
 //#crisp}
+//#plain uniform COMPAT_PRECISION vec2 PassPrev3TextureSize;
 //#plain uniform COMPAT_PRECISION vec2 PassPrev3InputSize;
 
 void main()
 {
     gl_Position = MVPMatrix * VertexCoord;
-    TEX0.xy = TexCoord.xy;
 //#crisp{
-    TEX0.zw = OutputSize / PassPrev4InputSize;
+    vec2 origTex = PassPrev4TextureSize;
+    vec2 origIn = PassPrev4InputSize;
 //#crisp}
-//#plain     TEX0.zw = OutputSize / PassPrev3InputSize;
+//#plain     vec2 origTex = PassPrev3TextureSize;
+//#plain     vec2 origIn = PassPrev3InputSize;
+    vec2 sc = OutputSize / origIn;
+    float scArea = (sc.x * sc.y) * 0.7071067811865475;
+    float sx2 = sc.x * sc.x, sy2 = sc.y * sc.y;
+    TEX0 = vec4(TexCoord.xy, sc);
+    TEX1 = vec4(scArea * inversesqrt(vec3(sx2 + sy2, 4.0 * sx2 + sy2, sx2 + 4.0 * sy2)), scArea);
+    vec2 srcInv = 1.0 / TextureSize;
+    vec2 origInv = 1.0 / origTex;
+    TEX2 = vec4(srcInv, origInv);
+    TEX3 = vec4((origIn - 0.5) * origInv, TextureSize * origInv);
 }
 
 #elif defined(FRAGMENT)
@@ -175,6 +191,9 @@ uniform COMPAT_PRECISION vec2 TextureSize;
 uniform COMPAT_PRECISION vec2 InputSize;
 uniform sampler2D Texture;
 COMPAT_VARYING vec4 TEX0;
+COMPAT_VARYING vec4 TEX1;
+COMPAT_VARYING vec4 TEX2;
+COMPAT_VARYING vec4 TEX3;
 #define vTexCoord TEX0.xy
 #define FRAG_OUT FragColor"""
 
@@ -185,15 +204,20 @@ layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out vec2 vScale;
+layout(location = 2) out vec4 vScK;
 
 void main()
 {
    gl_Position = global.MVP * Position;
    vTexCoord = TexCoord;
 //#crisp{
-   vScale = params.OutputSize.xy / params.xbrz_crisp_refpassSize.xy;
+   vec2 sc = params.OutputSize.xy / params.xbrz_crisp_refpassSize.xy;
 //#crisp}
-//#plain    vScale = params.OutputSize.xy / params.xbrz_fs_refpassSize.xy;
+//#plain    vec2 sc = params.OutputSize.xy / params.xbrz_fs_refpassSize.xy;
+   float scArea = (sc.x * sc.y) * 0.7071067811865475;
+   float sx2 = sc.x * sc.x, sy2 = sc.y * sc.y;
+   vScale = sc;
+   vScK = vec4(scArea * inversesqrt(vec3(sx2 + sy2, 4.0 * sx2 + sy2, sx2 + 4.0 * sy2)), scArea);
 }"""
 
 
@@ -388,6 +412,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) in vec2 vScale;
+layout(location = 2) in vec4 vScK;
 layout(location = 0) out vec4 FragColor;
 #define FRAG_OUT FragColor
 layout(set = 0, binding = 2) uniform sampler2D Source;
@@ -407,6 +432,8 @@ layout(set = 0, binding = 3) uniform sampler2D xbrz_crisp_refpass;
 #define INFO(uv) texture(Source, uv)
 #define INFO_STEP ORIG_SIZE.zw""",
             "@PASS1_COORDS@": """  vec2 scale = vScale;
+  vec3 scK = vScK.xyz;
+  float scArea = vScK.w;
   vec2 pos = fract(vTexCoord * ORIG_SIZE.xy) - vec2(0.5, 0.5);
   vec2 coord = vTexCoord - pos * ORIG_SIZE.zw;""",
         }
@@ -586,12 +613,14 @@ uniform COMPAT_PRECISION vec2 PassPrev4InputSize;
 //#plain #define P(x,y) COMPAT_TEXTURE(PassPrev3Texture, CLAMP_ORIG(ocoord + origInv * vec2(x, y))).rgb
 #define INFO(uv) COMPAT_TEXTURE(Texture, uv)""",
         "@PASS1_COORDS@": """  vec2 scale = TEX0.zw;
-  vec2 srcInv = 1.0 / TextureSize;
-  vec2 origInv = 1.0 / ORIG_TEX_SIZE;
-  vec2 origMax = (ORIG_INPUT_SIZE - 0.5) * origInv;
+  vec3 scK = TEX1.xyz;
+  float scArea = TEX1.w;
+  vec2 srcInv = TEX2.xy;
+  vec2 origInv = TEX2.zw;
+  vec2 origMax = TEX3.xy;
   vec2 pos = fract(vTexCoord * TextureSize) - vec2(0.5, 0.5);
   vec2 coord = vTexCoord - pos * srcInv;
-  vec2 ocoord = coord * TextureSize * origInv;""",
+  vec2 ocoord = coord * TEX3.zw;""",
     }
 
 

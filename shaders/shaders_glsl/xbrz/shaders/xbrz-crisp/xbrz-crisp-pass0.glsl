@@ -780,12 +780,12 @@ float bandSide(vec2 coord, vec2 o, vec2 p, vec2 q, vec3 e, vec3 cp, vec3 cpq)
 // 32 to 34: two close shades (under 30 apart)
 bool near(vec3 a, vec3 b) { return withinY255(a, b, 30.0); }
 
-vec4 diagonalBands(vec4 xbrz, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 G, vec3 H, vec3 I)
+vec4 diagonalBands(vec4 xbrz, vec4 mask, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 G, vec3 H, vec3 I)
 {
   vec4 band = vec4(0.0);
-  if (XBRZ_MINC <= 0.0)
+  vec4 cut = vec4(greaterThan(BLEND(xbrz), vec4(0.0))) * mask;
+  if (XBRZ_MINC <= 0.0 || dot(cut, vec4(1.0)) <= 0.0)
     return band;
-  vec4 cut = vec4(greaterThan(BLEND(xbrz), vec4(0.0)));
   for (int k = 0; k < 4; k++)
   {
     vec4 m = vec4(float(k == 0), float(k == 1), float(k == 2), float(k == 3));
@@ -1309,40 +1309,37 @@ vec4 largerWindowLines(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec
 // ============================================================================================
 // 13. Tiles between walls
 // ============================================================================================
-float tileStripe(vec2 coord, vec3 E, vec2 a, vec2 w)
+float tileStripeReg(vec3 E, vec3 P1, vec3 Q, vec3 Q2, vec3 O, vec3 O2, vec3 T0, vec3 T3,
+                    vec3 qPrev, vec3 qNext, vec3 oPrev, vec3 oNext)
 {
-  vec3 P1 = at5x5(coord, a), Q = at5x5(coord, w), Q2 = at5x5(coord, w + a), O = at5x5(coord, -w), O2 = at5x5(coord, a - w);
-  vec3 T0 = at5x5(coord, -a);
   float lE = E.x, lP = P1.x, lQ = Q.x, lO = O.x;
   bool light = min(lE, lP) > max(lQ, lO) + XBRZ_OUTLINE, dark = max(lE, lP) + XBRZ_OUTLINE < min(lQ, lO);
   if (!((light || dark) && alike(Q, Q2) && alike(O, O2) && !alike(E, T0) && !alike(T0, Q) && !alike(T0, O)))
     return 0.0;
-  vec3 T3 = at5x5(coord, 2.0 * a);
-  bool wallQ = alike(Q, at5x5(coord, w - a)) || alike(Q, at5x5(coord, w + 2.0 * a));
-  bool wallO = alike(O, at5x5(coord, -w - a)) || alike(O, at5x5(coord, 2.0 * a - w));
+  bool wallQ = alike(Q, qPrev) || alike(Q, qNext);
+  bool wallO = alike(O, oPrev) || alike(O, oNext);
   bool tiles = !alike(P1, T3) && !alike(T3, Q) && !alike(T3, O) && (alike(T0, P1) || alike(E, T3));
   return float(wallQ && wallO && tiles);
 }
 
-vec4 tilesBetweenWalls(vec4 res, vec2 coord, vec3 E)
+vec4 tilesBetweenWalls(vec4 res, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 G, vec3 H, vec3 I)
 {
   if (!(CRISP_RULES && max(max(res.x, res.y), max(res.z, res.w)) >= 128.0))
     return res;
   vec4 blk = vec4(greaterThanEqual(res, vec4(128.0))) * vec4(greaterThan(BLEND(res), vec4(0.0)));
+  if (dot(blk, vec4(1.0)) <= 0.0)
+    return res;
   vec4 sc = FLAG(mod(res, 128.0), 8.0);
-  vec4 tile = vec4(0.0);
-  vec2 d = vec2(-1., 0.);
-  for (int k = 0; k < 4; k++)
-  {
-    vec2 n = vec2(-d.y, d.x);
-    vec4 m = vec4(equal(vec4(float(k)), vec4(0., 1., 2., 3.)));
-    if (dot(blk, m) > 0.0)
-    {
-      bool second = dot(sc, m) > 0.5;
-      tile += m * tileStripe(coord, E, second ? n : d, second ? d : n);
-    }
-    d = n;
-  }
+  vec4 needDir = vec4(
+    blk.x * (1.0 - sc.x) + blk.w * sc.w,
+    blk.x * sc.x + blk.y * (1.0 - sc.y),
+    blk.y * sc.y + blk.z * (1.0 - sc.z),
+    blk.z * sc.z + blk.w * (1.0 - sc.w));
+  float tL = needDir.x > 0.5 ? tileStripeReg(E, D, B, A, H, G, F, N_m2_p0, C, N_m2_m1, I, N_m2_p1) : 0.0;
+  float tU = needDir.y > 0.5 ? tileStripeReg(E, B, D, A, F, C, H, N_p0_m2, G, N_m1_m2, I, N_p1_m2) : 0.0;
+  float tR = needDir.z > 0.5 ? tileStripeReg(E, F, B, C, H, I, D, N_p2_p0, A, N_p2_m1, G, N_p2_p1) : 0.0;
+  float tD = needDir.w > 0.5 ? tileStripeReg(E, H, D, G, F, I, B, N_p0_p2, A, N_m1_p2, C, N_p1_p2) : 0.0;
+  vec4 tile = blk * vec4(sc.x > 0.5 ? tU : tL, sc.y > 0.5 ? tR : tU, sc.z > 0.5 ? tD : tR, sc.w > 0.5 ? tL : tD);
   res *= 1.0 - tile;
   return res;
 }
@@ -1582,13 +1579,17 @@ void main()
   vec4 xbrz = res;
   vec4 contrast, weak;
   res = minimumContrast(res, dEB, dED, dEF, dEH, contrast, weak);              // 1
-  vec4 band30 = diagonalBands(xbrz, coord, A, B, C, D, E, F, G, H, I);          // 30
+  vec4 cutXbrz = vec4(greaterThan(BLEND(xbrz), vec4(0.0)));
+  vec4 low30 = cutXbrz * vec4(lessThan(contrast, vec4(XBRZ_MINC)));
+  vec4 band30Lo = vec4(0.0);
   vec4 ring30 = vec4(0.0);
-  vec4 low30 = vec4(greaterThan(BLEND(xbrz), vec4(0.0))) * vec4(lessThan(contrast, vec4(XBRZ_MINC)));
   if (XBRZ_MINC > 0.0 && dot(low30, vec4(1.0)) > 0.0)
+  {
+    band30Lo = diagonalBands(xbrz, low30, coord, A, B, C, D, E, F, G, H, I);   // 30 (low contrast)
     ring30 = low30 * max(vec4(ringBand(B, D, A, E), ringBand(B, F, C, E), ringBand(F, H, I, E), ringBand(H, D, G, E)),
                          vec4(ringOutBand(E, C, G, I, B, D), ringOutBand(E, A, I, G, B, F), ringOutBand(E, C, G, A, F, H), ringOutBand(E, A, I, C, H, D)));
-  vec4 rescue30 = max(band30, ring30);
+  }
+  vec4 rescue30 = max(band30Lo, ring30);
   res = mix(res, xbrz, rescue30);
   weak *= 1.0 - rescue30;
   res = largerWindowLines(res, coord, A, B, C, D, E, F, G, H, I, dEB, dED, dEF, dEH, xbrz, contrast, weak);  // 11
@@ -1597,7 +1598,7 @@ void main()
   res = weakCorners(res, weak);                                                 // 1, weak corners
   res = lineThroughAA(res, xbrz, contrast, B, D, F, H, pair, dEB, dED, dEF, dEH);  // 8
   res = closedPixel(res, A, B, C, D, E, F, G, H, I);                            // 10
-  res = tilesBetweenWalls(res, coord, E);                                       // 13
+  res = tilesBetweenWalls(res, A, B, C, D, E, F, G, H, I);                      // 13
   res = lineInOtherColor(res, A, B, C, D, E, F, G, H, I, pair, dEB, dED, dEF, dEH);  // 16, 18
   if (CRISP_RULES)                                                              // 32 to 35
   {
@@ -1631,6 +1632,10 @@ void main()
       }
     }
   }
+  vec4 band30 = band30Lo;
+  vec4 needBandHi = vec4(notEqual(res, xbrz)) * cutXbrz * (1.0 - low30);
+  if (XBRZ_MINC > 0.0 && dot(needBandHi, vec4(1.0)) > 0.0)
+    band30 = max(band30, diagonalBands(xbrz, needBandHi, coord, A, B, C, D, E, F, G, H, I));
   res = mix(res, xbrz, band30);                                                 // 30, the band wins over the rules above
   FRAG_OUT = res / 255.0;
 }

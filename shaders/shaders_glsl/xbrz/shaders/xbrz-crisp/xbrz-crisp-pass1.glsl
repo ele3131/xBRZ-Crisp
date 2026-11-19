@@ -66,22 +66,38 @@ precision highp float;
 COMPAT_ATTRIBUTE vec4 VertexCoord;
 COMPAT_ATTRIBUTE vec4 TexCoord;
 COMPAT_VARYING vec4 TEX0;
+COMPAT_VARYING vec4 TEX1;
+COMPAT_VARYING vec4 TEX2;
+COMPAT_VARYING vec4 TEX3;
 
 uniform mat4 MVPMatrix;
 uniform COMPAT_PRECISION vec2 OutputSize;
+uniform COMPAT_PRECISION vec2 TextureSize;
 //#crisp{
+uniform COMPAT_PRECISION vec2 PassPrev4TextureSize;
 uniform COMPAT_PRECISION vec2 PassPrev4InputSize;
 //#crisp}
+//#plain uniform COMPAT_PRECISION vec2 PassPrev3TextureSize;
 //#plain uniform COMPAT_PRECISION vec2 PassPrev3InputSize;
 
 void main()
 {
     gl_Position = MVPMatrix * VertexCoord;
-    TEX0.xy = TexCoord.xy;
 //#crisp{
-    TEX0.zw = OutputSize / PassPrev4InputSize;
+    vec2 origTex = PassPrev4TextureSize;
+    vec2 origIn = PassPrev4InputSize;
 //#crisp}
-//#plain     TEX0.zw = OutputSize / PassPrev3InputSize;
+//#plain     vec2 origTex = PassPrev3TextureSize;
+//#plain     vec2 origIn = PassPrev3InputSize;
+    vec2 sc = OutputSize / origIn;
+    float scArea = (sc.x * sc.y) * 0.7071067811865475;
+    float sx2 = sc.x * sc.x, sy2 = sc.y * sc.y;
+    TEX0 = vec4(TexCoord.xy, sc);
+    TEX1 = vec4(scArea * inversesqrt(vec3(sx2 + sy2, 4.0 * sx2 + sy2, sx2 + 4.0 * sy2)), scArea);
+    vec2 srcInv = 1.0 / TextureSize;
+    vec2 origInv = 1.0 / origTex;
+    TEX2 = vec4(srcInv, origInv);
+    TEX3 = vec4((origIn - 0.5) * origInv, TextureSize * origInv);
 }
 
 #elif defined(FRAGMENT)
@@ -113,6 +129,9 @@ uniform COMPAT_PRECISION vec2 TextureSize;
 uniform COMPAT_PRECISION vec2 InputSize;
 uniform sampler2D Texture;
 COMPAT_VARYING vec4 TEX0;
+COMPAT_VARYING vec4 TEX1;
+COMPAT_VARYING vec4 TEX2;
+COMPAT_VARYING vec4 TEX3;
 #define vTexCoord TEX0.xy
 #define FRAG_OUT FragColor
 
@@ -161,12 +180,14 @@ void main()
   //                      -|H|-
 
   vec2 scale = TEX0.zw;
-  vec2 srcInv = 1.0 / TextureSize;
-  vec2 origInv = 1.0 / ORIG_TEX_SIZE;
-  vec2 origMax = (ORIG_INPUT_SIZE - 0.5) * origInv;
+  vec3 scK = TEX1.xyz;
+  float scArea = TEX1.w;
+  vec2 srcInv = TEX2.xy;
+  vec2 origInv = TEX2.zw;
+  vec2 origMax = TEX3.xy;
   vec2 pos = fract(vTexCoord * TextureSize) - vec2(0.5, 0.5);
   vec2 coord = vTexCoord - pos * srcInv;
-  vec2 ocoord = coord * TextureSize * origInv;
+  vec2 ocoord = coord * TEX3.zw;
 
   vec4 rawInfo = INFO(coord);
 
@@ -194,9 +215,6 @@ void main()
   // Vectorized exact signed distance (pre-scaled by INV_SQRT2) for all 4 corners in canonical BR frame
   vec4 px = vec4(-pos.x, -pos.y,  pos.x,  pos.y);
   vec4 py = vec4(-pos.y,  pos.x,  pos.y, -pos.x);
-  float scArea = (scale.x * scale.y) * INV_SQRT2;
-  float sx2 = scale.x * scale.x, sy2 = scale.y * scale.y;
-  vec3 scK = scArea * inversesqrt(vec3(sx2 + sy2, 4.0 * sx2 + sy2, sx2 + 4.0 * sy2));
   vec4 kSh = scK.yzyz;
   vec4 kSt = scK.zyzy;
 
@@ -218,6 +236,7 @@ void main()
   vec4 isLong = isCut * doLineBlend * vec4(greaterThan(longL, vec4(0.0)));
   if (dot(isLong, vec4(1.0)) > 0.0)
   {
+    float sx2 = scale.x * scale.x, sy2 = scale.y * scale.y;
     vec4 shiftA = vec4(equal(blendResult, vec4(2.0)));
     vec4 ox = (0.5 + shiftA) * haveShallowLine;
     vec4 oy = (0.5 + shiftA) * (1.0 - haveShallowLine);

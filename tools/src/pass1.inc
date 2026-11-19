@@ -52,9 +52,6 @@ void main()
   // Vectorized exact signed distance (pre-scaled by INV_SQRT2) for all 4 corners in canonical BR frame
   vec4 px = vec4(-pos.x, -pos.y,  pos.x,  pos.y);
   vec4 py = vec4(-pos.y,  pos.x,  pos.y, -pos.x);
-  float scArea = (scale.x * scale.y) * INV_SQRT2;
-  float sx2 = scale.x * scale.x, sy2 = scale.y * scale.y;
-  vec3 scK = scArea * inversesqrt(vec3(sx2 + sy2, 4.0 * sx2 + sy2, sx2 + 4.0 * sy2));
   vec4 kSh = scK.yzyz;
   vec4 kSt = scK.zyzy;
 
@@ -76,6 +73,7 @@ void main()
   vec4 isLong = isCut * doLineBlend * vec4(greaterThan(longL, vec4(0.0)));
   if (dot(isLong, vec4(1.0)) > 0.0)
   {
+    float sx2 = scale.x * scale.x, sy2 = scale.y * scale.y;
     vec4 shiftA = vec4(equal(blendResult, vec4(2.0)));
     vec4 ox = (0.5 + shiftA) * haveShallowLine;
     vec4 oy = (0.5 + shiftA) * (1.0 - haveShallowLine);
