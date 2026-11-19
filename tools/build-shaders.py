@@ -395,10 +395,12 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 //#crisp{{
 layout(set = 0, binding = 3) uniform sampler2D xbrz_crisp_refpass;
 #define ORIG_SIZE params.xbrz_crisp_refpassSize
+#define P_CENTER texture(xbrz_crisp_refpass, coord).rgb
 #define P(x,y) texture(xbrz_crisp_refpass, coord + ORIG_SIZE.zw * vec2(x, y)).rgb
 //#crisp}}
 //#plain layout(set = 0, binding = 3) uniform sampler2D xbrz_fs_refpass;
 //#plain #define ORIG_SIZE params.xbrz_fs_refpassSize
+//#plain #define P_CENTER texture(xbrz_fs_refpass, coord).rgb
 //#plain #define P(x,y) texture(xbrz_fs_refpass, coord + ORIG_SIZE.zw * vec2(x, y)).rgb
 #define OUT_SIZE params.OutputSize
 #define INFO(uv) texture(Source, uv)
@@ -412,10 +414,14 @@ layout(set = 0, binding = 3) uniform sampler2D xbrz_crisp_refpass;
     vtx_out = glsl_pass1_vertex()
     return {
         "@BACKEND_LABEL@": "OpenGL / GLES",
-        "@POINT_COORDS@": """  vec2 pos = fract(vTexCoord * SRC_SIZE.xy) - vec2(0.5, 0.5);
-  vec2 coord = vTexCoord - pos * SRC_SIZE.zw;""",
-        "@PASS0_COORDS@": """  vec2 pos = fract(vTexCoord * SRC_SIZE.xy) - vec2(0.5, 0.5);
-  vec2 coord = vTexCoord - pos * SRC_SIZE.zw;""",
+        "@POINT_COORDS@": """  gSrcInv = 1.0 / TextureSize;
+  gSrcMax = (InputSize - 0.5) * gSrcInv;
+  vec2 pos = fract(vTexCoord * TextureSize) - vec2(0.5, 0.5);
+  vec2 coord = vTexCoord - pos * gSrcInv;""",
+        "@PASS0_COORDS@": """  gSrcInv = 1.0 / TextureSize;
+  gSrcMax = (InputSize - 0.5) * gSrcInv;
+  vec2 pos = fract(vTexCoord * TextureSize) - vec2(0.5, 0.5);
+  vec2 coord = vTexCoord - pos * gSrcInv;""",
         "@STAGE_POINT@": f"""{PRAGMAS_POINT}
 
 {vtx}
@@ -433,10 +439,11 @@ uniform COMPAT_PRECISION float XBRZ_DIAG;
 //#crisp}}
 #endif
 
-#define SRC_SIZE vec4(TextureSize, 1.0 / TextureSize)
-// Clamp to valid InputSize texels so POT-padded GL/GLES FBOs never sample black/stale padding
-#define CLAMP_SRC(uv) clamp((uv), 0.5 * SRC_SIZE.zw, (InputSize - 0.5) * SRC_SIZE.zw)
-#define P(x,y) COMPAT_TEXTURE(Texture, CLAMP_SRC(coord + SRC_SIZE.zw * vec2(x, y))).rgb""",
+vec2 gSrcInv = vec2(0.0), gSrcMax = vec2(0.0);
+#define SRC_SIZE vec4(TextureSize, gSrcInv)
+// Clamp right/bottom edge to InputSize so POT-padded GL/GLES FBOs never sample padding (left/top handled by GL_CLAMP_TO_EDGE)
+#define CLAMP_SRC(uv) min((uv), gSrcMax)
+#define P(x,y) COMPAT_TEXTURE(Texture, CLAMP_SRC(coord + gSrcInv * vec2(x, y))).rgb""",
         "@STAGE_PASS0@": f"""
 {PRAGMAS_5}
 
@@ -455,9 +462,10 @@ uniform COMPAT_PRECISION float XBRZ_DIAG;
 #define XBRZ_DIAG 100.0
 #endif
 
-#define SRC_SIZE vec4(TextureSize, 1.0 / TextureSize)
-#define CLAMP_SRC(uv) clamp((uv), 0.5 * SRC_SIZE.zw, (InputSize - 0.5) * SRC_SIZE.zw)
-#define P4(x,y) COMPAT_TEXTURE(Texture, CLAMP_SRC(coord + SRC_SIZE.zw * vec2(x, y)))
+vec2 gSrcInv = vec2(0.0), gSrcMax = vec2(0.0);
+#define SRC_SIZE vec4(TextureSize, gSrcInv)
+#define CLAMP_SRC(uv) min((uv), gSrcMax)
+#define P4(x,y) COMPAT_TEXTURE(Texture, CLAMP_SRC(coord + gSrcInv * vec2(x, y)))
 #define P(x,y) P4(x, y).rgb""",
         "@STAGE_RESOLVE@": f"""
 //#crisp{{
@@ -476,24 +484,30 @@ uniform COMPAT_PRECISION float XBRZ_MINC;
 uniform sampler2D PassPrev2Texture;
 uniform COMPAT_PRECISION vec2 PassPrev2TextureSize;
 uniform COMPAT_PRECISION vec2 PassPrev2InputSize;
+vec2 gSrcInv = vec2(0.0), gSrcMax = vec2(0.0);
+vec2 gOrigInv = vec2(0.0), gOrigMax = vec2(0.0);
 #define OUT_SIZE OutputSize
-#define ORIG_SIZE vec4(PassPrev2TextureSize, 1.0 / PassPrev2TextureSize)
+#define ORIG_SIZE vec4(PassPrev2TextureSize, gOrigInv)
 #define ORIG_INPUT_SIZE PassPrev2InputSize
 // the first pass's texture and the original's can have different sizes (RetroArch rounds each one
 // up to a power of two on its own, e.g. 256 and 512 with snes9x), so each one is read with its own
-#define SRC_SIZE vec4(TextureSize, 1.0 / TextureSize)
-#define CLAMP_ORIG(uv) clamp((uv), 0.5 * ORIG_SIZE.zw, (ORIG_INPUT_SIZE - 0.5) * ORIG_SIZE.zw)
-#define CLAMP_SRC(uv) clamp((uv), 0.5 * SRC_SIZE.zw, (InputSize - 0.5) * SRC_SIZE.zw)
-#define P(x,y) COMPAT_TEXTURE(PassPrev2Texture, CLAMP_ORIG(ocoord + ORIG_SIZE.zw * vec2(x, y))).rgb
+#define SRC_SIZE vec4(TextureSize, gSrcInv)
+#define CLAMP_ORIG(uv) min((uv), gOrigMax)
+#define CLAMP_SRC(uv) min((uv), gSrcMax)
+#define P(x,y) COMPAT_TEXTURE(PassPrev2Texture, CLAMP_ORIG(ocoord + gOrigInv * vec2(x, y))).rgb
 #define INFO(uv) COMPAT_TEXTURE(Texture, CLAMP_SRC(uv))
-#define INFO_STEP SRC_SIZE.zw""",
+#define INFO_STEP gSrcInv""",
         "@RESOLVE_GLOBALS@": "vec2 ocoord = vec2(0.0);",
-        "@RESOLVE_COORDS@": """  vec2 pos = fract(vTexCoord * SRC_SIZE.xy) - vec2(0.5, 0.5);
-  vec2 coord = vTexCoord - pos * SRC_SIZE.zw;
+        "@RESOLVE_COORDS@": """  gSrcInv = 1.0 / TextureSize;
+  gSrcMax = (InputSize - 0.5) * gSrcInv;
+  gOrigInv = 1.0 / PassPrev2TextureSize;
+  gOrigMax = (ORIG_INPUT_SIZE - 0.5) * gOrigInv;
+  vec2 pos = fract(vTexCoord * TextureSize) - vec2(0.5, 0.5);
+  vec2 coord = vTexCoord - pos * gSrcInv;
 //#crisp{
-  ocoord = coord * SRC_SIZE.xy * ORIG_SIZE.zw;
+  ocoord = coord * TextureSize * gOrigInv;
 //#crisp}
-//#plain   vec2 ocoord = coord * SRC_SIZE.xy * ORIG_SIZE.zw;""",
+//#plain   vec2 ocoord = coord * TextureSize * gOrigInv;""",
         "@STAGE_MATCH@": f"""
 #pragma parameter XBRZ_MINC "xBRZ: minimum contrast to round a corner (x/255, 0 = off)" 20 0 80 2
 {vtx}
@@ -507,30 +521,39 @@ uniform COMPAT_PRECISION float XBRZ_MINC;
 uniform sampler2D PassPrev3Texture;
 uniform COMPAT_PRECISION vec2 PassPrev3TextureSize;
 uniform COMPAT_PRECISION vec2 PassPrev3InputSize;
+vec2 gSrcInv = vec2(0.0), gSrcMax = vec2(0.0);
+vec2 gOrigInv = vec2(0.0), gOrigMax = vec2(0.0);
+vec2 gP0Inv = vec2(0.0), gP0Max = vec2(0.0);
 #define OUT_SIZE OutputSize
-#define ORIG_SIZE vec4(PassPrev3TextureSize, 1.0 / PassPrev3TextureSize)
+#define ORIG_SIZE vec4(PassPrev3TextureSize, gOrigInv)
 #define ORIG_INPUT_SIZE PassPrev3InputSize
 // the first pass's texture and the original's can have different sizes (RetroArch rounds each one
 // up to a power of two on its own, e.g. 256 and 512 with snes9x), so each one is read with its own
-#define SRC_SIZE vec4(TextureSize, 1.0 / TextureSize)
-#define CLAMP_ORIG(uv) clamp((uv), 0.5 * ORIG_SIZE.zw, (ORIG_INPUT_SIZE - 0.5) * ORIG_SIZE.zw)
-#define CLAMP_SRC(uv) clamp((uv), 0.5 * SRC_SIZE.zw, (InputSize - 0.5) * SRC_SIZE.zw)
-#define P(x,y) COMPAT_TEXTURE(PassPrev3Texture, CLAMP_ORIG(ocoord + ORIG_SIZE.zw * vec2(x, y))).rgb
+#define SRC_SIZE vec4(TextureSize, gSrcInv)
+#define CLAMP_ORIG(uv) min((uv), gOrigMax)
+#define CLAMP_SRC(uv) min((uv), gSrcMax)
+#define P(x,y) COMPAT_TEXTURE(PassPrev3Texture, CLAMP_ORIG(ocoord + gOrigInv * vec2(x, y))).rgb
 #define INFO(uv) COMPAT_TEXTURE(Texture, CLAMP_SRC(uv))
-#define INFO_STEP SRC_SIZE.zw
+#define INFO_STEP gSrcInv
 #define INFO_AT(x, y) floor(INFO(coord + vec2(x, y) * INFO_STEP) * 255.0 + 0.5)
 
 // pass 0's decisions (two passes back), before the resolve pass changed them
 uniform sampler2D PassPrev2Texture;
 uniform COMPAT_PRECISION vec2 PassPrev2TextureSize;
-#define P0_SIZE vec4(PassPrev2TextureSize, 1.0 / PassPrev2TextureSize)
-#define CLAMP_P0(uv) clamp((uv), 0.5 * P0_SIZE.zw, (InputSize - 0.5) * P0_SIZE.zw)
-#define W0_AT(x, y) floor(COMPAT_TEXTURE(PassPrev2Texture, CLAMP_P0(c0 + vec2(x, y) * P0_SIZE.zw)) * 255.0 + 0.5)
+#define P0_SIZE vec4(PassPrev2TextureSize, gP0Inv)
+#define CLAMP_P0(uv) min((uv), gP0Max)
+#define W0_AT(x, y) floor(COMPAT_TEXTURE(PassPrev2Texture, CLAMP_P0(c0 + vec2(x, y) * gP0Inv)) * 255.0 + 0.5)
 vec2 coord = vec2(0.0), ocoord = vec2(0.0), c0 = vec2(0.0);""",
-        "@MATCH_COORDS@": """  vec2 pos = fract(vTexCoord * SRC_SIZE.xy) - vec2(0.5, 0.5);
-  coord = vTexCoord - pos * SRC_SIZE.zw;
-  ocoord = coord * SRC_SIZE.xy * ORIG_SIZE.zw;
-  c0 = coord * SRC_SIZE.xy * P0_SIZE.zw;""",
+        "@MATCH_COORDS@": """  gSrcInv = 1.0 / TextureSize;
+  gSrcMax = (InputSize - 0.5) * gSrcInv;
+  gOrigInv = 1.0 / PassPrev3TextureSize;
+  gOrigMax = (ORIG_INPUT_SIZE - 0.5) * gOrigInv;
+  gP0Inv = 1.0 / PassPrev2TextureSize;
+  gP0Max = (InputSize - 0.5) * gP0Inv;
+  vec2 pos = fract(vTexCoord * TextureSize) - vec2(0.5, 0.5);
+  coord = vTexCoord - pos * gSrcInv;
+  ocoord = coord * TextureSize * gOrigInv;
+  c0 = coord * TextureSize * gP0Inv;""",
         "@STAGE_PASS1@": f"""
 {vtx_out}
 
@@ -540,7 +563,7 @@ uniform sampler2D PassPrev4Texture;
 uniform COMPAT_PRECISION vec2 PassPrev4TextureSize;
 uniform COMPAT_PRECISION vec2 PassPrev4InputSize;
 #define OUT_SIZE OutputSize
-#define ORIG_SIZE vec4(PassPrev4TextureSize, 1.0 / PassPrev4TextureSize)
+#define ORIG_TEX_SIZE PassPrev4TextureSize
 #define ORIG_INPUT_SIZE PassPrev4InputSize
 //#crisp}}
 //#plain // the point pass (three passes back: pass 0 and the resolve pass come between), whose color is xBRZ's input: the original image unless other shaders run before xBRZ
@@ -548,22 +571,25 @@ uniform COMPAT_PRECISION vec2 PassPrev4InputSize;
 //#plain uniform COMPAT_PRECISION vec2 PassPrev3TextureSize;
 //#plain uniform COMPAT_PRECISION vec2 PassPrev3InputSize;
 //#plain #define OUT_SIZE OutputSize
-//#plain #define ORIG_SIZE vec4(PassPrev3TextureSize, 1.0 / PassPrev3TextureSize)
+//#plain #define ORIG_TEX_SIZE PassPrev3TextureSize
 //#plain #define ORIG_INPUT_SIZE PassPrev3InputSize
 // the first pass's texture and the original's can have different sizes (RetroArch rounds each one
 // up to a power of two on its own, e.g. 256 and 512 with snes9x), so each one is read with its own
-#define SRC_SIZE vec4(TextureSize, 1.0 / TextureSize)
-#define CLAMP_ORIG(uv) clamp((uv), 0.5 * ORIG_SIZE.zw, (ORIG_INPUT_SIZE - 0.5) * ORIG_SIZE.zw)
+#define CLAMP_ORIG(uv) min((uv), origMax)
 //#crisp{{
-#define P(x,y) COMPAT_TEXTURE(PassPrev4Texture, CLAMP_ORIG(ocoord + ORIG_SIZE.zw * vec2(x, y))).rgb
+#define P_CENTER COMPAT_TEXTURE(PassPrev4Texture, ocoord).rgb
+#define P(x,y) COMPAT_TEXTURE(PassPrev4Texture, CLAMP_ORIG(ocoord + origInv * vec2(x, y))).rgb
 //#crisp}}
-//#plain #define P(x,y) COMPAT_TEXTURE(PassPrev3Texture, CLAMP_ORIG(ocoord + ORIG_SIZE.zw * vec2(x, y))).rgb
-#define INFO(uv) COMPAT_TEXTURE(Texture, uv)
-#define INFO_STEP SRC_SIZE.zw""",
+//#plain #define P_CENTER COMPAT_TEXTURE(PassPrev3Texture, ocoord).rgb
+//#plain #define P(x,y) COMPAT_TEXTURE(PassPrev3Texture, CLAMP_ORIG(ocoord + origInv * vec2(x, y))).rgb
+#define INFO(uv) COMPAT_TEXTURE(Texture, uv)""",
         "@PASS1_COORDS@": """  vec2 scale = TEX0.zw;
-  vec2 pos = fract(vTexCoord * SRC_SIZE.xy) - vec2(0.5, 0.5);
-  vec2 coord = vTexCoord - pos * SRC_SIZE.zw;
-  vec2 ocoord = coord * SRC_SIZE.xy * ORIG_SIZE.zw;""",
+  vec2 srcInv = 1.0 / TextureSize;
+  vec2 origInv = 1.0 / ORIG_TEX_SIZE;
+  vec2 origMax = (ORIG_INPUT_SIZE - 0.5) * origInv;
+  vec2 pos = fract(vTexCoord * TextureSize) - vec2(0.5, 0.5);
+  vec2 coord = vTexCoord - pos * srcInv;
+  vec2 ocoord = coord * TextureSize * origInv;""",
     }
 
 

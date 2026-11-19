@@ -128,10 +128,11 @@ uniform COMPAT_PRECISION float XBRZ_DIAG;
 //#crisp}
 #endif
 
-#define SRC_SIZE vec4(TextureSize, 1.0 / TextureSize)
-// Clamp to valid InputSize texels so POT-padded GL/GLES FBOs never sample black/stale padding
-#define CLAMP_SRC(uv) clamp((uv), 0.5 * SRC_SIZE.zw, (InputSize - 0.5) * SRC_SIZE.zw)
-#define P(x,y) COMPAT_TEXTURE(Texture, CLAMP_SRC(coord + SRC_SIZE.zw * vec2(x, y))).rgb
+vec2 gSrcInv = vec2(0.0), gSrcMax = vec2(0.0);
+#define SRC_SIZE vec4(TextureSize, gSrcInv)
+// Clamp right/bottom edge to InputSize so POT-padded GL/GLES FBOs never sample padding (left/top handled by GL_CLAMP_TO_EDGE)
+#define CLAMP_SRC(uv) min((uv), gSrcMax)
+#define P(x,y) COMPAT_TEXTURE(Texture, CLAMP_SRC(coord + gSrcInv * vec2(x, y))).rgb
 
 #define BLEND_NONE 0
 #define BLEND_NORMAL 1
@@ -210,6 +211,25 @@ bool withinY255(vec3 a, vec3 b, float lim)
 bool withinEqY255(vec3 a, vec3 b, float lim)
 {
   return distSqY(a, b) <= SQ255(lim);
+}
+
+// Unified hue-shifting-tolerant AA / sel-out ramp check in YCbCr space (0 sqrt).
+// True when m lies strictly between endpoints a and b along their chord with
+// bounded orthogonal deviation (allowing pixel-art hue-shifting) and monotonic luma.
+bool isAaRampY(vec3 a, vec3 m, vec3 b, float orthoTolSq, float minSpanSq)
+{
+  vec3 ab = b - a;
+  float abSq = dot(ab, ab);
+  if (abSq < minSpanSq) return false;
+  vec3 am = m - a;
+  float proj = dot(am, ab);
+  if (proj <= 0.05 * abSq || proj >= 0.95 * abSq) return false;
+  float t = proj / abSq;
+  vec3 err = am - t * ab;
+  if (dot(err, err) > orthoTolSq * abSq) return false;
+  float loY = min(a.x, b.x), hiY = max(a.x, b.x);
+  if (hiY - loY > 0.08 && (m.x < loY - 0.02 || m.x > hiY + 0.02)) return false;
+  return true;
 }
 #define PY(x,y) toYCbCr(P(x, y))
 
@@ -407,8 +427,10 @@ ivec4 pointBlend(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3 k
 
 void main()
 {
-  vec2 pos = fract(vTexCoord * SRC_SIZE.xy) - vec2(0.5, 0.5);
-  vec2 coord = vTexCoord - pos * SRC_SIZE.zw;
+  gSrcInv = 1.0 / TextureSize;
+  gSrcMax = (InputSize - 0.5) * gSrcInv;
+  vec2 pos = fract(vTexCoord * TextureSize) - vec2(0.5, 0.5);
+  vec2 coord = vTexCoord - pos * gSrcInv;
   vec3 rgbF = P(0., 0.), rgbG = P(1., 0.), rgbJ = P(0., 1.), rgbK = P(1., 1.);
   ivec4 r = ivec4(BLEND_NONE);
   // where the 2x2 is two rows or two columns of one color nothing blends (and rules 31 and 36 need a

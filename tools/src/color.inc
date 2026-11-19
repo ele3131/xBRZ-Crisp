@@ -65,3 +65,22 @@ bool withinEqY255(vec3 a, vec3 b, float lim)
 {
   return distSqY(a, b) <= SQ255(lim);
 }
+
+// Unified hue-shifting-tolerant AA / sel-out ramp check in YCbCr space (0 sqrt).
+// True when m lies strictly between endpoints a and b along their chord with
+// bounded orthogonal deviation (allowing pixel-art hue-shifting) and monotonic luma.
+bool isAaRampY(vec3 a, vec3 m, vec3 b, float orthoTolSq, float minSpanSq)
+{
+  vec3 ab = b - a;
+  float abSq = dot(ab, ab);
+  if (abSq < minSpanSq) return false;
+  vec3 am = m - a;
+  float proj = dot(am, ab);
+  if (proj <= 0.05 * abSq || proj >= 0.95 * abSq) return false;
+  float t = proj / abSq;
+  vec3 err = am - t * ab;
+  if (dot(err, err) > orthoTolSq * abSq) return false;
+  float loY = min(a.x, b.x), hiY = max(a.x, b.x);
+  if (hiY - loY > 0.08 && (m.x < loY - 0.02 || m.x > hiY + 0.02)) return false;
+  return true;
+}

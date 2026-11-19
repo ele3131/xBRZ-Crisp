@@ -55,8 +55,6 @@
 
 // ---- Helpers of the Crisp rules ----
 @RESOLVE_GLOBALS@
-vec3 rA, rB, rC, rD, rE, rF, rG, rH, rI;
-bool have3x3 = false;
 
 const vec2 vX = vec2(0., -1.), hX = vec2(-1., 0.), vY = vec2(1., 0.), hY = vec2(0., -1.);
 const vec2 vZ = vec2(0., 1.), hZ = vec2(1., 0.), vW = vec2(-1., 0.), hW = vec2(0., 1.);
@@ -74,17 +72,8 @@ bool kin37(vec3 O, vec3 K, vec3 Pc)
   return okSq < SQ255(XBRZ_SAME) || okSq < (XBRZ_KIN37 * XBRZ_KIN37) * min(distSqY(O, Pc), distSqY(K, Pc));
 }
 bool sameTone(vec3 a, vec3 b) { return withinEqY255(a, b, XBRZ_TONE); }
-// The original pixel at an offset from E (in linear YCbCr), served from 3x3 registers when cached.
-vec3 at(vec2 o)
-{
-  if (have3x3 && abs(o.x) <= 1.0 && abs(o.y) <= 1.0)
-  {
-    if (o.y < -0.5) return o.x < -0.5 ? rA : (o.x > 0.5 ? rC : rB);
-    if (o.y >  0.5) return o.x < -0.5 ? rG : (o.x > 0.5 ? rI : rH);
-    return o.x < -0.5 ? rD : (o.x > 0.5 ? rF : rE);
-  }
-  return toYCbCr(P(o.x, o.y));
-}
+// The original pixel at an offset from E (in linear YCbCr)
+#define at(o) toYCbCr(P((o).x, (o).y))
 float sameF(vec3 a, vec3 b) { return float(sameColor(a, b)); }
 vec4 isCut(vec4 blend) { return vec4(greaterThan(blend, vec4(0.0))); }
 vec4 cutOf(vec4 word) { return isCut(BLEND(word)); }
@@ -296,7 +285,6 @@ void main()
 @RESOLVE_COORDS@
   vec4 info = INFO_AT(0.0, 0.0);
 //#crisp{
-  have3x3 = false;
   vec4 blockedBit = FLAG(info, 128.0);
 //#crisp}
   vec4 blendResult = BLEND(info);
@@ -418,8 +406,6 @@ void main()
       vec3 G = haveDiagPix ? cachedG : toYCbCr(P(-1.,  1.));
       vec3 H = toYCbCr(P( 0.,  1.));
       vec3 I = haveDiagPix ? cachedI : toYCbCr(P( 1.,  1.));
-      rA = A; rB = B; rC = C; rD = D; rE = E; rF = F; rG = G; rH = H; rI = I;
-      have3x3 = true;
       cachedE = E;
       haveE = true;
 

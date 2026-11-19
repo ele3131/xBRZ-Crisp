@@ -114,25 +114,28 @@ uniform COMPAT_PRECISION float XBRZ_MINC;
 uniform sampler2D PassPrev3Texture;
 uniform COMPAT_PRECISION vec2 PassPrev3TextureSize;
 uniform COMPAT_PRECISION vec2 PassPrev3InputSize;
+vec2 gSrcInv = vec2(0.0), gSrcMax = vec2(0.0);
+vec2 gOrigInv = vec2(0.0), gOrigMax = vec2(0.0);
+vec2 gP0Inv = vec2(0.0), gP0Max = vec2(0.0);
 #define OUT_SIZE OutputSize
-#define ORIG_SIZE vec4(PassPrev3TextureSize, 1.0 / PassPrev3TextureSize)
+#define ORIG_SIZE vec4(PassPrev3TextureSize, gOrigInv)
 #define ORIG_INPUT_SIZE PassPrev3InputSize
 // the first pass's texture and the original's can have different sizes (RetroArch rounds each one
 // up to a power of two on its own, e.g. 256 and 512 with snes9x), so each one is read with its own
-#define SRC_SIZE vec4(TextureSize, 1.0 / TextureSize)
-#define CLAMP_ORIG(uv) clamp((uv), 0.5 * ORIG_SIZE.zw, (ORIG_INPUT_SIZE - 0.5) * ORIG_SIZE.zw)
-#define CLAMP_SRC(uv) clamp((uv), 0.5 * SRC_SIZE.zw, (InputSize - 0.5) * SRC_SIZE.zw)
-#define P(x,y) COMPAT_TEXTURE(PassPrev3Texture, CLAMP_ORIG(ocoord + ORIG_SIZE.zw * vec2(x, y))).rgb
+#define SRC_SIZE vec4(TextureSize, gSrcInv)
+#define CLAMP_ORIG(uv) min((uv), gOrigMax)
+#define CLAMP_SRC(uv) min((uv), gSrcMax)
+#define P(x,y) COMPAT_TEXTURE(PassPrev3Texture, CLAMP_ORIG(ocoord + gOrigInv * vec2(x, y))).rgb
 #define INFO(uv) COMPAT_TEXTURE(Texture, CLAMP_SRC(uv))
-#define INFO_STEP SRC_SIZE.zw
+#define INFO_STEP gSrcInv
 #define INFO_AT(x, y) floor(INFO(coord + vec2(x, y) * INFO_STEP) * 255.0 + 0.5)
 
 // pass 0's decisions (two passes back), before the resolve pass changed them
 uniform sampler2D PassPrev2Texture;
 uniform COMPAT_PRECISION vec2 PassPrev2TextureSize;
-#define P0_SIZE vec4(PassPrev2TextureSize, 1.0 / PassPrev2TextureSize)
-#define CLAMP_P0(uv) clamp((uv), 0.5 * P0_SIZE.zw, (InputSize - 0.5) * P0_SIZE.zw)
-#define W0_AT(x, y) floor(COMPAT_TEXTURE(PassPrev2Texture, CLAMP_P0(c0 + vec2(x, y) * P0_SIZE.zw)) * 255.0 + 0.5)
+#define P0_SIZE vec4(PassPrev2TextureSize, gP0Inv)
+#define CLAMP_P0(uv) min((uv), gP0Max)
+#define W0_AT(x, y) floor(COMPAT_TEXTURE(PassPrev2Texture, CLAMP_P0(c0 + vec2(x, y) * gP0Inv)) * 255.0 + 0.5)
 vec2 coord = vec2(0.0), ocoord = vec2(0.0), c0 = vec2(0.0);
 
 // the decision word of a corner (see pass 0 and the resolve pass): BLEND is the blend type, FLAG(r, f) one of its flags
@@ -208,6 +211,25 @@ bool withinEqY255(vec3 a, vec3 b, float lim)
 {
   return distSqY(a, b) <= SQ255(lim);
 }
+
+// Unified hue-shifting-tolerant AA / sel-out ramp check in YCbCr space (0 sqrt).
+// True when m lies strictly between endpoints a and b along their chord with
+// bounded orthogonal deviation (allowing pixel-art hue-shifting) and monotonic luma.
+bool isAaRampY(vec3 a, vec3 m, vec3 b, float orthoTolSq, float minSpanSq)
+{
+  vec3 ab = b - a;
+  float abSq = dot(ab, ab);
+  if (abSq < minSpanSq) return false;
+  vec3 am = m - a;
+  float proj = dot(am, ab);
+  if (proj <= 0.05 * abSq || proj >= 0.95 * abSq) return false;
+  float t = proj / abSq;
+  vec3 err = am - t * ab;
+  if (dot(err, err) > orthoTolSq * abSq) return false;
+  float loY = min(a.x, b.x), hiY = max(a.x, b.x);
+  if (hiY - loY > 0.08 && (m.x < loY - 0.02 || m.x > hiY + 0.02)) return false;
+  return true;
+}
 #define TIE_EPS 1e-5     // matches pass 0: equal integer color steps can differ in the last float bits
 #define XBRZ_SAME_M 15.0 // two pixels within this are one color (sameColor of the resolve pass); rule 41
 
@@ -221,56 +243,18 @@ bool withinEqY255(vec3 a, vec3 b, float lim)
 #define XBRZ_VERTEX_EDGE 40.0 // G and T differ from C by more than this
 #define XBRZ_VERTEX_BAR 15.0  // the bar's pixels have T's color within this
 
-// E and its 8 neighbors in linear YCbCr (nB, nD, nE, nF, nH loaded in main; nA, nC, nG, nI lazily cached),
-// E's squared YCbCr distances to its 4 side neighbors (sBSq, sDSq, sFSq, sHSq), and lazily cached cardinal INFO_AT reads
+// E and its 4 cardinal neighbors in linear YCbCr, E's squared YCbCr distances to them, and center info
 vec3 nB, nD, nE, nF, nH;
-vec3 nA, nC, nG, nI;
-bool hasNA, hasNC, hasNG, hasNI;
 float sBSq, sDSq, sFSq, sHSq;
-vec4 iE, iB, iD, iF, iH;
-bool hasIB, hasID, hasIF, hasIH;
+vec4 iE;
 
 float sideSq(vec2 n)
 {
   return n.y < -0.5 ? sBSq : (n.y > 0.5 ? sHSq : (n.x < 0.0 ? sDSq : sFSq));
 }
 
-vec4 infoAt(vec2 o)
-{
-  if (abs(o.x) + abs(o.y) < 1.5)
-  {
-    if (o.y < -0.5) { if (!hasIB) { iB = INFO_AT(0.0, -1.0); hasIB = true; } return iB; }
-    if (o.y >  0.5) { if (!hasIH) { iH = INFO_AT(0.0,  1.0); hasIH = true; } return iH; }
-    if (o.x < -0.5) { if (!hasID) { iD = INFO_AT(-1.0, 0.0); hasID = true; } return iD; }
-    if (o.x >  0.5) { if (!hasIF) { iF = INFO_AT( 1.0, 0.0); hasIF = true; } return iF; }
-    return iE;
-  }
-  return INFO_AT(o.x, o.y);
-}
-
-// the pixel at offset o in linear YCbCr: served from 3x3 registers when within (-1..1, -1..1), texture P otherwise
-vec3 at3(vec2 o)
-{
-  if (abs(o.x) < 1.5 && abs(o.y) < 1.5)
-  {
-    if (o.y < -0.5)
-    {
-      if (o.x < -0.5) { if (!hasNA) { nA = toYCbCr(P(-1.0, -1.0)); hasNA = true; } return nA; }
-      if (o.x >  0.5) { if (!hasNC) { nC = toYCbCr(P( 1.0, -1.0)); hasNC = true; } return nC; }
-      return nB;
-    }
-    if (o.y > 0.5)
-    {
-      if (o.x < -0.5) { if (!hasNG) { nG = toYCbCr(P(-1.0,  1.0)); hasNG = true; } return nG; }
-      if (o.x >  0.5) { if (!hasNI) { nI = toYCbCr(P( 1.0,  1.0)); hasNI = true; } return nI; }
-      return nH;
-    }
-    if (o.x < -0.5) return nD;
-    if (o.x >  0.5) return nF;
-    return nE;
-  }
-  return toYCbCr(P(o.x, o.y));
-}
+#define infoAt(o) INFO_AT((o).x, (o).y)
+#define at3(o) toYCbCr(P((o).x, (o).y))
 
 vec4 vtxCorner(vec2 c) { return vec4(c.x < 0.0 && c.y < 0.0, c.x > 0.0 && c.y < 0.0, c.x > 0.0 && c.y > 0.0, c.x < 0.0 && c.y > 0.0); }
 bool vtxSec(vec2 c, vec2 n) { return (c.x * c.y > 0.0) != (abs(n.x) > 0.5); }
@@ -671,10 +655,16 @@ bool isLone3x3(vec3 Q, vec2 q)
 
 void main()
 {
-  vec2 pos = fract(vTexCoord * SRC_SIZE.xy) - vec2(0.5, 0.5);
-  coord = vTexCoord - pos * SRC_SIZE.zw;
-  ocoord = coord * SRC_SIZE.xy * ORIG_SIZE.zw;
-  c0 = coord * SRC_SIZE.xy * P0_SIZE.zw;
+  gSrcInv = 1.0 / TextureSize;
+  gSrcMax = (InputSize - 0.5) * gSrcInv;
+  gOrigInv = 1.0 / PassPrev3TextureSize;
+  gOrigMax = (ORIG_INPUT_SIZE - 0.5) * gOrigInv;
+  gP0Inv = 1.0 / PassPrev2TextureSize;
+  gP0Max = (InputSize - 0.5) * gP0Inv;
+  vec2 pos = fract(vTexCoord * TextureSize) - vec2(0.5, 0.5);
+  coord = vTexCoord - pos * gSrcInv;
+  ocoord = coord * TextureSize * gOrigInv;
+  c0 = coord * TextureSize * gP0Inv;
   vec4 res = INFO_AT(0.0, 0.0);
   if (XBRZ_MINC <= 0.0)
   {
@@ -703,8 +693,6 @@ void main()
   }
 
   iE = res;
-  hasNA = false; hasNC = false; hasNG = false; hasNI = false;
-  hasIB = false; hasID = false; hasIF = false; hasIH = false;
 
   float minSideSq = min(min(sBSq, sDSq), min(sFSq, sHSq));
   float maxSideSq = max(max(sBSq, sDSq), max(sFSq, sHSq));

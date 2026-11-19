@@ -71,38 +71,13 @@
 #define eq(a,b)  (a == b)
 #define neq(a,b) (a != b)
 
-// the 3x3 window and the ring of pixels two steps from E (the 5x5 window without its corners), read once and pre-converted to linear YCbCr in main
-vec3 gA, gB, gC, gD, gE, gF, gG, gH, gI;
+// the ring of pixels two steps from E (the 5x5 window without its corners), read once and pre-converted to linear YCbCr in main
 vec3 N_m1_m2, N_p0_m2, N_p1_m2, N_m2_m1, N_p2_m1, N_m2_p0, N_p2_p0, N_m2_p1, N_p2_p1, N_m1_p2, N_p0_p2, N_p1_p2;
 
 @include "color.inc"
 
 #define PY(x, y) toYCbCr(P(x, y))
-
-// serves the 21 cached YCbCr pixels (3x3 + 5x5 ring without corners) from registers; fetches only outside that set
-vec3 at5x5(vec2 coord, vec2 o)
-{
-  if (abs(o.y) < 1.5)
-  {
-    if (abs(o.x) < 1.5)
-    {
-      if (o.y < -0.5) return o.x < -0.5 ? gA : (o.x > 0.5 ? gC : gB);
-      if (o.y >  0.5) return o.x < -0.5 ? gG : (o.x > 0.5 ? gI : gH);
-      return o.x < -0.5 ? gD : (o.x > 0.5 ? gF : gE);
-    }
-    if (abs(o.x) < 2.5)
-    {
-      if (o.x < 0.0) return o.y < -0.5 ? N_m2_m1 : (o.y > 0.5 ? N_m2_p1 : N_m2_p0);
-      return o.y < -0.5 ? N_p2_m1 : (o.y > 0.5 ? N_p2_p1 : N_p2_p0);
-    }
-  }
-  else if (abs(o.y) < 2.5 && abs(o.x) < 1.5)
-  {
-    if (o.y < 0.0) return o.x < -0.5 ? N_m1_m2 : (o.x > 0.5 ? N_p1_m2 : N_p0_m2);
-    return o.x < -0.5 ? N_m1_p2 : (o.x > 0.5 ? N_p1_p2 : N_p0_p2);
-  }
-  return PY(o.x, o.y);
-}
+#define at5x5(coord, o) PY((o).x, (o).y)
 
 bool alike(vec3 a, vec3 b) { return withinEqY255(a, b, XBRZ_ALIKE); }
 
@@ -979,7 +954,6 @@ void main()
   vec3 G = PY(-1., 1.);
   H = toYCbCr(H);
   vec3 I = PY( 1., 1.);
-  gA = A; gB = B; gC = C; gD = D; gE = E; gF = F; gG = G; gH = H; gI = I;
   N_m1_m2 = PY(-1., -2.);
   N_p0_m2 = PY( 0., -2.);
   N_p1_m2 = PY( 1., -2.);

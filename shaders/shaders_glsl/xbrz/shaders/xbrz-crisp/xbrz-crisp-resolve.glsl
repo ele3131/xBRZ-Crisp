@@ -121,17 +121,19 @@ uniform COMPAT_PRECISION float XBRZ_MINC;
 uniform sampler2D PassPrev2Texture;
 uniform COMPAT_PRECISION vec2 PassPrev2TextureSize;
 uniform COMPAT_PRECISION vec2 PassPrev2InputSize;
+vec2 gSrcInv = vec2(0.0), gSrcMax = vec2(0.0);
+vec2 gOrigInv = vec2(0.0), gOrigMax = vec2(0.0);
 #define OUT_SIZE OutputSize
-#define ORIG_SIZE vec4(PassPrev2TextureSize, 1.0 / PassPrev2TextureSize)
+#define ORIG_SIZE vec4(PassPrev2TextureSize, gOrigInv)
 #define ORIG_INPUT_SIZE PassPrev2InputSize
 // the first pass's texture and the original's can have different sizes (RetroArch rounds each one
 // up to a power of two on its own, e.g. 256 and 512 with snes9x), so each one is read with its own
-#define SRC_SIZE vec4(TextureSize, 1.0 / TextureSize)
-#define CLAMP_ORIG(uv) clamp((uv), 0.5 * ORIG_SIZE.zw, (ORIG_INPUT_SIZE - 0.5) * ORIG_SIZE.zw)
-#define CLAMP_SRC(uv) clamp((uv), 0.5 * SRC_SIZE.zw, (InputSize - 0.5) * SRC_SIZE.zw)
-#define P(x,y) COMPAT_TEXTURE(PassPrev2Texture, CLAMP_ORIG(ocoord + ORIG_SIZE.zw * vec2(x, y))).rgb
+#define SRC_SIZE vec4(TextureSize, gSrcInv)
+#define CLAMP_ORIG(uv) min((uv), gOrigMax)
+#define CLAMP_SRC(uv) min((uv), gSrcMax)
+#define P(x,y) COMPAT_TEXTURE(PassPrev2Texture, CLAMP_ORIG(ocoord + gOrigInv * vec2(x, y))).rgb
 #define INFO(uv) COMPAT_TEXTURE(Texture, CLAMP_SRC(uv))
-#define INFO_STEP SRC_SIZE.zw
+#define INFO_STEP gSrcInv
 
 // Rec. 2020 luma weights and chroma difference scales, shared across passes
 const vec3 LUMA_W = vec3(0.2627, 0.6780, 0.0593);
@@ -200,6 +202,25 @@ bool withinEqY255(vec3 a, vec3 b, float lim)
 {
   return distSqY(a, b) <= SQ255(lim);
 }
+
+// Unified hue-shifting-tolerant AA / sel-out ramp check in YCbCr space (0 sqrt).
+// True when m lies strictly between endpoints a and b along their chord with
+// bounded orthogonal deviation (allowing pixel-art hue-shifting) and monotonic luma.
+bool isAaRampY(vec3 a, vec3 m, vec3 b, float orthoTolSq, float minSpanSq)
+{
+  vec3 ab = b - a;
+  float abSq = dot(ab, ab);
+  if (abSq < minSpanSq) return false;
+  vec3 am = m - a;
+  float proj = dot(am, ab);
+  if (proj <= 0.05 * abSq || proj >= 0.95 * abSq) return false;
+  float t = proj / abSq;
+  vec3 err = am - t * ab;
+  if (dot(err, err) > orthoTolSq * abSq) return false;
+  float loY = min(a.x, b.x), hiY = max(a.x, b.x);
+  if (hiY - loY > 0.08 && (m.x < loY - 0.02 || m.x > hiY + 0.02)) return false;
+  return true;
+}
 // the first pass's decisions for the four corners of the pixel at (x, y) from E; see the decision
 // word in pass 0 (BLEND is the blend type, FLAG(r, f) one of its flags)
 #define INFO_AT(x, y) floor(INFO(coord + vec2(x, y) * INFO_STEP) * 255.0 + 0.5)
@@ -246,8 +267,6 @@ bool withinEqY255(vec3 a, vec3 b, float lim)
 
 // ---- Helpers of the Crisp rules ----
 vec2 ocoord = vec2(0.0);
-vec3 rA, rB, rC, rD, rE, rF, rG, rH, rI;
-bool have3x3 = false;
 
 const vec2 vX = vec2(0., -1.), hX = vec2(-1., 0.), vY = vec2(1., 0.), hY = vec2(0., -1.);
 const vec2 vZ = vec2(0., 1.), hZ = vec2(1., 0.), vW = vec2(-1., 0.), hW = vec2(0., 1.);
@@ -265,17 +284,8 @@ bool kin37(vec3 O, vec3 K, vec3 Pc)
   return okSq < SQ255(XBRZ_SAME) || okSq < (XBRZ_KIN37 * XBRZ_KIN37) * min(distSqY(O, Pc), distSqY(K, Pc));
 }
 bool sameTone(vec3 a, vec3 b) { return withinEqY255(a, b, XBRZ_TONE); }
-// The original pixel at an offset from E (in linear YCbCr), served from 3x3 registers when cached.
-vec3 at(vec2 o)
-{
-  if (have3x3 && abs(o.x) <= 1.0 && abs(o.y) <= 1.0)
-  {
-    if (o.y < -0.5) return o.x < -0.5 ? rA : (o.x > 0.5 ? rC : rB);
-    if (o.y >  0.5) return o.x < -0.5 ? rG : (o.x > 0.5 ? rI : rH);
-    return o.x < -0.5 ? rD : (o.x > 0.5 ? rF : rE);
-  }
-  return toYCbCr(P(o.x, o.y));
-}
+// The original pixel at an offset from E (in linear YCbCr)
+#define at(o) toYCbCr(P((o).x, (o).y))
 float sameF(vec3 a, vec3 b) { return float(sameColor(a, b)); }
 vec4 isCut(vec4 blend) { return vec4(greaterThan(blend, vec4(0.0))); }
 vec4 cutOf(vec4 word) { return isCut(BLEND(word)); }
@@ -484,15 +494,18 @@ float tip22(Roles r, vec3 E)
 
 void main()
 {
-  vec2 pos = fract(vTexCoord * SRC_SIZE.xy) - vec2(0.5, 0.5);
-  vec2 coord = vTexCoord - pos * SRC_SIZE.zw;
+  gSrcInv = 1.0 / TextureSize;
+  gSrcMax = (InputSize - 0.5) * gSrcInv;
+  gOrigInv = 1.0 / PassPrev2TextureSize;
+  gOrigMax = (ORIG_INPUT_SIZE - 0.5) * gOrigInv;
+  vec2 pos = fract(vTexCoord * TextureSize) - vec2(0.5, 0.5);
+  vec2 coord = vTexCoord - pos * gSrcInv;
 //#crisp{
-  ocoord = coord * SRC_SIZE.xy * ORIG_SIZE.zw;
+  ocoord = coord * TextureSize * gOrigInv;
 //#crisp}
-//#plain   vec2 ocoord = coord * SRC_SIZE.xy * ORIG_SIZE.zw;
+//#plain   vec2 ocoord = coord * TextureSize * gOrigInv;
   vec4 info = INFO_AT(0.0, 0.0);
 //#crisp{
-  have3x3 = false;
   vec4 blockedBit = FLAG(info, 128.0);
 //#crisp}
   vec4 blendResult = BLEND(info);
@@ -614,8 +627,6 @@ void main()
       vec3 G = haveDiagPix ? cachedG : toYCbCr(P(-1.,  1.));
       vec3 H = toYCbCr(P( 0.,  1.));
       vec3 I = haveDiagPix ? cachedI : toYCbCr(P( 1.,  1.));
-      rA = A; rB = B; rC = C; rD = D; rE = E; rF = F; rG = G; rH = H; rI = I;
-      have3x3 = true;
       cachedE = E;
       haveE = true;
 

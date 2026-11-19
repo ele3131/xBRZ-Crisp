@@ -164,6 +164,25 @@ bool withinEqY255(vec3 a, vec3 b, float lim)
 {
   return distSqY(a, b) <= SQ255(lim);
 }
+
+// Unified hue-shifting-tolerant AA / sel-out ramp check in YCbCr space (0 sqrt).
+// True when m lies strictly between endpoints a and b along their chord with
+// bounded orthogonal deviation (allowing pixel-art hue-shifting) and monotonic luma.
+bool isAaRampY(vec3 a, vec3 m, vec3 b, float orthoTolSq, float minSpanSq)
+{
+  vec3 ab = b - a;
+  float abSq = dot(ab, ab);
+  if (abSq < minSpanSq) return false;
+  vec3 am = m - a;
+  float proj = dot(am, ab);
+  if (proj <= 0.05 * abSq || proj >= 0.95 * abSq) return false;
+  float t = proj / abSq;
+  vec3 err = am - t * ab;
+  if (dot(err, err) > orthoTolSq * abSq) return false;
+  float loY = min(a.x, b.x), hiY = max(a.x, b.x);
+  if (hiY - loY > 0.08 && (m.x < loY - 0.02 || m.x > hiY + 0.02)) return false;
+  return true;
+}
 #define TIE_EPS 1e-5     // matches pass 0: equal integer color steps can differ in the last float bits
 #define XBRZ_SAME_M 15.0 // two pixels within this are one color (sameColor of the resolve pass); rule 41
 
@@ -177,56 +196,18 @@ bool withinEqY255(vec3 a, vec3 b, float lim)
 #define XBRZ_VERTEX_EDGE 40.0 // G and T differ from C by more than this
 #define XBRZ_VERTEX_BAR 15.0  // the bar's pixels have T's color within this
 
-// E and its 8 neighbors in linear YCbCr (nB, nD, nE, nF, nH loaded in main; nA, nC, nG, nI lazily cached),
-// E's squared YCbCr distances to its 4 side neighbors (sBSq, sDSq, sFSq, sHSq), and lazily cached cardinal INFO_AT reads
+// E and its 4 cardinal neighbors in linear YCbCr, E's squared YCbCr distances to them, and center info
 vec3 nB, nD, nE, nF, nH;
-vec3 nA, nC, nG, nI;
-bool hasNA, hasNC, hasNG, hasNI;
 float sBSq, sDSq, sFSq, sHSq;
-vec4 iE, iB, iD, iF, iH;
-bool hasIB, hasID, hasIF, hasIH;
+vec4 iE;
 
 float sideSq(vec2 n)
 {
   return n.y < -0.5 ? sBSq : (n.y > 0.5 ? sHSq : (n.x < 0.0 ? sDSq : sFSq));
 }
 
-vec4 infoAt(vec2 o)
-{
-  if (abs(o.x) + abs(o.y) < 1.5)
-  {
-    if (o.y < -0.5) { if (!hasIB) { iB = INFO_AT(0.0, -1.0); hasIB = true; } return iB; }
-    if (o.y >  0.5) { if (!hasIH) { iH = INFO_AT(0.0,  1.0); hasIH = true; } return iH; }
-    if (o.x < -0.5) { if (!hasID) { iD = INFO_AT(-1.0, 0.0); hasID = true; } return iD; }
-    if (o.x >  0.5) { if (!hasIF) { iF = INFO_AT( 1.0, 0.0); hasIF = true; } return iF; }
-    return iE;
-  }
-  return INFO_AT(o.x, o.y);
-}
-
-// the pixel at offset o in linear YCbCr: served from 3x3 registers when within (-1..1, -1..1), texture P otherwise
-vec3 at3(vec2 o)
-{
-  if (abs(o.x) < 1.5 && abs(o.y) < 1.5)
-  {
-    if (o.y < -0.5)
-    {
-      if (o.x < -0.5) { if (!hasNA) { nA = toYCbCr(P(-1.0, -1.0)); hasNA = true; } return nA; }
-      if (o.x >  0.5) { if (!hasNC) { nC = toYCbCr(P( 1.0, -1.0)); hasNC = true; } return nC; }
-      return nB;
-    }
-    if (o.y > 0.5)
-    {
-      if (o.x < -0.5) { if (!hasNG) { nG = toYCbCr(P(-1.0,  1.0)); hasNG = true; } return nG; }
-      if (o.x >  0.5) { if (!hasNI) { nI = toYCbCr(P( 1.0,  1.0)); hasNI = true; } return nI; }
-      return nH;
-    }
-    if (o.x < -0.5) return nD;
-    if (o.x >  0.5) return nF;
-    return nE;
-  }
-  return toYCbCr(P(o.x, o.y));
-}
+#define infoAt(o) INFO_AT((o).x, (o).y)
+#define at3(o) toYCbCr(P((o).x, (o).y))
 
 vec4 vtxCorner(vec2 c) { return vec4(c.x < 0.0 && c.y < 0.0, c.x > 0.0 && c.y < 0.0, c.x > 0.0 && c.y > 0.0, c.x < 0.0 && c.y > 0.0); }
 bool vtxSec(vec2 c, vec2 n) { return (c.x * c.y > 0.0) != (abs(n.x) > 0.5); }
@@ -657,8 +638,6 @@ void main()
   }
 
   iE = res;
-  hasNA = false; hasNC = false; hasNG = false; hasNI = false;
-  hasIB = false; hasID = false; hasIF = false; hasIH = false;
 
   float minSideSq = min(min(sBSq, sDSq), min(sFSq, sHSq));
   float maxSideSq = max(max(sBSq, sDSq), max(sFSq, sHSq));
