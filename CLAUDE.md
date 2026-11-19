@@ -9,23 +9,27 @@ All 10 `.slang` and `.glsl` files under `shaders/` are **generated artifacts**. 
 Edit only the shared templates in `tools/src/` and the generator in `tools/build-shaders.py`:
 
 - `tools/src/license.inc` — GPLv3 / MIT license banner
-- `tools/src/header.inc` — Numbered rule catalog shared across passes
-- `tools/src/color.inc` — Rec. 2020 `LUMA_W`, `luma()`, `distSqYCbCr()`, `distYCbCr()`, `dist255()`
+- `tools/src/header.inc` — Full numbered rule catalog (included in `pass0.inc` only)
+- `tools/src/header_short.inc` — Concise header for `resolve.inc`, `match.inc`, and `pass1.inc`
+- `tools/src/color.inc` — Rec. 2020 `LUMA_W`, `luma()`, `distSqYCbCr()`, `distYCbCr()`, `dist255()`, `SQ255()`, `within255()`, `withinEq255()`
 - `tools/src/point.inc` — Pass 0a (`point`): per-vertex 2x2 junction preprocessing
 - `tools/src/pass0.inc` — Pass 0b (`pass0`): per-texel corner detection and Crisp rules
 - `tools/src/resolve.inc` — Pass 0c (`resolve`): cross-neighbor corner resolution
 - `tools/src/match.inc` — Pass 0d (`match`): diagonal burr restoration (`xbrz-crisp` only)
 - `tools/src/pass1.inc` — Pass 1 (`pass1`): output-scale corner rasterization
 
-After any shader or template change, run all three scripts from the repository root and verify zero errors:
+After any shader or template change, run the build and verification scripts from the repository root:
 
 ```bash
 python3 tools/build-shaders.py    # Regenerates all 10 Slang + GLSL shaders in shaders/
-python3 tools/make-multipass.py   # Verifies //#crisp stripping & writes 4-pass libretro build to build/multipass/
-python3 tools/make-release.py     # Packages build/xbrz-crisp.zip (shaders_glsl/, shaders_slang/, LICENSE)
+python3 tools/verify.py           # Lint + single-source sync + make-multipass + ES 1.00/3.00 compile
+python3 tools/make-release.py     # Deterministic build/xbrz-crisp.zip + SHA256
+# Optional helpers:
+python3 tools/render-docs.py      # Render docs/img/*-crisp{10,20,30}.png locally (gitignored; built in CI)
+python3 tools/publish-release.py 3.6 [--publish]  # Full release pipeline + changelog + GitHub Release
 ```
 
-`build/` is gitignored; commit both `tools/src/*` and the regenerated `shaders/*` files together so users cloning the repo or inspecting diffs see exact generated shader changes.
+`build/` and `docs/img/*-crisp{10,20,30}.png` are gitignored (`.github/workflows/pages.yml` renders and deploys the comparison page automatically on push to `main`). Commit `tools/src/*` and the regenerated `shaders/*` files together so users cloning the repo or inspecting diffs see exact generated shader changes.
 
 ## 2. RetroArch `rslc` & Mobile GLSL ES Compiler Constraints
 
@@ -36,7 +40,7 @@ RetroArch compiles `.slang` shaders through its C preprocessor (`rslc`) and `.gl
 2. **Prefer typed helper functions over `#define` macros for color logic:**
    Keep helpers like `bool alike(vec3 a, vec3 b)` as typed GLSL functions rather than `#define` macros to avoid macro-expansion collisions and duplicate expression evaluation.
 3. **Keep `@include` directives clean:**
-   `tools/build-shaders.py` expands `@include "file.inc"` recursively from `tools/src/` and fails the build if any `@include` or `@PLACEHOLDER@` token remains unexpanded. Note that pass templates include `license.inc` and `header.inc` sequentially — do not re-include `license.inc` inside `header.inc`.
+   `tools/build-shaders.py` expands `@include "file.inc"` recursively from `tools/src/` and fails the build if any `@include` or `@PLACEHOLDER@` token remains unexpanded. Note that pass templates include `header.inc` (or `header_short.inc`) and `license.inc` sequentially — do not re-include `license.inc` inside headers.
 4. **Keep uniform block (`UBO`) parameters consistent:**
    `point.slang` declares all 5 `#pragma parameter` floats in `UBO` alongside `pass0.slang` so RetroArch's preset parameter table stays aligned across drivers.
 5. **GLSL ES 1.00 compatibility:**
@@ -44,7 +48,7 @@ RetroArch compiles `.slang` shaders through its C preprocessor (`rslc`) and `.gl
 
 ## 3. Upstream `xbrz-freescale-multipass` Compatibility (`//#crisp`)
 
-`tools/make-multipass.py` derives the 4-pass plain libretro shader (`XBRZ_MINC = 0`, rules 2 and 4–7 only) directly from the generated `shaders/` files:
+`tools/make-multipass.py` derives the 4-pass plain libretro shader (`XBRZ_MINC = 0`, rules 2, 4–7, and 10 only) directly from the generated `shaders/` files:
 
 - Wrap Crisp-only blocks in `//#crisp{` ... `//#crisp}` on their own lines (never nest `//#crisp{` blocks).
 - Prefix plain-only fallback lines with `//#plain `.

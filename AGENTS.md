@@ -8,9 +8,9 @@ Read and follow **[`CLAUDE.md`](./CLAUDE.md)** as the single source of truth bef
 2. **Never name a variable or parameter `P`** — `#define P(x,y)` is an active sampling macro; use `Pc` for center-pixel `vec3` values so RetroArch `rslc` (Vulkan/Slang) and mobile OpenGL ES drivers compile cleanly.
 3. **Use `distSqYCbCr` with pre-squared thresholds** for boolean color-distance checks, and never re-fetch texels already cached in local `vec3` variables.
 4. **Preserve `//#crisp{ ... //#crisp}` and `//#plain` markers** and keep rule numbers synced with `tools/src/header.inc`.
-5. **Run all three verification/build scripts from repo root:**
+5. **Run build & verification scripts from repo root:**
    ```bash
    python3 tools/build-shaders.py
-   python3 tools/make-multipass.py
+   python3 tools/verify.py
    python3 tools/make-release.py
    ```

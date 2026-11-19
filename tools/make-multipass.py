@@ -114,7 +114,8 @@ for dst, (alias, p0, crisp) in PRESETS.items():
     for i, p in enumerate(PASSES):
         f = p0 if p == 'pass0' else 'xbrz-freescale-' + p
         text += ('shader%d = shaders/xbrz-freescale-multipass/%s.%s\nfilter_linear%d = false\n'
-                 'scale_type%d = %s\nscale%d = 1.0\n' % (i, f, ext, i, i, 'viewport' if p == 'pass1' else 'source', i))
+                 'wrap_mode%d = "clamp_to_edge"\nscale_type%d = %s\nscale%d = 1.0\n'
+                 % (i, f, ext, i, i, i, 'viewport' if p == 'pass1' else 'source', i))
         if p == 'point': text += alias
         if p != PASSES[-1]: text += '\n'
     if crisp: text += CRISP_PARAMS

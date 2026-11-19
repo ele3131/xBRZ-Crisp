@@ -1,4 +1,4 @@
-@include "header.inc"
+@include "header_short.inc"
 @include "license.inc"
 
 //#crisp{

@@ -123,6 +123,19 @@ float dist255(vec3 pixA, vec3 pixB)
 {
   return distYCbCr(pixA, pixB) * 255.0;
 }
+
+// Squared threshold in [0..255] YCbCr units, kept in [0..1.5] so GLSL ES mediump never overflows
+#define SQ255(x) (((x) / 255.0) * ((x) / 255.0))
+
+bool within255(vec3 pixA, vec3 pixB, float lim)
+{
+  return distSqYCbCr(pixA, pixB) < SQ255(lim);
+}
+
+bool withinEq255(vec3 pixA, vec3 pixB, float lim)
+{
+  return distSqYCbCr(pixA, pixB) <= SQ255(lim);
+}
 #define CRISP_RULES (XBRZ_MINC > 0.0 && XBRZ_DIAG > 0.0)
 
 // ============================================================================================
@@ -161,15 +174,15 @@ vec2 tieSparse(vec2 coord, vec3 tl, vec3 tr)
 // plus 1 outer diagonal corner at offset diagOff).
 // - thin: exactly 1 of the 5 outer neighbors matches (within lim of c1 or c2), and it is one of the 2 cardinal ones
 // - mass: at least 2 of the 5 outer neighbors match c (exact), and at least 1 is one of the 2 cardinal ones
-bool shadeIn(vec3 q, vec3 c1, vec3 c2, float lim)
+bool shadeInSq(vec3 q, vec3 c1, vec3 c2, float limSq)
 {
-  return min(dist255(q, c1), dist255(q, c2)) < lim;
+  return min(distSqYCbCr(q, c1), distSqYCbCr(q, c2)) < limSq;
 }
-bool thinOuter(vec2 coord, vec3 s1, vec3 s2, vec3 a1, vec3 a2, vec2 diagOff, vec3 c1, vec3 c2, float lim)
+bool thinOuter(vec2 coord, vec3 s1, vec3 s2, vec3 a1, vec3 a2, vec2 diagOff, vec3 c1, vec3 c2, float limSq)
 {
-  if (shadeIn(s1, c1, c2, lim) == shadeIn(s2, c1, c2, lim)) return false;
-  if (shadeIn(a1, c1, c2, lim) || shadeIn(a2, c1, c2, lim)) return false;
-  return !shadeIn(P(diagOff.x, diagOff.y), c1, c2, lim);
+  if (shadeInSq(s1, c1, c2, limSq) == shadeInSq(s2, c1, c2, limSq)) return false;
+  if (shadeInSq(a1, c1, c2, limSq) || shadeInSq(a2, c1, c2, limSq)) return false;
+  return !shadeInSq(P(diagOff.x, diagOff.y), c1, c2, limSq);
 }
 bool massOuter(vec2 coord, vec3 s1, vec3 s2, vec3 a1, vec3 a2, vec2 diagOff, vec3 c)
 {
@@ -185,14 +198,14 @@ vec2 crossWin(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 tl, vec3 tr, vec3 kh, 
 {
   if (eq(tl, br) && neq(tr, bl))
   {
-    float far = min(dist255(tl, tr), dist255(tl, bl));
-    float dStroke = dist255(tr, bl);
-    if (far < 64.0 || dStroke >= 0.5 * far) return vec2(0.0);
+    float farSq = min(distSqYCbCr(tl, tr), distSqYCbCr(tl, bl));
+    float dStrokeSq = distSqYCbCr(tr, bl);
+    if (farSq < SQ255(64.0) || dStrokeSq >= 0.25 * farSq) return vec2(0.0);
     // a dark outline next to a dull stroke separates two areas: it stays joined
     if (luma(tl) < XBRZ_X36_DARK && max(luma(tr), luma(bl)) < XBRZ_X36_DULL) return vec2(0.0);
-    float lim = max(30.0, 0.8 * dStroke);
-    bool thin = thinOuter(coord, kc, kh, kb, kl, vec2(2.0, -1.0), tr, bl, lim)
-             && thinOuter(coord, ki, kn, ke, ko, vec2(-1.0, 2.0), tr, bl, lim);
+    float limSq = max(SQ255(30.0), 0.64 * dStrokeSq);
+    bool thin = thinOuter(coord, kc, kh, kb, kl, vec2(2.0, -1.0), tr, bl, limSq)
+             && thinOuter(coord, ki, kn, ke, ko, vec2(-1.0, 2.0), tr, bl, limSq);
     if (!thin) return vec2(0.0);
     bool mass = massOuter(coord, kb, ke, kc, ki, vec2(-1.0, -1.0), tl)
              || massOuter(coord, kl, ko, kh, kn, vec2(2.0, 2.0), tl);
@@ -200,13 +213,13 @@ vec2 crossWin(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 tl, vec3 tr, vec3 kh, 
   }
   if (eq(tr, bl) && neq(tl, br))
   {
-    float far = min(dist255(tr, tl), dist255(tr, br));
-    float dStroke = dist255(tl, br);
-    if (far < 64.0 || dStroke >= 0.5 * far) return vec2(0.0);
+    float farSq = min(distSqYCbCr(tr, tl), distSqYCbCr(tr, br));
+    float dStrokeSq = distSqYCbCr(tl, br);
+    if (farSq < SQ255(64.0) || dStrokeSq >= 0.25 * farSq) return vec2(0.0);
     if (luma(tr) < XBRZ_X36_DARK && max(luma(tl), luma(br)) < XBRZ_X36_DULL) return vec2(0.0);
-    float lim = max(30.0, 0.8 * dStroke);
-    bool thin = thinOuter(coord, kb, ke, kc, ki, vec2(-1.0, -1.0), tl, br, lim)
-             && thinOuter(coord, kl, ko, kh, kn, vec2(2.0, 2.0), tl, br, lim);
+    float limSq = max(SQ255(30.0), 0.64 * dStrokeSq);
+    bool thin = thinOuter(coord, kb, ke, kc, ki, vec2(-1.0, -1.0), tl, br, limSq)
+             && thinOuter(coord, kl, ko, kh, kn, vec2(2.0, 2.0), tl, br, limSq);
     if (!thin) return vec2(0.0);
     bool mass = massOuter(coord, kc, kh, kb, kl, vec2(2.0, -1.0), tr)
              || massOuter(coord, ki, kn, ke, ko, vec2(-1.0, 2.0), tr);
@@ -266,7 +279,7 @@ ivec4 pointBlend(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3 k
   {
     bool isChecker = eq(kf, kk) && eq(kg, kj) && neq(kf, kg);
     // 31. an exact tie between two diagonals of one color each
-    if (isChecker && abs(jg - fk) < 0.001 && jg > 0.0 && dist255(kf, kg) > 64.0)
+    if (isChecker && abs(jg - fk) < 0.001 && jg > 0.0 && !withinEq255(kf, kg, 64.0))
     {
       vec3 cTL = P(-1.0, -1.0), cTR = P(2.0, -1.0), cBL = P(-1.0, 2.0), cBR = P(2.0, 2.0);
       vec2 c0 = tieCont(coord, kf, kg, kb, kc, ke, kh, ki, kl, kn, ko, cTL, cTR, cBL, cBR);
@@ -275,7 +288,7 @@ ivec4 pointBlend(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3 k
         vec2 h = tieHeld(kf, kg, kb, kc, ke, kh, ki, kl, kn, ko, cTL, cTR, cBL, cBR);
         if (h.x + h.y > 0.5)
         {
-          vec2 s = tieSparse(coord, kf, kg).yx + 0.5 * c0;
+          vec2 s = tieSparse(coord, kf, kg).yx + 0.25 * c0;
           // the diagonal j-g joins (f and k are cut), or f-k joins (g and j are cut)
           if (s.y > s.x && h.x > 0.5) r = ivec4(BLEND_NORMAL, BLEND_NONE, BLEND_NONE, BLEND_NORMAL);
           else if (s.x > s.y && h.y > 0.5) r = ivec4(BLEND_NONE, BLEND_NORMAL, BLEND_NORMAL, BLEND_NONE);

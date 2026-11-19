@@ -23,3 +23,16 @@ float dist255(vec3 pixA, vec3 pixB)
 {
   return distYCbCr(pixA, pixB) * 255.0;
 }
+
+// Squared threshold in [0..255] YCbCr units, kept in [0..1.5] so GLSL ES mediump never overflows
+#define SQ255(x) (((x) / 255.0) * ((x) / 255.0))
+
+bool within255(vec3 pixA, vec3 pixB, float lim)
+{
+  return distSqYCbCr(pixA, pixB) < SQ255(lim);
+}
+
+bool withinEq255(vec3 pixA, vec3 pixB, float lim)
+{
+  return distSqYCbCr(pixA, pixB) <= SQ255(lim);
+}

@@ -104,11 +104,109 @@ void main()
 }}"""
 
 
+def glsl_pass1_vertex() -> str:
+    return """#if defined(VERTEX)
+
+#if __VERSION__ >= 130
+#define COMPAT_VARYING out
+#define COMPAT_ATTRIBUTE in
+#define COMPAT_TEXTURE texture
+#else
+#define COMPAT_VARYING varying
+#define COMPAT_ATTRIBUTE attribute
+#define COMPAT_TEXTURE texture2D
+#endif
+
+#ifdef GL_ES
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#define COMPAT_PRECISION highp
+#else
+precision mediump float;
+#define COMPAT_PRECISION mediump
+#endif
+#else
+#define COMPAT_PRECISION
+#endif
+
+COMPAT_ATTRIBUTE vec4 VertexCoord;
+COMPAT_ATTRIBUTE vec4 TexCoord;
+COMPAT_VARYING vec4 TEX0;
+
+uniform mat4 MVPMatrix;
+uniform COMPAT_PRECISION vec2 OutputSize;
+//#crisp{
+uniform COMPAT_PRECISION vec2 PassPrev4InputSize;
+//#crisp}
+//#plain uniform COMPAT_PRECISION vec2 PassPrev3InputSize;
+
+void main()
+{
+    gl_Position = MVPMatrix * VertexCoord;
+    TEX0.xy = TexCoord.xy * 1.0001;
+//#crisp{
+    TEX0.zw = OutputSize / PassPrev4InputSize;
+//#crisp}
+//#plain     TEX0.zw = OutputSize / PassPrev3InputSize;
+}
+
+#elif defined(FRAGMENT)
+
+#ifdef GL_ES
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#define COMPAT_PRECISION highp
+#else
+precision mediump float;
+#define COMPAT_PRECISION mediump
+#endif
+#else
+#define COMPAT_PRECISION
+#endif
+
+#if __VERSION__ >= 130
+#define COMPAT_VARYING in
+#define COMPAT_TEXTURE texture
+out COMPAT_PRECISION vec4 FragColor;
+#else
+#define COMPAT_VARYING varying
+#define FragColor gl_FragColor
+#define COMPAT_TEXTURE texture2D
+#endif
+
+uniform COMPAT_PRECISION vec2 OutputSize;
+uniform COMPAT_PRECISION vec2 TextureSize;
+uniform COMPAT_PRECISION vec2 InputSize;
+uniform sampler2D Texture;
+COMPAT_VARYING vec4 TEX0;
+#define vTexCoord TEX0.xy
+#define FRAG_OUT FragColor"""
+
+
+def slang_pass1_vertex() -> str:
+    return """#pragma stage vertex
+layout(location = 0) in vec4 Position;
+layout(location = 1) in vec2 TexCoord;
+layout(location = 0) out vec2 vTexCoord;
+layout(location = 1) out vec2 vScale;
+
+void main()
+{
+   gl_Position = global.MVP * Position;
+   vTexCoord = TexCoord * 1.0001;
+//#crisp{
+   vScale = params.OutputSize.xy / params.xbrz_crisp_refpassSize.xy;
+//#crisp}
+//#plain    vScale = params.OutputSize.xy / params.xbrz_fs_refpassSize.xy;
+}"""
+
+
 def stage_blocks(backend: str) -> dict[str, str]:
     if backend == "slang":
         vtx = slang_vertex("TexCoord")
-        # Pass 1 keeps * 1.0001 to break sign(0) ties on even scales and match libretro xbrz-freescale
-        vtx_out = slang_vertex("TexCoord * 1.0001")
+        # Pass 1 keeps * 1.0001 to break sign(0) ties on even scales and match libretro xbrz-freescale,
+        # and computes scale once per vertex instead of per output pixel
+        vtx_out = slang_pass1_vertex()
         return {
             "@BACKEND_LABEL@": "Vulkan / slang",
             "@STAGE_POINT@": f"""layout(push_constant) uniform Push
@@ -141,6 +239,8 @@ layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 #define SRC_SIZE params.SourceSize
 #define P(x,y) texture(Source, coord + SRC_SIZE.zw * vec2(x, y)).rgb""",
+            "@POINT_COORDS@": """  vec2 pos = fract(vTexCoord * SRC_SIZE.xy) - vec2(0.5, 0.5);
+  vec2 coord = vTexCoord - pos * SRC_SIZE.zw;""",
             "@STAGE_PASS0@": f"""
 layout(push_constant) uniform Push
 {{
@@ -175,6 +275,8 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 #define SRC_SIZE params.SourceSize
 #define P4(x,y) texture(Source, coord + SRC_SIZE.zw * vec2(x, y))
 #define P(x,y) P4(x, y).rgb""",
+            "@PASS0_COORDS@": """  vec2 pos = fract(vTexCoord * SRC_SIZE.xy) - vec2(0.5, 0.5);
+  vec2 coord = vTexCoord - pos * SRC_SIZE.zw;""",
             "@STAGE_RESOLVE@": f"""
 layout(push_constant) uniform Push
 {{
@@ -300,6 +402,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
+layout(location = 1) in vec2 vScale;
 layout(location = 0) out vec4 FragColor;
 #define FRAG_OUT FragColor
 layout(set = 0, binding = 2) uniform sampler2D Source;
@@ -317,15 +420,19 @@ layout(set = 0, binding = 3) uniform sampler2D xbrz_crisp_refpass;
 #define ORIG_INPUT_SIZE ORIG_SIZE
 #define INFO(uv) texture(Source, uv)
 #define INFO_STEP ORIG_SIZE.zw""",
-            "@PASS1_COORDS@": """  vec2 scale = OUT_SIZE.xy / ORIG_INPUT_SIZE.xy;
+            "@PASS1_COORDS@": """  vec2 scale = vScale;
   vec2 pos = fract(vTexCoord * ORIG_SIZE.xy) - vec2(0.5, 0.5);
   vec2 coord = vTexCoord - pos * ORIG_SIZE.zw;""",
         }
 
     vtx = glsl_vertex("TexCoord.xy")
-    vtx_out = glsl_vertex("TexCoord.xy * 1.0001")
+    vtx_out = glsl_pass1_vertex()
     return {
         "@BACKEND_LABEL@": "OpenGL / GLES",
+        "@POINT_COORDS@": """  vec2 pos = fract(vTexCoord * SRC_SIZE.xy) - vec2(0.5, 0.5);
+  vec2 coord = vTexCoord - pos * SRC_SIZE.zw;""",
+        "@PASS0_COORDS@": """  vec2 pos = fract(vTexCoord * SRC_SIZE.xy) - vec2(0.5, 0.5);
+  vec2 coord = vTexCoord - pos * SRC_SIZE.zw;""",
         "@STAGE_POINT@": f"""{PRAGMAS_5}
 
 {vtx}
@@ -428,9 +535,9 @@ uniform sampler2D PassPrev2Texture;
 uniform COMPAT_PRECISION vec2 PassPrev2TextureSize;
 #define P0_SIZE vec4(PassPrev2TextureSize, 1.0 / PassPrev2TextureSize)
 #define W0_AT(x, y) floor(COMPAT_TEXTURE(PassPrev2Texture, c0 + vec2(x, y) * P0_SIZE.zw) * 255.0 + 0.5)
-vec2 ocoord, c0;""",
+vec2 coord = vec2(0.0), ocoord = vec2(0.0), c0 = vec2(0.0);""",
         "@MATCH_COORDS@": """  vec2 pos = fract(vTexCoord * SRC_SIZE.xy) - vec2(0.5, 0.5);
-  vec2 coord = vTexCoord - pos * SRC_SIZE.zw;
+  coord = vTexCoord - pos * SRC_SIZE.zw;
   ocoord = coord * SRC_SIZE.xy * ORIG_SIZE.zw;
   c0 = coord * SRC_SIZE.xy * P0_SIZE.zw;""",
         "@STAGE_PASS1@": f"""
@@ -440,7 +547,6 @@ vec2 ocoord, c0;""",
 // the point pass (four passes back: pass 0, the resolve pass and the match pass come between), whose color is xBRZ's input: the original image unless other shaders run before xBRZ
 uniform sampler2D PassPrev4Texture;
 uniform COMPAT_PRECISION vec2 PassPrev4TextureSize;
-uniform COMPAT_PRECISION vec2 PassPrev4InputSize;
 #define OUT_SIZE OutputSize
 #define ORIG_SIZE vec4(PassPrev4TextureSize, 1.0 / PassPrev4TextureSize)
 #define ORIG_INPUT_SIZE PassPrev4InputSize
@@ -448,7 +554,6 @@ uniform COMPAT_PRECISION vec2 PassPrev4InputSize;
 //#plain // the point pass (three passes back: pass 0 and the resolve pass come between), whose color is xBRZ's input: the original image unless other shaders run before xBRZ
 //#plain uniform sampler2D PassPrev3Texture;
 //#plain uniform COMPAT_PRECISION vec2 PassPrev3TextureSize;
-//#plain uniform COMPAT_PRECISION vec2 PassPrev3InputSize;
 //#plain #define OUT_SIZE OutputSize
 //#plain #define ORIG_SIZE vec4(PassPrev3TextureSize, 1.0 / PassPrev3TextureSize)
 //#plain #define ORIG_INPUT_SIZE PassPrev3InputSize
@@ -461,7 +566,7 @@ uniform COMPAT_PRECISION vec2 PassPrev4InputSize;
 //#plain #define P(x,y) COMPAT_TEXTURE(PassPrev3Texture, ocoord + ORIG_SIZE.zw * vec2(x, y)).rgb
 #define INFO(uv) COMPAT_TEXTURE(Texture, uv)
 #define INFO_STEP SRC_SIZE.zw""",
-        "@PASS1_COORDS@": """  vec2 scale = OUT_SIZE.xy / ORIG_INPUT_SIZE.xy;
+        "@PASS1_COORDS@": """  vec2 scale = TEX0.zw;
   vec2 pos = fract(vTexCoord * SRC_SIZE.xy) - vec2(0.5, 0.5);
   vec2 coord = vTexCoord - pos * SRC_SIZE.zw;
   vec2 ocoord = coord * SRC_SIZE.xy * ORIG_SIZE.zw;""",

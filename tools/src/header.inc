@@ -10,7 +10,7 @@
 //#plain // Rules 2, 4 to 7 and 10 below keep xBRZ from cutting corners into shapes the artist did not
 //#plain // draw (fake diagonals at junctions of three colors, bent frames, rounded ends of stripes, a pixel
 //#plain // closed between outlines). They are on by default; XBRZ_DIAG = 0 turns them off, for the
-//#plain // reference xBRZ shapes. Rules 1, 3, 8, 9 and 11 to 13 are the crisp look and run with XBRZ_MINC
+//#plain // reference xBRZ shapes. Rules 1, 3, 8, 9, 11 and 13 are the crisp look and run with XBRZ_MINC
 //#plain // above 0; the xbrz-crisp preset sets it to 20, so low-contrast shading and textures keep their pixels.
 //
 // xBRZ decides, for each corner of each pixel, whether to cut it and how (a corner piece, a 45-degree
@@ -86,13 +86,6 @@
 //     on a straight line (45 degrees or 2:1, with regular steps) between two stripes that run on for
 //     5 pixels or more, one of them 1 pixel wide against a strong contour, like the inner side of an
 //     outline's antialiasing band or the stripes of a bar, so those lines have no teeth.
-// 12. Closed shadow: where a near-black shadow runs under an object, like the round shadow under a
-//     character's feet, the background pixel in the notch between them gets a wedge of the shadow's
-//     color and the shadow's corners next to the notch stay square, so the shadow's outline closes.
-//     The shape is read in a 7x7 window (an arm 3 pixels long with background outside it, a solid
-//     2x2 lobe, an object bigger than 1 pixel), so serifs, letters and textures are left alone.
-//     The floor around the notch may have any color or texture (grass, tiles): it only has to be
-//     lighter than the shadow and differ from both the shadow and the object.
 // 13. Tiles between walls: in a row of 1-pixel tiles (4 or more, in a repeating pattern) that runs
 //     between two straight walls, like the squares of a gauge, a blocked corner between two tiles
 //     stays square, so no diagonal is chained through the row.
@@ -353,11 +346,11 @@
 //     line that meets a white branch), and no corner is cut where a neighbor already draws the stroke's color
 //     across it. A neighbor's corner at the point where a side cut paints that neighbor is not cut in the color
 //     from the stroke's other side, so that color does not wrap around the bar's end.
-// XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-// 11 to 49 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9, 11 and
+// 13 to 49 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
-//#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10, 12 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9 and
-//#plain // 11 to 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+//#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9, 11
+//#plain // and 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //
 // The point pass decides each point once and keeps the image's color next to that decision, pass 0
 // makes every blend decision once per input pixel (blend type, line type, blend color and the minimum
