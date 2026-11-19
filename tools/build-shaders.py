@@ -360,6 +360,7 @@ layout(set = 0, binding = 3) uniform sampler2D xbrz_crisp_refpass;
 
 // pass 0's decisions, before the resolve pass changed them
 layout(set = 0, binding = 4) uniform sampler2D xbrz_crisp_pass0;
+#define W0_RAW texture(xbrz_crisp_pass0, coord)
 #define W0_AT(x, y) floor(texture(xbrz_crisp_pass0, coord + vec2(x, y) * INFO_STEP) * 255.0 + 0.5)
 
 // the center of the pixel in the original, set in main (the functions read P)
@@ -542,6 +543,7 @@ uniform sampler2D PassPrev2Texture;
 uniform COMPAT_PRECISION vec2 PassPrev2TextureSize;
 #define P0_SIZE vec4(PassPrev2TextureSize, gP0Inv)
 #define CLAMP_P0(uv) min((uv), gP0Max)
+#define W0_RAW COMPAT_TEXTURE(PassPrev2Texture, CLAMP_P0(c0))
 #define W0_AT(x, y) floor(COMPAT_TEXTURE(PassPrev2Texture, CLAMP_P0(c0 + vec2(x, y) * gP0Inv)) * 255.0 + 0.5)
 vec2 coord = vec2(0.0), ocoord = vec2(0.0), c0 = vec2(0.0);""",
         "@MATCH_COORDS@": """  gSrcInv = 1.0 / TextureSize;

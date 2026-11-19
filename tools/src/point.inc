@@ -54,30 +54,15 @@ vec2 tieHeld(vec3 tl, vec3 tr, vec3 kb, vec3 kc, vec3 ke, vec3 kh, vec3 ki, vec3
   return vec2(h1, h2);
 }
 vec2 tieCnt(vec3 c, vec3 tl, vec3 tr) { return vec2(float(eq(c, tl)), float(eq(c, tr))); }
-// how many pixels of each diagonal's color there are in the 8x8 around the 2x2 (the rarer color wins);
-// the inner 4x4 is already in registers so only the 48 outer pixels are fetched
-vec2 tieSparse(vec2 coord, vec3 tl, vec3 tr, vec3 kb, vec3 kc, vec3 ke, vec3 kh, vec3 ki, vec3 kl, vec3 kn, vec3 ko,
-               vec3 cTL, vec3 cTR, vec3 cBL, vec3 cBR)
+// Local 4x4 color count (zero extra texture fetches beyond the 4 outer corners)
+vec2 tieCount4x4(vec3 tl, vec3 tr, vec3 kb, vec3 kc, vec3 ke, vec3 kh, vec3 ki, vec3 kl, vec3 kn, vec3 ko,
+                 vec3 cTL, vec3 cTR, vec3 cBL, vec3 cBR)
 {
   // inner 2x2 is a checker (kf == kk == tl, kg == kj == tr, tl != tr), contributing 2 of each
-  vec2 n = vec2(2.0)
-         + tieCnt(cTL, tl, tr) + tieCnt(kb, tl, tr) + tieCnt(kc, tl, tr) + tieCnt(cTR, tl, tr)
-         + tieCnt(ke,  tl, tr) + tieCnt(kh, tl, tr) + tieCnt(ki, tl, tr) + tieCnt(kl,  tl, tr)
-         + tieCnt(cBL, tl, tr) + tieCnt(kn, tl, tr) + tieCnt(ko, tl, tr) + tieCnt(cBR, tl, tr);
-  for (int j = -3; j <= 4; j++)
-  {
-    if (j >= -1 && j <= 2)
-    {
-      n += tieCnt(PY(-3.0, float(j)), tl, tr) + tieCnt(PY(-2.0, float(j)), tl, tr)
-         + tieCnt(PY( 3.0, float(j)), tl, tr) + tieCnt(PY( 4.0, float(j)), tl, tr);
-    }
-    else
-    {
-      for (int i = -3; i <= 4; i++)
-        n += tieCnt(PY(float(i), float(j)), tl, tr);
-    }
-  }
-  return n;
+  return vec2(2.0)
+       + tieCnt(cTL, tl, tr) + tieCnt(kb, tl, tr) + tieCnt(kc, tl, tr) + tieCnt(cTR, tl, tr)
+       + tieCnt(ke,  tl, tr) + tieCnt(kh, tl, tr) + tieCnt(ki, tl, tr) + tieCnt(kl,  tl, tr)
+       + tieCnt(cBL, tl, tr) + tieCnt(kn, tl, tr) + tieCnt(ko, tl, tr) + tieCnt(cBR, tl, tr);
 }
 
 // ============================================================================================
@@ -203,7 +188,7 @@ ivec4 pointBlend(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3 k
         vec2 h = tieHeld(kf, kg, kb, kc, ke, kh, ki, kl, kn, ko, cTL, cTR, cBL, cBR);
         if (h.x + h.y > 0.5)
         {
-          vec2 s = tieSparse(coord, kf, kg, kb, kc, ke, kh, ki, kl, kn, ko, cTL, cTR, cBL, cBR).yx + 0.25 * c0;
+          vec2 s = tieCount4x4(kf, kg, kb, kc, ke, kh, ki, kl, kn, ko, cTL, cTR, cBL, cBR).yx + 0.25 * c0;
           // the diagonal j-g joins (f and k are cut), or f-k joins (g and j are cut)
           if (s.y > s.x && h.x > 0.5) r = ivec4(BLEND_NORMAL, BLEND_NONE, BLEND_NONE, BLEND_NORMAL);
           else if (s.x > s.y && h.y > 0.5) r = ivec4(BLEND_NONE, BLEND_NORMAL, BLEND_NORMAL, BLEND_NONE);

@@ -86,6 +86,7 @@ layout(set = 0, binding = 3) uniform sampler2D xbrz_crisp_refpass;
 
 // pass 0's decisions, before the resolve pass changed them
 layout(set = 0, binding = 4) uniform sampler2D xbrz_crisp_pass0;
+#define W0_RAW texture(xbrz_crisp_pass0, coord)
 #define W0_AT(x, y) floor(texture(xbrz_crisp_pass0, coord + vec2(x, y) * INFO_STEP) * 255.0 + 0.5)
 
 // the center of the pixel in the original, set in main (the functions read P)
@@ -95,6 +96,8 @@ vec2 coord = vec2(0.0);
 #define BLEND(r) mod(r, 4.0)
 #define FLAG(r, f) mod(floor((r) / (f)), 2.0)
 vec4 cut4(vec4 w) { return vec4(greaterThan(BLEND(w), vec4(0.0))); }
+// a pass-0 cut that is neither weak (blend 3) nor blocked (bit 128)
+vec4 activeW0(vec4 w) { return cut4(w) * vec4(lessThan(BLEND(w), vec4(3.0))) * vec4(lessThan(w, vec4(128.0))); }
 vec4 isLine45(vec4 r) { return FLAG(r, 4.0) * (1.0 - FLAG(r, 16.0)) * (1.0 - FLAG(r, 64.0)) * vec4(equal(FLAG(r, 32.0) + FLAG(r, 128.0), vec4(0.0))); }
 
 // Rec. 2020 luma weights and chroma difference scales, shared across passes
@@ -196,14 +199,17 @@ bool isAaRampY(vec3 a, vec3 m, vec3 b, float orthoTolSq, float minSpanSq)
 #define XBRZ_VERTEX_EDGE 40.0 // G and T differ from C by more than this
 #define XBRZ_VERTEX_BAR 15.0  // the bar's pixels have T's color within this
 
-// E and its 4 cardinal neighbors in linear YCbCr, E's squared YCbCr distances to them, and center info
+// E and its 4 cardinal neighbors in linear YCbCr, and E's squared YCbCr distances to them
 vec3 nB, nD, nE, nF, nH;
 float sBSq, sDSq, sFSq, sHSq;
-vec4 iE;
 
 float sideSq(vec2 n)
 {
   return n.y < -0.5 ? sBSq : (n.y > 0.5 ? sHSq : (n.x < 0.0 ? sDSq : sFSq));
+}
+vec3 cardColor(vec2 n)
+{
+  return n.y < -0.5 ? nB : (n.y > 0.5 ? nH : (n.x < 0.0 ? nD : nF));
 }
 
 #define infoAt(o) INFO_AT((o).x, (o).y)
@@ -216,8 +222,8 @@ bool vtxSame(vec3 a, vec3 b) { return withinEqY255(a, b, XBRZ_VERTEX_TOL); }
 bool vtxAt(vec2 u, vec2 v)
 {
   if (sideSq(-u) <= SQ255(XBRZ_VERTEX_EDGE)) return false;
-  vec3 C = at3(-u), T = at3(-v);
-  if (withinEqY255(C, T, XBRZ_VERTEX_EDGE) || vtxSame(C, at3(u))) return false;
+  vec3 C = cardColor(-u), T = cardColor(-v);
+  if (withinEqY255(C, T, XBRZ_VERTEX_EDGE) || vtxSame(C, cardColor(u))) return false;
   return vtxSame(C, at3(u - v)) && !vtxSame(C, at3(-u - v))
       && vtxSame(C, toYCbCr(P(v.x - 2.0 * u.x, v.y - 2.0 * u.y))) && vtxSame(C, toYCbCr(P(2.0 * u.x, 2.0 * u.y)))
       && withinEqY255(T, toYCbCr(P(-2.0 * v.x, -2.0 * v.y)), XBRZ_VERTEX_BAR)
@@ -238,7 +244,7 @@ void vtx(vec2 u, vec2 v, inout vec4 res)
   vec4 m = vtxCorner(c);
   float w = dot(res, m);
   if (BLEND(w) < 0.5 || FLAG(w, 4.0) < 0.5 || (FLAG(w, 8.0) > 0.5) != vtxSec(c, -v) || !vtxAt(u, v)) return;
-  if (vtxBetween(nE, at3(-v), at3(-u)))
+  if (vtxBetween(nE, cardColor(-v), cardColor(-u)))
     res = mix(res, vec4(vtxSec(c, -v) ? 9.0 : 1.0), m);
   else
   {
@@ -255,34 +261,34 @@ float keptWhole(vec2 n)
 {
   vec4 r = infoAt(n);
   vec4 w0 = W0_AT(n.x, n.y);
-  return float(dot(cut4(r), vec4(1.0)) < 0.5 && dot(cut4(w0) * FLAG(w0, 4.0), vec4(1.0)) > 0.5);
+  return float(dot(cut4(r), vec4(1.0)) < 0.5 && dot(cut4(w0) * vec4(lessThan(BLEND(w0), vec4(3.0))) * FLAG(w0, 4.0), vec4(1.0)) > 0.5);
 }
 #define XBRZ_STEP38 0.5
 vec4 junc4(vec4 res)
 {
+  vec4 jm = cut4(res) * vec4(lessThan(FLAG(res, 16.0) + FLAG(res, 64.0), vec4(0.5)))
+          * vec4(greaterThan(min(vec4(sDSq, sBSq, sFSq, sHSq), vec4(sBSq, sFSq, sHSq, sDSq)), vec4(SQ255(XBRZ_JUNC4))));
+  if (dot(jm, vec4(1.0)) < 0.5) return res;
   vec3 E = nE;
-  float wB = keptWhole(vec2(0.0, -1.0)), wD = keptWhole(vec2(-1.0, 0.0));
-  float wF = keptWhole(vec2(1.0, 0.0)), wH = keptWhole(vec2(0.0, 1.0));
-  if (wB + wD + wF + wH < 0.5) return res;
   for (int i = 0; i < 4; i++)
   {
     vec2 c = i == 0 ? vec2(-1.0, -1.0) : i == 1 ? vec2(1.0, -1.0) : i == 2 ? vec2(1.0, 1.0) : vec2(-1.0, 1.0);
     vec4 m = vtxCorner(c);
+    if (dot(jm, m) < 0.5) continue;
     float w = dot(res, m);
-    if (BLEND(w) < 0.5 || FLAG(w, 16.0) + FLAG(w, 64.0) > 0.5) continue;
     bool horiz = (c.x * c.y > 0.0) != (FLAG(w, 8.0) > 0.5);
     vec2 p = horiz ? vec2(c.x, 0.0) : vec2(0.0, c.y), q = horiz ? vec2(0.0, c.y) : vec2(c.x, 0.0);
-    float wp = p.x < -0.5 ? wD : p.x > 0.5 ? wF : p.y < -0.5 ? wB : wH;
-    float wq = q.x < -0.5 ? wD : q.x > 0.5 ? wF : q.y < -0.5 ? wB : wH;
-    if (wp + wq < 0.5) continue;
-    if (BLEND(dot(infoAt(c), vtxCorner(-c))) < 0.5) continue;
-    vec3 Pc = at3(p), Qc = at3(q), X = at3(c);
+    vec3 Pc = cardColor(p), Qc = cardColor(q);
     float dPQSq = distSqY(Pc, Qc);
+    if (dPQSq <= SQ255(XBRZ_JUNC4)) continue;
+    vec3 X = at3(c);
     float lo5Sq = min(min(min(sideSq(p), sideSq(q)), min(distSqY(E, X), distSqY(Pc, X))), distSqY(Qc, X));
-    if (min(lo5Sq, dPQSq) <= SQ255(XBRZ_JUNC4)) continue;
-    if (dPQSq < (XBRZ_STEP38 * XBRZ_STEP38) * lo5Sq) continue;
-    if ((withinY255(at3(vec2(c.x, -c.y)), at3(vec2(c.x, 0.0)), XBRZ_SAME_M) && withinY255(toYCbCr(P(0.0, 2.0 * c.y)), at3(vec2(0.0, c.y)), XBRZ_SAME_M))
-        || (withinY255(at3(vec2(-c.x, c.y)), at3(vec2(0.0, c.y)), XBRZ_SAME_M) && withinY255(toYCbCr(P(2.0 * c.x, 0.0)), at3(vec2(c.x, 0.0)), XBRZ_SAME_M)))
+    if (lo5Sq <= SQ255(XBRZ_JUNC4) || dPQSq < (XBRZ_STEP38 * XBRZ_STEP38) * lo5Sq) continue;
+    if (BLEND(dot(infoAt(c), vtxCorner(-c))) < 0.5) continue;
+    if (keptWhole(p) < 0.5 && keptWhole(q) < 0.5) continue;
+    vec3 Ch = c.x > 0.0 ? nF : nD, Cv = c.y > 0.0 ? nH : nB;
+    if ((withinY255(at3(vec2(c.x, -c.y)), Ch, XBRZ_SAME_M) && withinY255(toYCbCr(P(0.0, 2.0 * c.y)), Cv, XBRZ_SAME_M))
+        || (withinY255(at3(vec2(-c.x, c.y)), Cv, XBRZ_SAME_M) && withinY255(toYCbCr(P(2.0 * c.x, 0.0)), Ch, XBRZ_SAME_M)))
       continue;
     res = mix(res, vec4(0.0), m);
   }
@@ -320,13 +326,11 @@ vec4 tieRamp(vec4 res)
 // ---- Rule 40: a dot separates what is around it ----
 #define XBRZ_DOT40 40.0
 #define XBRZ_DOTK40 8.0
-bool dot40(vec2 n, vec3 K)
+bool dot40(vec2 n, vec3 c, vec3 K)
 {
-  vec3 c = at3(n);
-  if (withinY255(c, K, XBRZ_DOT40)) return false;
-  float g = 0.0;
   float lk = K.x;
-  if (c.x >= lk) return false;
+  if (c.x >= lk || withinY255(c, K, XBRZ_DOT40)) return false;
+  float g = 0.0;
   vec2 r[8];
   r[0] = vec2(-1.0, -1.0); r[1] = vec2(0.0, -1.0); r[2] = vec2(1.0, -1.0); r[3] = vec2(1.0, 0.0);
   r[4] = vec2(1.0, 1.0); r[5] = vec2(0.0, 1.0); r[6] = vec2(-1.0, 1.0); r[7] = vec2(-1.0, 0.0);
@@ -366,10 +370,11 @@ vec4 dots40(vec4 res, float minSideSq)
     float w = dot(res, m);
     if (BLEND(w) < 0.5) continue;
     bool horiz = (c.x * c.y > 0.0) != (FLAG(w, 8.0) > 0.5);
-    vec3 K = horiz ? at3(vec2(c.x, 0.0)) : at3(vec2(0.0, c.y));
+    vec3 K = horiz ? (c.x > 0.0 ? nF : nD) : (c.y > 0.0 ? nH : nB);
     vec2 o = horiz ? vec2(0.0, c.y) : vec2(c.x, 0.0);
-    if (sideSq(o) >= SQ255(XBRZ_DOT40) && dot40(o, K)) res = mix(res, vec4(0.0), m);
-    else if (loneDot && dot40(vec2(0.0), K)) res = mix(res, vec4(3.0 + 8.0 * FLAG(w, 8.0)), m);
+    vec3 Oc = horiz ? (c.y > 0.0 ? nH : nB) : (c.x > 0.0 ? nF : nD);
+    if (sideSq(o) >= SQ255(XBRZ_DOT40) && dot40(o, Oc, K)) res = mix(res, vec4(0.0), m);
+    else if (loneDot && dot40(vec2(0.0), nE, K)) res = mix(res, vec4(3.0 + 8.0 * FLAG(w, 8.0)), m);
   }
   return res;
 }
@@ -389,7 +394,7 @@ float lineType41(float w)
 float edge41(vec2 c, vec4 r0, vec3 E)
 {
   if (BLEND(dot(r0, vtxCorner(-c))) < 0.5) return 0.0;
-  vec3 V = at3(vec2(0.0, c.y)), H = at3(vec2(c.x, 0.0));
+  vec3 V = c.y > 0.0 ? nH : nB, H = c.x > 0.0 ? nF : nD;
   if (E.x > min(V.x, H.x) - 0.03) return 0.0;
   if (!withinY255(E, at3(vec2(c.x, -c.y)), XBRZ_SAME_M) || !withinY255(E, at3(vec2(-c.x, c.y)), XBRZ_SAME_M)) return 0.0;
   vec3 X = at3(c);
@@ -397,7 +402,7 @@ float edge41(vec2 c, vec4 r0, vec3 E)
   bool kH = withinY255(X, H, XBRZ_SAME_M), kV = withinY255(X, V, XBRZ_SAME_M);
   if (kH == kV) return 0.0;
   vec2 o = kH ? vec2(0.0, c.y) : vec2(c.x, 0.0);
-  vec3 O = at3(o);
+  vec3 O = cardColor(o);
   if (withinY255(O, toYCbCr(P(2.0 * o.x, 2.0 * o.y)), XBRZ_SAME_M)) return 0.0;
   if (withinY255(O, at3(o + vec2(c.x, -c.y)), XBRZ_SAME_M) || withinY255(O, at3(o + vec2(-c.x, c.y)), XBRZ_SAME_M)) return 0.0;
   bool sec = vtxSec(c, kH ? vec2(c.x, 0.0) : vec2(0.0, c.y));
@@ -415,10 +420,10 @@ vec4 edgeStep42(vec4 res)
     if (BLEND(dot(res, m)) > 0.5) continue;
     float hSq = c.x > 0.0 ? sFSq : sDSq, vSq = c.y > 0.0 ? sHSq : sBSq;
     if (min(hSq, vSq) < SQ255(XBRZ_MINC)) continue;
-    vec3 Kh = at3(vec2(c.x, 0.0)), Kv = at3(vec2(0.0, c.y));
+    vec3 Kh = c.x > 0.0 ? nF : nD, Kv = c.y > 0.0 ? nH : nB;
     if (!withinY255(Kh, Kv, XBRZ_SAME_M)) continue;
     vec3 K = 0.5 * (Kh + Kv);
-    if (withinY255(K, at3(vec2(-c.x, 0.0)), XBRZ_SAME_M) || withinY255(K, at3(vec2(0.0, -c.y)), XBRZ_SAME_M)) continue;
+    if (withinY255(K, c.x > 0.0 ? nD : nF, XBRZ_SAME_M) || withinY255(K, c.y > 0.0 ? nB : nH, XBRZ_SAME_M)) continue;
     if (!withinY255(K, at3(c), XBRZ_SAME_M)) continue;
     float ok = 1.0;
     for (int j = 0; j < 2; j++)
@@ -472,7 +477,7 @@ vec4 diagStroke41(vec4 res, bool loneE)
 float dome43(vec2 c, vec2 s, vec2 v)
 {
   if (sideSq(-s) >= SQ255(XBRZ_SAME_M)) return 0.0;
-  vec3 S = at3(s), U = at3(v);
+  vec3 S = cardColor(s), U = cardColor(v);
   if (withinY255(S, U, XBRZ_MINC)
       || !withinY255(at3(c), U, XBRZ_SAME_M) || !withinY255(at3(v - s), U, XBRZ_SAME_M)
       || !withinY255(toYCbCr(P(-2.0 * s.x, -2.0 * s.y)), S, XBRZ_SAME_M)
@@ -514,9 +519,9 @@ vec4 strokeEnd44(vec4 res)
   vec2 u = vec2(v.y, v.x);
   vec3 E = nE;
   float lE = E.x;
-  if (at3(-v).x < lE || at3(u).x < lE || at3(-u).x < lE)
+  if (cardColor(-v).x < lE || cardColor(u).x < lE || cardColor(-u).x < lE)
     return res;
-  if (far44(E, lE, v + u) * far44(E, lE, v - u) * far44(E, lE, u - v) * far44(E, lE, -u - v) < 0.5)
+  if (far44(E, lE, v + u) < 0.5 || far44(E, lE, v - u) < 0.5 || far44(E, lE, u - v) < 0.5 || far44(E, lE, -u - v) < 0.5)
     return res;
   for (int k = 0; k < 2; k++)
   {
@@ -537,17 +542,8 @@ vec4 strokeEnd44(vec4 res)
 
 // ---- Rule 49: a 1-pixel diagonal bar ----
 #define XBRZ_BAR49 60.0
-vec2 barEnd(vec2 o)
+vec2 barEndBody(vec2 o, vec3 E, vec3 cT, vec3 cL, vec3 cR, vec3 cB)
 {
-  vec3 E = at3(o);
-  vec3 cT = at3(o + vec2(0.0, -1.0));
-  if (withinY255(E, cT, XBRZ_BAR49)) return vec2(0.0);
-  vec3 cL = at3(o + vec2(-1.0, 0.0));
-  if (withinY255(E, cL, XBRZ_BAR49)) return vec2(0.0);
-  vec3 cR = at3(o + vec2(1.0, 0.0));
-  if (withinY255(E, cR, XBRZ_BAR49)) return vec2(0.0);
-  vec3 cB = at3(o + vec2(0.0, 1.0));
-  if (withinY255(E, cB, XBRZ_BAR49)) return vec2(0.0);
   float n = 0.0;
   vec2 c = vec2(0.0);
   vec3 Ccol = E;
@@ -576,6 +572,18 @@ vec2 barEnd(vec2 o)
   float d2Sq = distSqY(E, at3(o + 2.0 * c));
   if (d2Sq < SQ255(XBRZ_BAR49) && d2Sq >= SQ255(XBRZ_SAME_M)) return vec2(0.0);
   return c;
+}
+vec2 barEndN(vec2 o, vec3 E)
+{
+  vec3 cT = o.y > 0.5 ? nE : at3(o + vec2(0.0, -1.0));
+  if (o.y <= 0.5 && withinY255(E, cT, XBRZ_BAR49)) return vec2(0.0);
+  vec3 cL = o.x > 0.5 ? nE : at3(o + vec2(-1.0, 0.0));
+  if (o.x <= 0.5 && withinY255(E, cL, XBRZ_BAR49)) return vec2(0.0);
+  vec3 cR = o.x < -0.5 ? nE : at3(o + vec2(1.0, 0.0));
+  if (o.x >= -0.5 && withinY255(E, cR, XBRZ_BAR49)) return vec2(0.0);
+  vec3 cB = o.y < -0.5 ? nE : at3(o + vec2(0.0, 1.0));
+  if (o.y >= -0.5 && withinY255(E, cB, XBRZ_BAR49)) return vec2(0.0);
+  return barEndBody(o, E, cT, cL, cR, cB);
 }
 
 bool cutsIn(vec2 q, vec2 k, vec3 C)
@@ -610,26 +618,42 @@ void main()
 {
   vec2 pos = fract(vTexCoord * ORIG_SIZE.xy) - vec2(0.5, 0.5);
   coord = vTexCoord - pos * ORIG_SIZE.zw;
-  vec4 res = INFO_AT(0.0, 0.0);
+  vec4 rawRes = INFO(coord);
   if (XBRZ_MINC <= 0.0)
   {
-    FRAG_OUT = res / 255.0;
+    FRAG_OUT = rawRes;
     return;
   }
-  vec4 w0 = W0_AT(0.0, 0.0);
-  bool noCuts = dot(cut4(res) + cut4(w0), vec4(1.0)) == 0.0;
+  vec4 rawW0 = W0_RAW;
+  vec3 pD = P(-1.0, 0.0), pE = P(0.0, 0.0), pF = P(1.0, 0.0);
+  bool rawZero = dot(rawRes + rawW0, vec4(1.0)) < 0.5 / 255.0;
+  if (rawZero && pD == pE && pF == pE)
+  {
+    FRAG_OUT = vec4(0.0);
+    return;
+  }
+  vec4 res = floor(rawRes * 255.0 + 0.5);
+  vec4 w0 = floor(rawW0 * 255.0 + 0.5);
+  vec4 aW0 = activeW0(w0);
+  bool noCuts = dot(cut4(res) + aW0, vec4(1.0)) == 0.0;
 
   // Fast path: when neither pass 0 nor resolve cuts any corner, only rules 42, 44 and 49 can cut one,
   // and all three need contrast >= min(XBRZ_MINC, XBRZ_BAR49) on both axes (D or F, and B or H)
   float fastLimSq = min(SQ255(XBRZ_MINC), SQ255(XBRZ_BAR49));
-  nD = toYCbCr(P(-1.0, 0.0));  nE = toYCbCr(P(0.0, 0.0));  nF = toYCbCr(P(1.0, 0.0));
+  nD = toYCbCr(pD);  nE = toYCbCr(pE);  nF = toYCbCr(pF);
   sDSq = distSqY(nE, nD); sFSq = distSqY(nE, nF);
   if (noCuts && max(sDSq, sFSq) < fastLimSq)
   {
     FRAG_OUT = res / 255.0;
     return;
   }
-  nB = toYCbCr(P(0.0, -1.0));  nH = toYCbCr(P(0.0, 1.0));
+  vec3 pB = P(0.0, -1.0), pH = P(0.0, 1.0);
+  if (noCuts && pB == pE && pH == pE)
+  {
+    FRAG_OUT = res / 255.0;
+    return;
+  }
+  nB = toYCbCr(pB);  nH = toYCbCr(pH);
   sBSq = distSqY(nE, nB); sHSq = distSqY(nE, nH);
   if (noCuts && max(sBSq, sHSq) < fastLimSq)
   {
@@ -637,12 +661,11 @@ void main()
     return;
   }
 
-  iE = res;
 
   float minSideSq = min(min(sBSq, sDSq), min(sFSq, sHSq));
   float maxSideSq = max(max(sBSq, sDSq), max(sFSq, sHSq));
 
-  vec4 lost = cut4(w0) * (1.0 - cut4(res));
+  vec4 lost = aW0 * (1.0 - cut4(res));
   if (dot(lost, vec4(1.0)) > 0.0)
   {
     vec4 rA = INFO_AT(-1.0, -1.0), rC = INFO_AT(1.0, -1.0), rI = INFO_AT(1.0, 1.0), rG = INFO_AT(-1.0, 1.0);
@@ -665,7 +688,8 @@ void main()
     vec4 far43 = vec4(greaterThanEqual(min(vec4(sDSq, sFSq, sFSq, sDSq), vec4(sBSq, sBSq, sHSq, sHSq)), vec4(SQ255(XBRZ_MINC))));
     far43 *= vec4(lessThan(min(vec4(sFSq, sDSq, sDSq, sFSq), vec4(sHSq, sHSq, sBSq, sBSq)), vec4(SQ255(XBRZ_SAME_M))));
     if (dot(lost, far43) > 0.0) fix = max(fix, domes43(lost * far43));
-    vec4 back = 1.0 + 4.0 * FLAG(w0, 4.0) + 8.0 * FLAG(w0, 8.0) + 16.0 * FLAG(w0, 16.0) + 64.0 * FLAG(w0, 64.0);
+    vec4 noR9 = 1.0 - FLAG(w0, 32.0);
+    vec4 back = 1.0 + 4.0 * FLAG(w0, 4.0) + 8.0 * FLAG(w0, 8.0) + noR9 * (16.0 * FLAG(w0, 16.0) + 64.0 * FLAG(w0, 64.0));
     res = mix(res, back, fix);
   }
   // rule 27
@@ -677,11 +701,18 @@ void main()
     vtx(vec2(0.0,  1.0), vec2(-1.0, 0.0), res); vtx(vec2(0.0, -1.0), vec2(-1.0, 0.0), res);
   }
   // 42
-  if (min(max(sDSq, sFSq), max(sBSq, sHSq)) >= SQ255(XBRZ_MINC)) res = edgeStep42(res);
+  vec4 m42 = (1.0 - cut4(res)) * vec4(greaterThanEqual(min(vec4(sDSq, sFSq, sFSq, sDSq), vec4(sBSq, sBSq, sHSq, sHSq)), vec4(SQ255(XBRZ_MINC))));
+  if (dot(m42, vec4(1.0)) > 0.5) res = edgeStep42(res);
   // rules 38 to 41
   if (dot(cut4(res), vec4(1.0)) > 0.0) res = junc4(res);
-  if (dot(cut4(res), vec4(1.0)) > 0.0) res = tieRamp(res);
-  if (dot(cut4(res), vec4(1.0)) > 0.0) res = dots40(res, minSideSq);
+  if (dot(cut4(res), vec4(1.0)) > 0.0)
+  {
+    vec4 lo39 = min(vec4(sDSq, sFSq, sFSq, sDSq), vec4(sBSq, sBSq, sHSq, sHSq));
+    vec4 hi39 = max(vec4(sDSq, sFSq, sFSq, sDSq), vec4(sBSq, sBSq, sHSq, sHSq));
+    vec4 m39 = cut4(res) * vec4(greaterThan(lo39, vec4(SQ255(20.0)))) * vec4(greaterThan(lo39, (1.0 - XBRZ_MID39) * (1.0 - XBRZ_MID39) * hi39));
+    if (dot(m39, vec4(1.0)) > 0.5) res = tieRamp(res);
+  }
+  if (maxSideSq >= SQ255(XBRZ_DOT40) && dot(cut4(res), vec4(1.0)) > 0.0) res = dots40(res, minSideSq);
   bool loneE = minSideSq >= SQ255(XBRZ_SAME_M);
   if (dot(cut4(res), vec4(1.0)) > 0.0
       && (loneE || dot(cut4(res) * FLAG(res, 4.0) * abs(FLAG(res, 16.0) - FLAG(res, 64.0)) * vec4(equal(FLAG(res, 32.0) + FLAG(res, 128.0), vec4(0.0))), vec4(1.0)) > 0.0))
@@ -692,6 +723,7 @@ void main()
   if (dot(cut4(res), vec4(1.0)) > 0.0)
   {
     // 47. a notch in the straight side of a stroke in shades
+    if (maxSideSq >= SQ255(XBRZ_FAR47))
     {
       vec4 cutM = cut4(res), secM = FLAG(res, 8.0), sqM = vec4(0.0);
       for (int k = 0; k < 4; k++)
@@ -705,7 +737,7 @@ void main()
         float dBSq = sideSq(b), dASq = sideSq(a);
         if (dASq >= SQ255(XBRZ_NOTCH47) || dBSq >= SQ255(XBRZ_NOTCH47) || dBSq >= 1.44 * dASq || sideSq(-a) < SQ255(XBRZ_FAR47))
           continue;
-        vec3 Ac = at3(a);
+        vec3 Ac = cardColor(a);
         if (!withinY255(nE, at3(a - b), XBRZ_SAME_M) || withinY255(Ac, at3(c), XBRZ_SAME_M)
             || BLEND(dot(infoAt(b), vtxCorner(c - 2.0 * b))) > 0.5 || !withinY255(nE, at3(2.0 * b), XBRZ_SAME_M)
             || !isLone3x3(Ac, a))
@@ -735,7 +767,7 @@ void main()
           if (dot(cw45, m) < 0.5 || dot(cAny, vtxCorner(-sd - u)) > 0.5) continue;
           float dSSq = sideSq(sd), dFSq = sideSq(-u);
           if (max(dSSq, dFSq) >= SQ255(XBRZ_MATCH_EDGE) || min(dSSq, dFSq) < SQ255(XBRZ_MINC) || sideSq(-sd) < SQ255(80.0)
-              || withinY255(at3(sd), at3(-u), XBRZ_MINC)) continue;
+              || withinY255(cardColor(sd), cardColor(-u), XBRZ_MINC)) continue;
           if (distSqY(nE, at3(c)) >= SQ255(XBRZ_MATCH_EDGE)) continue;
           sq += m;
         }
@@ -765,9 +797,9 @@ void main()
         if (BLEND(dot(rA, mA)) < 0.5 || dot(isLine45(rA), mA) < 0.5) continue;
         bool pVA = xz ? dot(FLAG(rA, 8.0), mA) > 0.5 : dot(FLAG(rA, 8.0), mA) < 0.5;
         if (pVA != paintV) continue;
-        vec3 Ac = at3(a);
+        vec3 Ac = cardColor(a);
         bool hit = false;
-        if (loneE && withinY255(Ac, at3(-a), XBRZ_SAME_M)
+        if (loneE && withinY255(Ac, cardColor(-a), XBRZ_SAME_M)
             && !withinY255(nE, at3(vec2(-1.0, -1.0)), XBRZ_SAME_M) && !withinY255(nE, at3(vec2(1.0, -1.0)), XBRZ_SAME_M)
             && !withinY255(nE, at3(vec2(-1.0,  1.0)), XBRZ_SAME_M) && !withinY255(nE, at3(vec2(1.0,  1.0)), XBRZ_SAME_M))
           hit = true;
@@ -784,17 +816,18 @@ void main()
     vec3 E = nE;
     if (minSideSq >= SQ255(XBRZ_BAR49))
     {
-      vec2 c = barEnd(vec2(0.0));
+      vec2 c = barEndBody(vec2(0.0), E, nB, nD, nF, nH);
       if (c != vec2(0.0))
       {
         vec2 s1 = vec2(c.x, -c.y), s2 = vec2(-c.x, c.y), e = -c;
         vec4 m1 = vtxCorner(s1), m2 = vtxCorner(s2), me = vtxCorner(e);
-        vec3 R1 = at3(vec2(e.x, 0.0)), R2 = at3(vec2(0.0, e.y));
-        bool plug = withinY255(R1, R2, XBRZ_SAME_M) && !withinY255(R1, at3(vec2(c.x, 0.0)), XBRZ_SAME_M) &&
-                    !withinY255(R1, at3(vec2(0.0, c.y)), XBRZ_SAME_M);
+        vec3 R1 = e.x > 0.0 ? nF : nD, R2 = e.y > 0.0 ? nH : nB;
+        vec3 C1 = c.x > 0.0 ? nF : nD, C2 = c.y > 0.0 ? nH : nB;
+        bool plug = withinY255(R1, R2, XBRZ_SAME_M) && !withinY255(R1, C1, XBRZ_SAME_M) &&
+                    !withinY255(R1, C2, XBRZ_SAME_M);
         if (!plug && BLEND(dot(res, m1)) < 0.5 && !goesOn(s1, E)) res = mix(res, vec4(s1.x * s1.y > 0.0 ? 5.0 : 13.0), m1);
         if (!plug && BLEND(dot(res, m2)) < 0.5 && !goesOn(s2, E)) res = mix(res, vec4(s2.x * s2.y > 0.0 ? 13.0 : 5.0), m2);
-        float lE = E.x, lA = at3(e).x, lS = 0.5 * (at3(vec2(c.x, 0.0)).x + at3(vec2(0.0, c.y)).x);
+        float lE = E.x, lA = at3(e).x, lS = 0.5 * (C1.x + C2.x);
         if ((BLEND(dot(res, me)) < 0.5 || FLAG(dot(res, me), 4.0) < 0.5) && (lA - lS) * (lE - lS) <= 0.0 && !goesOn(e, E))
         {
           float hSq = e.x > 0.0 ? sFSq : sDSq, vSq = e.y > 0.0 ? sHSq : sBSq;
@@ -804,14 +837,17 @@ void main()
         }
       }
     }
-    if (dot(cut4(res), vec4(1.0)) > 0.0)
+    vec4 c49 = cut4(res);
+    if (dot(c49, vec4(1.0)) > 0.0)
     {
       for (int q = 0; q < 4; q++)
       {
+        float adjCut = q == 0 ? (c49.x + c49.y) : (q == 1 ? (c49.y + c49.z) : (q == 2 ? (c49.z + c49.w) : (c49.w + c49.x)));
         float sqDistSq = q == 0 ? sBSq : (q == 1 ? sFSq : (q == 2 ? sHSq : sDSq));
-        if (sqDistSq < SQ255(XBRZ_BAR49)) continue;
+        if (adjCut < 0.5 || sqDistSq < SQ255(XBRZ_BAR49)) continue;
         vec2 n = q == 0 ? vec2(0.0, -1.0) : q == 1 ? vec2(1.0, 0.0) : q == 2 ? vec2(0.0, 1.0) : vec2(-1.0, 0.0);
-        vec2 cn = barEnd(n);
+        vec3 En = q == 0 ? nB : (q == 1 ? nF : (q == 2 ? nH : nD));
+        vec2 cn = barEndN(n, En);
         if (cn == vec2(0.0)) continue;
         vec2 sE = -n == vec2(cn.x, 0.0) ? vec2(cn.x, -cn.y) : -n == vec2(0.0, cn.y) ? vec2(-cn.x, cn.y) : vec2(0.0);
         if (sE == vec2(0.0)) continue;
@@ -822,7 +858,8 @@ void main()
         bool hz = k.x * k.y > 0.0, sec = FLAG(wk, 8.0) > 0.5;
         vec2 pk = (hz == sec) ? vec2(0.0, k.y) : vec2(k.x, 0.0);
         vec3 other = -n == vec2(cn.x, 0.0) ? at3(n + vec2(0.0, cn.y)) : at3(n + vec2(cn.x, 0.0));
-        if (!withinY255(at3(pk), at3(n), XBRZ_SAME_M) && withinY255(at3(pk), other, XBRZ_SAME_M)) res = mix(res, vec4(0.0), mk);
+        vec3 pCol = cardColor(pk);
+        if (!withinY255(pCol, En, XBRZ_SAME_M) && withinY255(pCol, other, XBRZ_SAME_M)) { res = mix(res, vec4(0.0), mk); c49 *= 1.0 - mk; }
       }
     }
   }
