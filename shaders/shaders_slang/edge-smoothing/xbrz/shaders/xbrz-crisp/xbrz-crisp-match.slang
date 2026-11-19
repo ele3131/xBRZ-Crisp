@@ -678,29 +678,33 @@ void main()
   vec4 lost = aW0 * (1.0 - cut4(res));
   if (dot(lost, vec4(1.0)) > 0.0)
   {
-    vec4 rA = INFO_AT(-1.0, -1.0), rC = INFO_AT(1.0, -1.0), rI = INFO_AT(1.0, 1.0), rG = INFO_AT(-1.0, 1.0);
-    vec3 B = nB, D = nD, F = nF, H = nH;
-    vec4 strong = vec4(greaterThan(max(vec4(sBSq, sBSq, sFSq, sHSq), vec4(sDSq, sFSq, sHSq, sDSq)), vec4(SQ255(XBRZ_MATCH_EDGE))));
+    vec4 lostStrong = lost * vec4(greaterThan(max(vec4(sBSq, sBSq, sFSq, sHSq), vec4(sDSq, sFSq, sHSq, sDSq)), vec4(SQ255(XBRZ_MATCH_EDGE))));
+    vec4 fix = vec4(0.0);
+    if (dot(lostStrong, vec4(1.0)) > 0.0)
+    {
+      vec4 rA = INFO_AT(-1.0, -1.0), rC = INFO_AT(1.0, -1.0), rI = INFO_AT(1.0, 1.0), rG = INFO_AT(-1.0, 1.0);
+      vec4 gap = vec4(cut4(rC).x * cut4(rG).x, cut4(rI).y * cut4(rA).y, cut4(rC).z * cut4(rG).z, cut4(rI).w * cut4(rA).w);
+      vec4 wrapE = vec4(lessThan(pairSq, vec4(SQ255(XBRZ_MATCH_WRAP))));
+      vec4 needGap = lostStrong * gap * wrapE;
+      vec4 wrapN = vec4(0.0);
+      if (needGap.x > 0.5) wrapN.x = float(max(distSqY(toYCbCr(P( 1.0, -2.0)), nB), distSqY(nD, toYCbCr(P(-2.0,  1.0)))) < SQ255(XBRZ_MATCH_LINE));
+      if (needGap.y > 0.5) wrapN.y = float(max(distSqY(toYCbCr(P(-1.0, -2.0)), nB), distSqY(nF, toYCbCr(P( 2.0,  1.0)))) < SQ255(XBRZ_MATCH_LINE));
+      if (needGap.z > 0.5) wrapN.z = float(max(distSqY(toYCbCr(P( 2.0, -1.0)), nF), distSqY(nH, toYCbCr(P(-1.0,  2.0)))) < SQ255(XBRZ_MATCH_LINE));
+      if (needGap.w > 0.5) wrapN.w = float(max(distSqY(nD, toYCbCr(P(-2.0, -1.0))), distSqY(toYCbCr(P( 1.0,  2.0)), nH)) < SQ255(XBRZ_MATCH_LINE));
 
-    vec4 gap = vec4(cut4(rC).x * cut4(rG).x, cut4(rI).y * cut4(rA).y, cut4(rC).z * cut4(rG).z, cut4(rI).w * cut4(rA).w);
-    vec4 wrapE = vec4(lessThan(pairSq, vec4(SQ255(XBRZ_MATCH_WRAP))));
-    vec4 needGap = lost * strong * gap * wrapE;
-    vec4 wrapN = vec4(0.0);
-    if (needGap.x > 0.5) wrapN.x = float(max(distSqY(toYCbCr(P( 1.0, -2.0)), B), distSqY(D, toYCbCr(P(-2.0,  1.0)))) < SQ255(XBRZ_MATCH_LINE));
-    if (needGap.y > 0.5) wrapN.y = float(max(distSqY(toYCbCr(P(-1.0, -2.0)), B), distSqY(F, toYCbCr(P( 2.0,  1.0)))) < SQ255(XBRZ_MATCH_LINE));
-    if (needGap.z > 0.5) wrapN.z = float(max(distSqY(toYCbCr(P( 2.0, -1.0)), F), distSqY(H, toYCbCr(P(-1.0,  2.0)))) < SQ255(XBRZ_MATCH_LINE));
-    if (needGap.w > 0.5) wrapN.w = float(max(distSqY(D, toYCbCr(P(-2.0, -1.0))), distSqY(toYCbCr(P( 1.0,  2.0)), H)) < SQ255(XBRZ_MATCH_LINE));
-
-    vec4 part = vec4(cut4(rA).z, cut4(rC).w, cut4(rI).x, cut4(rG).y);
-    vec4 l45 = vec4(isLine45(rA).z, isLine45(rC).w, isLine45(rI).x, isLine45(rG).y);
-
-    vec4 fix = max(needGap * wrapN, lost * strong * part * l45 * (1.0 - FLAG(w0, 4.0)));
+      vec4 part = vec4(cut4(rA).z, cut4(rC).w, cut4(rI).x, cut4(rG).y);
+      vec4 l45 = vec4(isLine45(rA).z, isLine45(rC).w, isLine45(rI).x, isLine45(rG).y);
+      fix = max(needGap * wrapN, lostStrong * part * l45 * (1.0 - FLAG(w0, 4.0)));
+    }
     vec4 far43 = vec4(greaterThanEqual(min(vec4(sDSq, sFSq, sFSq, sDSq), vec4(sBSq, sBSq, sHSq, sHSq)), vec4(SQ255(XBRZ_MINC))));
     far43 *= vec4(lessThan(min(vec4(sFSq, sDSq, sDSq, sFSq), vec4(sHSq, sHSq, sBSq, sBSq)), vec4(SQ255(XBRZ_SAME_M))));
     if (dot(lost, far43) > 0.0) fix = max(fix, domes43(lost * far43));
-    vec4 noR9 = 1.0 - FLAG(w0, 32.0);
-    vec4 back = 1.0 + 4.0 * FLAG(w0, 4.0) + 8.0 * FLAG(w0, 8.0) + noR9 * (16.0 * FLAG(w0, 16.0) + 64.0 * FLAG(w0, 64.0));
-    res = mix(res, back, fix);
+    if (dot(fix, vec4(1.0)) > 0.0)
+    {
+      vec4 noR9 = 1.0 - FLAG(w0, 32.0);
+      vec4 back = 1.0 + 4.0 * FLAG(w0, 4.0) + 8.0 * FLAG(w0, 8.0) + noR9 * (16.0 * FLAG(w0, 16.0) + 64.0 * FLAG(w0, 64.0));
+      res = mix(res, back, fix);
+    }
   }
   // rule 27
   if (maxSideSq > SQ255(XBRZ_VERTEX_EDGE)
@@ -741,7 +745,7 @@ void main()
           * vec4(lessThan(pairSq, vec4(SQ255(XBRZ_SAME_M)))), vec4(1.0)) > 0.0))
     res = diagStroke41(res, loneE, pairSq);
   // 44
-  if (maxSideSq >= SQ255(XBRZ_END44)) res = strokeEnd44(res);
+  if (maxSideSq >= SQ255(XBRZ_END44) && minSideSq < SQ255(XBRZ_SAME_M)) res = strokeEnd44(res);
   // 47, 45, 48 (all require at least one cut corner in res)
   if (dot(cut4(res), vec4(1.0)) > 0.0)
   {

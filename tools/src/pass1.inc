@@ -40,12 +40,6 @@ void main()
   //               w|z|
   vec4 blendResult = BLEND(info);
   vec4 isCut = vec4(greaterThan(blendResult, vec4(0.0)));
-  if (dot(isCut, vec4(1.0)) <= 0.0)
-  {
-    FRAG_OUT = vec4(P_CENTER, 1.0);
-    return;
-  }
-
   vec4 doLineBlend = FLAG(info, 4.0);
   vec4 secondPix = FLAG(info, 8.0);
   vec4 haveShallowLine = FLAG(info, 16.0);
@@ -55,22 +49,21 @@ void main()
   vec4 longL = FLAG(info, 32.0) + 2.0 * FLAG(info, 128.0);
 //#crisp}
 
-  // Vectorized exact signed distance for all 4 corners (x=TL, y=TR, z=BR, w=BL) in canonical BR frame
+  // Vectorized exact signed distance (pre-scaled by INV_SQRT2) for all 4 corners in canonical BR frame
   vec4 px = vec4(-pos.x, -pos.y,  pos.x,  pos.y);
   vec4 py = vec4(-pos.y,  pos.x,  pos.y, -pos.x);
-  float scArea = scale.x * scale.y;
-  float sc45 = scArea * inversesqrt(dot(scale, scale));
-  float sc21a = scArea * inversesqrt(4.0 * scale.x * scale.x + scale.y * scale.y);
-  float sc21b = scArea * inversesqrt(scale.x * scale.x + 4.0 * scale.y * scale.y);
-  vec4 kSh = vec4(sc21a, sc21b, sc21a, sc21b);
-  vec4 kSt = vec4(sc21b, sc21a, sc21b, sc21a);
+  float scArea = (scale.x * scale.y) * INV_SQRT2;
+  float sx2 = scale.x * scale.x, sy2 = scale.y * scale.y;
+  vec3 scK = scArea * inversesqrt(vec3(sx2 + sy2, 4.0 * sx2 + sy2, sx2 + 4.0 * sy2));
+  vec4 kSh = scK.yzyz;
+  vec4 kSt = scK.zyzy;
 
   vec4 pSum = px + py;
 //#crisp{
-  vec4 dPlain = (pSum - INV_SQRT2 * tip) * sc45;
+  vec4 dPlain = (pSum - INV_SQRT2 * tip) * scK.x;
 //#crisp}
-//#plain   vec4 dPlain = (pSum - INV_SQRT2) * sc45;
-  vec4 dLine45 = (pSum - 0.5) * sc45;
+//#plain   vec4 dPlain = (pSum - INV_SQRT2) * scK.x;
+  vec4 dLine45 = (pSum - 0.5) * scK.x;
   vec4 dSh = (px + 2.0 * py - 0.5) * kSh;
   vec4 dSt = (2.0 * px + py - 0.5) * kSt;
   vec4 d = mix(dPlain,
@@ -88,27 +81,27 @@ void main()
     vec4 oy = (0.5 + shiftA) * (1.0 - haveShallowLine);
     vec4 dx = 1.0 + haveShallowLine * (1.0 + longL);
     vec4 dy = 1.0 + haveSteepLine * (1.0 + longL);
-    vec4 scX = vec4(scale.x, scale.y, scale.x, scale.y);
-    vec4 scY = vec4(scale.y, scale.x, scale.y, scale.x);
-    vec4 dLong = scArea * ((px - ox) * dy + (py - oy) * dx) * inversesqrt(dx * dx * scX * scX + dy * dy * scY * scY);
+    vec4 scX2 = vec4(sx2, sy2, sx2, sy2);
+    vec4 scY2 = vec4(sy2, sx2, sy2, sx2);
+    vec4 dLong = scArea * ((px - ox) * dy + (py - oy) * dx) * inversesqrt(dx * dx * scX2 + dy * dy * scY2);
     d = mix(d, dLong, isLong);
   }
 //#crisp}
 
-  // Exact smoothstep(-INV_SQRT2, INV_SQRT2, d): 1/(2*INV_SQRT2) == INV_SQRT2
-  vec4 t = clamp(d * INV_SQRT2 + 0.5, 0.0, 1.0);
-  vec4 ratios = isCut * (t * t * (3.0 - 2.0 * t));
-  float sumR = ratios.x + ratios.y + ratios.z + ratios.w;
-  if (sumR <= 0.0)
+  // Exact smoothstep(-INV_SQRT2, INV_SQRT2, d_raw): d is already multiplied by INV_SQRT2
+  vec4 t = isCut * clamp(d + 0.5, 0.0, 1.0);
+  if (dot(t, vec4(1.0)) <= 1e-6)
   {
     FRAG_OUT = vec4(P_CENTER, 1.0);
     return;
   }
+  vec4 ratios = t * t * (3.0 - 2.0 * t);
 
   // ============================================================================================
   // xBRZ: drawing the corners (0, 90, 180, 270 degrees); neighbor color is fetched only when ratio > 0
   // ============================================================================================
 //#crisp{
+  float sumR = ratios.x + ratios.y + ratios.z + ratios.w;
   vec3 accCol = vec3(0.0);
   float keepE = 1.0;
   if (ratios.z > 0.0) { vec2 bo = secondPix.z > 0.0 ? vec2( 0., 1.) : vec2( 1., 0.); accCol += ratios.z * P(bo.x, bo.y); keepE *= 1.0 - ratios.z; }
