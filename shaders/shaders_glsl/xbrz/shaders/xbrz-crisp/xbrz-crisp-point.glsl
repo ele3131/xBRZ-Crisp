@@ -335,20 +335,48 @@ vec2 crossWin(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 tl, vec3 tr, vec3 kh, 
 // ============================================================================================
 // 46. A checkerboard keeps its squares
 // ============================================================================================
-bool chkPair(vec3 a, vec3 b, vec3 c1, vec3 c2)
-{
-  return (eq(a, c1) && eq(b, c2)) || (eq(a, c2) && eq(b, c1));
-}
-// three or more of the four 2x2 blocks beside the 2x2 at (0, 0) are checkers of c1 and c2; each block already has
-// two of its four pixels in registers kb..ko, and stops as soon as two blocks fail
+// a) 2D interior checkerboards: 3+ of the four 2x2 blocks beside (0, 0) are in-phase checkers of c1 and c2.
+// b) 1D 2-pixel-wide checker strips: full 6-pixel axial run (bU && bD or bL && bR) bounded laterally by
+//    axis-aligned walls (rejecting shifted 45-degree diagonal stripes).
 bool checker46(vec2 coord, vec3 c1, vec3 c2, vec3 kb, vec3 kc, vec3 ke, vec3 kh, vec3 ki, vec3 kl, vec3 kn, vec3 ko)
 {
-  int miss = 0;
-  if (!(chkPair(ke, ki, c1, c2) && eq(PY(-2.0, 0.0), ki) && eq(PY(-2.0, 1.0), ke))) miss++;
-  if (!(chkPair(kh, kl, c1, c2) && eq(PY( 3.0, 0.0), kl) && eq(PY( 3.0, 1.0), kh))) { if (++miss > 1) return false; }
-  if (!(chkPair(kb, kc, c1, c2) && eq(PY( 0.0,-2.0), kc) && eq(PY( 1.0,-2.0), kb))) { if (++miss > 1) return false; }
-  if (!(chkPair(kn, ko, c1, c2) && eq(PY( 0.0, 3.0), ko) && eq(PY( 1.0, 3.0), kn))) { if (++miss > 1) return false; }
-  return true;
+  bool hL = eq(ke, c2) && eq(ki, c1);
+  bool hR = eq(kh, c1) && eq(kl, c2);
+  bool hU = eq(kb, c2) && eq(kc, c1);
+  bool hD = eq(kn, c1) && eq(ko, c2);
+  // Zero-fetch early-out: both cnt >= 3 and axial 2x6 strips require (hU && hD) || (hL && hR)
+  if (!((hU && hD) || (hL && hR))) return false;
+  bool bL = hL && eq(PY(-2.0, 0.0), c1) && eq(PY(-2.0, 1.0), c2);
+  bool bR = hR && eq(PY( 3.0, 0.0), c2) && eq(PY( 3.0, 1.0), c1);
+  bool bU = hU && eq(PY( 0.0,-2.0), c1) && eq(PY( 1.0,-2.0), c2);
+  bool bD = hD && eq(PY( 0.0, 3.0), c2) && eq(PY( 1.0, 3.0), c1);
+  if (int(bL) + int(bR) + int(bU) + int(bD) >= 3) return true;
+  bool wL = eq(ke, ki), wR = eq(kh, kl), wU = eq(kb, kc), wD = eq(kn, ko);
+  bool vStrip = bU && bD && ((wL && wR) || (wR && (eq(kh, c1) || eq(kh, c2)) && hL) || (wL && (eq(ke, c1) || eq(ke, c2)) && hR));
+  bool hStrip = bL && bR && ((wU && wD) || (wD && (eq(kn, c1) || eq(kn, c2)) && hU) || (wU && (eq(kb, c1) || eq(kb, c2)) && hD));
+  return vStrip || hStrip;
+}
+// c) A 4-pixel solid wall column/row immediately adjacent to a confirmed 2x4 checker strip of the wall color and one other color.
+//    All 11 in-register checks run before the 2 outer-corner texture reads.
+bool checkerEdge46(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3 kh, vec3 ki, vec3 kj, vec3 kk, vec3 kl, vec3 kn, vec3 ko)
+{
+  if (eq(kg, kk) && eq(kc, kg) && eq(ko, kg) && neq(kf, kj) && (eq(kf, kg) || eq(kj, kg))
+      && eq(kb, kj) && eq(kn, kf) && eq(ke, kj) && eq(ki, kf)
+      && eq(PY(-1.0, -1.0), kf) && eq(PY(-1.0, 2.0), kj))
+    return true;
+  if (eq(kf, kj) && eq(kb, kf) && eq(kn, kf) && neq(kg, kk) && (eq(kg, kf) || eq(kk, kf))
+      && eq(kc, kk) && eq(ko, kg) && eq(kh, kk) && eq(kl, kg)
+      && eq(PY( 2.0, -1.0), kg) && eq(PY( 2.0, 2.0), kk))
+    return true;
+  if (eq(kj, kk) && eq(ki, kj) && eq(kl, kj) && neq(kf, kg) && (eq(kf, kj) || eq(kg, kj))
+      && eq(ke, kg) && eq(kh, kf) && eq(kb, kg) && eq(kc, kf)
+      && eq(PY(-1.0, -1.0), kf) && eq(PY( 2.0, -1.0), kg))
+    return true;
+  if (eq(kf, kg) && eq(ke, kf) && eq(kh, kf) && neq(kj, kk) && (eq(kj, kf) || eq(kk, kf))
+      && eq(ki, kk) && eq(kl, kj) && eq(kn, kk) && eq(ko, kj)
+      && eq(PY(-1.0,  2.0), kj) && eq(PY( 2.0, 2.0), kk))
+    return true;
+  return false;
 }
 //#crisp}
 
@@ -405,8 +433,10 @@ ivec4 pointBlend(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3 k
     vec2 k36 = crossWin(coord, kb, kc, ke, kf, kg, kh, ki, kj, kk, kl, kn, ko);
     if (k36.y > 0.5) r = ivec4(r.x == BLEND_DOMINANT ? BLEND_DOMINANT : BLEND_NORMAL, BLEND_NONE, BLEND_NONE, r.w == BLEND_DOMINANT ? BLEND_DOMINANT : BLEND_NORMAL);
     else if (k36.x > 0.5) r = ivec4(BLEND_NONE, r.y == BLEND_DOMINANT ? BLEND_DOMINANT : BLEND_NORMAL, r.z == BLEND_DOMINANT ? BLEND_DOMINANT : BLEND_NORMAL, BLEND_NONE);
-    // 46. a 2x2 checker of two colors inside a checker texture keeps its corners square
-    if (isChecker && (r.x + r.y + r.z + r.w > 0) && checker46(coord, kf, kg, kb, kc, ke, kh, ki, kl, kn, ko))
+    // 46. a 2x2 checker of two colors inside a checker texture (or its edge against a solid wall) keeps its corners square
+    if ((r.x + r.y + r.z + r.w > 0)
+        && (isChecker ? checker46(coord, kf, kg, kb, kc, ke, kh, ki, kl, kn, ko)
+                      : checkerEdge46(coord, kb, kc, ke, kf, kg, kh, ki, kj, kk, kl, kn, ko)))
       r = ivec4(BLEND_NONE);
   }
 //#crisp}

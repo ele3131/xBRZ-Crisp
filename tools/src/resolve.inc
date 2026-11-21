@@ -480,21 +480,39 @@ void main()
         if (anyCut(blendResult))
         {
           vec4 c19 = isCut(blendResult);
-          vec4 need19 = c19 * max(sq19, (1.0 - line) * vec4(greaterThanEqual(cand20, vec4(XBRZ_ISO_FAR))));
+          vec4 sqOther19 = vec4(sec.x > 0.5 ? sqD : sqB, sec.y > 0.5 ? sqB : sqF, sec.z > 0.5 ? sqF : sqH, sec.w > 0.5 ? sqH : sqD);
+          vec4 need19 = c19 * max(sq19, max(sqOther19 * vec4(greaterThanEqual(cand20, vec4(XBRZ_ISO_FAR))),
+                                            (1.0 - line) * vec4(greaterThanEqual(cand20, vec4(XBRZ_ISO_FAR)))));
           if (any(greaterThan(need19, vec4(0.0))))
           {
             float isoB = 0.0, isoD = 0.0, isoF = 0.0, isoH = 0.0;
-            if (need19.x * sec.x + need19.y * (1.0 - sec.y) > 0.0) isoB = isoSqOf(B, luu, uu, ruu, A, C, D, E, F);
-            if (need19.x * (1.0 - sec.x) + need19.w * sec.w > 0.0) isoD = isoSqOf(D, llu, A, B, ll, E, lld, G, H);
-            if (need19.y * sec.y + need19.z * (1.0 - sec.z) > 0.0) isoF = isoSqOf(F, B, C, rru, E, rr, H, I, rrd);
-            if (need19.z * sec.z + need19.w * (1.0 - sec.w) > 0.0) isoH = isoSqOf(H, D, E, F, G, I, ldd, dd, rdd);
+            if (need19.x + need19.y > 0.0) isoB = isoSqOf(B, luu, uu, ruu, A, C, D, E, F);
+            if (need19.x + need19.w > 0.0) isoD = isoSqOf(D, llu, A, B, ll, E, lld, G, H);
+            if (need19.y + need19.z > 0.0) isoF = isoSqOf(F, B, C, rru, E, rr, H, I, rrd);
+            if (need19.z + need19.w > 0.0) isoH = isoSqOf(H, D, E, F, G, I, ldd, dd, rdd);
             vec4 near19 = vec4(sec.x > 0.5 ? isoB : isoD, sec.y > 0.5 ? isoF : isoB, sec.z > 0.5 ? isoH : isoF, sec.w > 0.5 ? isoD : isoH);
+            vec4 otherNear19 = vec4(sec.x > 0.5 ? isoD : isoB, sec.y > 0.5 ? isoB : isoF, sec.z > 0.5 ? isoF : isoH, sec.w > 0.5 ? isoH : isoD);
             vec4 iso = vec4(greaterThanEqual(near19, vec4(SQ255(XBRZ_ISO)))) * sq19;
+            vec4 otherIso = vec4(greaterThanEqual(otherNear19, vec4(SQ255(XBRZ_ISO)))) * sqOther19
+                          * vec4(greaterThanEqual(cand20, vec4(XBRZ_ISO_FAR)));
+            vec4 blockP = vec4(
+              sec.x > 0.5 ? (sameF(B, uu) * sameF(B, A)) : (sameF(D, ll) * sameF(D, A)),
+              sec.y > 0.5 ? (sameF(F, rr) * sameF(F, C)) : (sameF(B, uu) * sameF(B, C)),
+              sec.z > 0.5 ? (sameF(H, dd) * sameF(H, I)) : (sameF(F, rr) * sameF(F, I)),
+              sec.w > 0.5 ? (sameF(D, ll) * sameF(D, G)) : (sameF(H, dd) * sameF(H, G)));
+            otherIso *= max(blockP, vec4(
+              sec.x > 0.5 ? (sameF(B, C) * (1.0 - sameF(B, A))) : (sameF(D, G) * (1.0 - sameF(D, A))),
+              sec.y > 0.5 ? (sameF(F, I) * (1.0 - sameF(F, C))) : (sameF(B, A) * (1.0 - sameF(B, C))),
+              sec.z > 0.5 ? (sameF(H, G) * (1.0 - sameF(H, I))) : (sameF(F, C) * (1.0 - sameF(F, I))),
+              sec.w > 0.5 ? (sameF(D, A) * (1.0 - sameF(D, G))) : (sameF(H, I) * (1.0 - sameF(H, G)))));
             vec4 lone = vec4(greaterThanEqual(near19, vec4(SQ255(XBRZ_SAME)))) * (1.0 - line)
                       * vec4(greaterThanEqual(cand20, vec4(XBRZ_ISO_FAR)))
                       * vec4(greaterThanEqual(vec4(min(distSqY(A, B), distSqY(A, D)), min(distSqY(C, F), distSqY(C, B)),
                                                    min(distSqY(I, H), distSqY(I, F)), min(distSqY(G, D), distSqY(G, H))), vec4(SQ255(XBRZ_SAME))));
-            blendResult *= 1.0 - max(iso, lone);
+            vec4 inlineRing = lone * vec4(sameF(C, G), sameF(A, I), sameF(C, G), sameF(A, I))
+                            * vec4(sameF(B, D), sameF(B, F), sameF(F, H), sameF(D, H));
+            lone *= 1.0 - inlineRing;
+            blendResult *= 1.0 - max(max(iso, otherIso), lone);
           }
         }
 
@@ -769,6 +787,83 @@ void main()
           blendResult *= pair;
           line = vec4(0.0); haveShallowLine = vec4(0.0); haveSteepLine = vec4(0.0);
           small23 = isCut(blendResult);
+        }
+      }
+
+      // ---- 50. Drop shadow in a 1-pixel cavity ----
+      if (E.x > 0.12 && E.x < 0.72 && dot(isCut(blendResult), vec4(1.0)) > 1.5)
+      {
+        vec4 cut50 = isCut(blendResult);
+        vec4 lumaP = vec4(sec.x > 0.5 ? B.x : D.x, sec.y > 0.5 ? F.x : B.x, sec.z > 0.5 ? H.x : F.x, sec.w > 0.5 ? D.x : H.x);
+        vec4 lMinC = vec4(min(B.x, D.x), min(B.x, F.x), min(F.x, H.x), min(D.x, H.x));
+        vec4 lMaxC = vec4(max(B.x, D.x), max(B.x, F.x), max(F.x, H.x), max(D.x, H.x));
+        vec4 fgCut = cut50 * vec4(greaterThan(lumaP, vec4(max(E.x + 0.22, 0.70)))) * vec4(greaterThan(lMinC, vec4(E.x + 0.15)));
+        vec4 shCut = cut50 * vec4(lessThan(lumaP, vec4(min(E.x - 0.15, 0.12)))) * vec4(lessThan(lMaxC, vec4(E.x - 0.12)));
+        if (any(greaterThan(fgCut, vec4(0.5))) && any(greaterThan(shCut, vec4(0.5))))
+        {
+          blendResult *= 1.0 - shCut;
+          line *= 1.0 - shCut;
+          haveShallowLine *= 1.0 - shCut;
+          haveSteepLine *= 1.0 - shCut;
+        }
+      }
+      else if (E.x <= 0.08 && anyCut(blendResult))
+      {
+        vec4 cut50 = isCut(blendResult);
+        vec4 lumaP = vec4(sec.x > 0.5 ? B.x : D.x, sec.y > 0.5 ? F.x : B.x, sec.z > 0.5 ? H.x : F.x, sec.w > 0.5 ? D.x : H.x);
+        vec4 midCut = cut50 * vec4(greaterThan(lumaP, vec4(0.14))) * vec4(lessThan(lumaP, vec4(0.65)));
+        vec4 oppBright = vec4(
+          max(float(F.x > 0.75 && H.x < 0.08), float(H.x > 0.75 && F.x < 0.08)),
+          max(float(D.x > 0.75 && H.x < 0.08), float(H.x > 0.75 && D.x < 0.08)),
+          max(float(D.x > 0.75 && B.x < 0.08), float(B.x > 0.75 && D.x < 0.08)),
+          max(float(F.x > 0.75 && B.x < 0.08), float(B.x > 0.75 && F.x < 0.08)));
+        vec4 dropSh = midCut * oppBright * vec4(lessThan(cand20, vec4(XBRZ_SAME)));
+        blendResult *= 1.0 - dropSh;
+      }
+
+      // ---- 14b. Dark outline 2:1 stub coupling and same-color 2-1-2 arc smoothing ----
+      {
+        vec4 stub = isCut(blendResult) * (1.0 - line) * (1.0 - small23);
+        if (E.x <= XBRZ_DARK && any(greaterThan(stub, vec4(0.5))))
+        {
+          // Exact D4 neighbor words along each corner's local h (shallow) and v (steep) axes:
+          // x: h=D, v=B | y: h=B, v=F | z: h=F, v=H | w: h=H, v=D
+          vec4 wSh = vec4(iD.x, iB.y, iF.z, iH.w);
+          vec4 wSt = vec4(iB.x, iF.y, iH.z, iD.w);
+          vec4 nSh = vec4(drawsLine(wSh.x), drawsLine(wSh.y), drawsLine(wSh.z), drawsLine(wSh.w))
+                   * FLAG(wSh, 16.0) * (1.0 - FLAG(wSh, 64.0));
+          vec4 nSt = vec4(drawsLine(wSt.x), drawsLine(wSt.y), drawsLine(wSt.z), drawsLine(wSt.w))
+                   * FLAG(wSt, 64.0) * (1.0 - FLAG(wSt, 16.0));
+          vec4 contE_sh = vec4(sameF(E, F), sameF(E, H), sameF(E, D), sameF(E, B));
+          vec4 contE_st = vec4(sameF(E, H), sameF(E, D), sameF(E, B), sameF(E, F));
+          vec4 wall_sh  = vec4(sameF(B, A) * sameF(B, C), sameF(F, C) * sameF(F, I),
+                               sameF(H, I) * sameF(H, G), sameF(D, G) * sameF(D, A));
+          vec4 wall_st  = vec4(sameF(D, A) * sameF(D, G), sameF(B, C) * sameF(B, A),
+                               sameF(F, I) * sameF(F, C), sameF(H, G) * sameF(H, I));
+          vec4 dEh5 = dE4.yxzw, dEv5 = dE4.xzwy;
+          vec4 rampSh = vec4(lessThan(dEh5 + cand20, 1.30 * dEv5));
+          vec4 rampSt = vec4(lessThan(dEv5 + cand20, 1.30 * dEh5));
+          vec4 pSh = stub * nSh * (1.0 - nSt) * contE_sh * wall_sh * rampSh * (1.0 - sec);
+          vec4 pSt = stub * nSt * (1.0 - nSh) * contE_st * wall_st * rampSt * sec;
+          vec4 prom = max(pSh, pSt);
+          line            = max(line, prom);
+          haveShallowLine = max(haveShallowLine, pSh);
+          haveSteepLine   = max(haveSteepLine,   pSt);
+        }
+        vec4 plain45 = isCut(blendResult) * line * (1.0 - haveShallowLine) * (1.0 - haveSteepLine)
+                     * vec4(lessThan(cand20, vec4(XBRZ_SAME)));
+        if (any(greaterThan(plain45, vec4(0.5))))
+        {
+          vec4 sameDiag = vec4(sameF(E, C) * sameF(E, G), sameF(E, A) * sameF(E, I),
+                               sameF(E, C) * sameF(E, G), sameF(E, A) * sameF(E, I));
+          vec4 d1 = vec4(iC.x, iA.y, iC.z, iA.w);
+          vec4 d2 = vec4(iG.x, iI.y, iG.z, iI.w);
+          vec4 dAct = vec4(drawsLine(d1.x) * drawsLine(d2.x), drawsLine(d1.y) * drawsLine(d2.y),
+                           drawsLine(d1.z) * drawsLine(d2.z), drawsLine(d1.w) * drawsLine(d2.w));
+          vec4 dSh = plain45 * sameDiag * dAct * FLAG(d1, 16.0) * FLAG(d2, 16.0) * (1.0 - FLAG(d1, 64.0)) * (1.0 - FLAG(d2, 64.0));
+          vec4 dSt = plain45 * sameDiag * dAct * FLAG(d1, 64.0) * FLAG(d2, 64.0) * (1.0 - FLAG(d1, 16.0)) * (1.0 - FLAG(d2, 16.0));
+          haveShallowLine = max(haveShallowLine, dSh);
+          haveSteepLine   = max(haveSteepLine,   dSt);
         }
       }
     }

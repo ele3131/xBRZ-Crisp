@@ -105,7 +105,10 @@
 //     red armor). Where the pixel past the line's far end is an area of a third color (clearly different from
 //     the pixel and both neighbors at the corner, with a side neighbor in its own color; a checker is no area),
 //     the corner keeps xBRZ's line, so a hood's light edge is not drawn up against the blue beside it (the boy
-//     in Final Fantasy Tactics Advance).
+//     in Final Fantasy Tactics Advance). Before the step walk, a surviving non-line stub on a dark outline
+//     (E.x <= XBRZ_DARK) that continues straight along the step beside a straight wall and an active 2:1 ramp
+//     pixel couples to that 2:1 slope, and a clean 2-color 45-degree step (cand20 < XBRZ_SAME) flanked on both
+//     diagonals by pixels of E's color drawing the same 2:1 slope follows that 2:1 curve.
 // 15. Lone pixel and L-shape tests on strong edges: xBRZ draws no line through a pixel that already
 //     has another corner cut and differs from the pixel across it, so a lone pixel keeps its shape, and
 //     only rounds a corner, without a line, where one color wraps around it in an L. Where the pixel
@@ -139,9 +142,12 @@
 // 19. A pixel apart keeps to itself: a corner is not painted with the color of a pixel that differs from
 //     all 8 of its neighbors by XBRZ_ISO or more and keeps its own corners square, so a lone dot of
 //     color, like the bead of a bracelet in Golden Sun's village, does not leak into the pixels around it.
+//     Likewise, a square isolated dot sitting at the other cardinal neighbor of a right-angle block corner
+//     (cand20 >= XBRZ_ISO_FAR) cannot push a diagonal spur into E.
 //     Nor is a corner cut without a line painted with the color of a pixel none of whose 8 neighbors shares
 //     its color, where the corner's other neighbor differs from it by XBRZ_ISO_FAR or more and the pixel
-//     across the corner is neither color, like a dark green pixel on the Golden Sun slime.
+//     across the corner is neither color, like a dark green pixel on the Golden Sun slime (except when the
+//     dot sits inline inside a matching circular ring, keeping a plain bevel).
 // 20. A corner where no edge runs: a corner between two neighbors of clearly different colors
 //     (XBRZ_JUNCTION) stays square where no line goes on through it (neither color continues past the
 //     corner, the pixel's own color does not continue along the cut, and fewer than three pixels in a
@@ -324,9 +330,10 @@
 //     XBRZ_MATCH_EDGE from it, the two side ones two different tones) and the pixel on E's other side is 80
 //     or more away, the corner stays square, so the stroke ends square (a gray seam on Isaac's shoulder).
 // 46. A checkerboard keeps its squares: a 2x2 checker of two colors with three or more of the 2x2 blocks
-//     beside it (2 pixels left, right, above and below) checkers of the same two colors is not cut, so a
-//     checker texture stays square up to an outline that crosses it (xBRZ's 4x4 window turns the checker
-//     next to an outline into zigzags).
+//     beside it (2 pixels left, right, above and below) checkers of the same two colors, or forming a 2x6
+//     axial checker strip bounded laterally by axis-aligned walls, is not cut; likewise a 1x4 solid wall
+//     immediately adjacent to a confirmed 2x4 checker strip keeps its squares, so checker dithering stays
+//     square right up to its borders without affecting 1-pixel dotted lines or diagonal strokes.
 // 47. A notch in a straight stroke: where E's corner would be cut in the color of a lone pixel beside it
 //     that is a close shade of E, while E's color goes on straight past its other neighbor and diagonally
 //     past the lone pixel, and the color on E's far side is XBRZ_FAR47 or more away, the corner stays square,
@@ -346,8 +353,12 @@
 //     line that meets a white branch), and no corner is cut where a neighbor already draws the stroke's color
 //     across it. A neighbor's corner at the point where a side cut paints that neighbor is not cut in the color
 //     from the stroke's other side, so that color does not wrap around the bar's end.
+// 50. Drop shadow in a 1-pixel cavity: where a mid-tone background pixel (0.12 < E.x < 0.72) is cut on
+//     separate corners by both a bright foreground stroke (like a 1-pixel HUD letter) and a dark drop shadow,
+//     the dark shadow bevel is suppressed so small glyph bowls stay open; likewise a near-black drop-shadow
+//     pixel (E.x <= 0.08) tucked against a bright 1-pixel stroke does not bevel its mid-tone background corner.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9, 11 and
-// 13 to 49 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 13 to 50 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9, 11
 //#plain // and 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
