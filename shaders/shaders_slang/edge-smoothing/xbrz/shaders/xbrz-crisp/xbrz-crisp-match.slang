@@ -608,6 +608,86 @@ bool goesOn(vec2 k, vec3 E)
          cutsIn(k, -k, E);
 }
 
+
+// ---- Rule 41b/c: true 45-degree convex apex (strip colliding 2:1 pinch + complete multi-tone 45-deg edge) ----
+bool line45In(vec2 q, vec2 k, vec3 C)
+{
+  vec4 r = infoAt(q);
+  vec4 mk = vtxCorner(k);
+  float w = dot(r, mk);
+  if (BLEND(w) < 0.5 || dot(isLine45(r), mk) < 0.5) return false;
+  bool hz = k.x * k.y > 0.0, sec = FLAG(w, 8.0) > 0.5;
+  vec2 p = (hz == sec) ? vec2(0.0, k.y) : vec2(k.x, 0.0);
+  return withinY255(at3(q + p), C, XBRZ_SAME_M);
+}
+vec4 apex41(vec4 res, vec4 pairSq)
+{
+  vec4 c41 = cut4(res) * FLAG(res, 4.0);
+  vec4 is21 = c41 * vec4(equal(FLAG(res, 32.0) + FLAG(res, 128.0), vec4(0.0)));
+  vec4 sh41 = is21 * FLAG(res, 16.0) * (1.0 - FLAG(res, 64.0));
+  vec4 st41 = is21 * FLAG(res, 64.0) * (1.0 - FLAG(res, 16.0));
+  vec4 colEdge = vec4(
+    max(sh41.x * c41.y, st41.y * c41.x),
+    max(sh41.y * c41.z, st41.z * c41.y),
+    max(sh41.z * c41.w, st41.w * c41.z),
+    max(sh41.w * c41.x, st41.x * c41.w));
+  vec4 l45 = cut4(res) * isLine45(res);
+  vec4 minSideSq = min(vec4(sDSq, sFSq, sFSq, sDSq), vec4(sBSq, sBSq, sHSq, sHSq));
+  vec4 validG4 = (1.0 - cut4(res)) * vec4(greaterThanEqual(pairSq, vec4(SQ255(XBRZ_SAME_M))))
+               * vec4(lessThan(pairSq, minSideSq))
+               * vec4(greaterThanEqual(minSideSq, vec4(SQ255(XBRZ_MINC))));
+  vec4 pA = max(l45, sh41);
+  vec4 pB = max(l45, st41);
+  vec4 g4Edge = vec4(max(validG4.x * pB.y, validG4.y * pA.x),
+                     max(validG4.y * pB.z, validG4.z * pA.y),
+                     max(validG4.z * pB.w, validG4.w * pA.z),
+                     max(validG4.w * pB.x, validG4.x * pA.w));
+  if (dot(colEdge + g4Edge, vec4(1.0)) < 0.5) return res;
+  bool sA = withinY255(nE, at3(vec2(-1.0, -1.0)), XBRZ_SAME_M);
+  bool sC = withinY255(nE, at3(vec2( 1.0, -1.0)), XBRZ_SAME_M);
+  bool sG = withinY255(nE, at3(vec2(-1.0,  1.0)), XBRZ_SAME_M);
+  bool sI = withinY255(nE, at3(vec2( 1.0,  1.0)), XBRZ_SAME_M);
+  vec4 v45 = vec4(float(sG && sI && !sA && !sC), float(sA && sG && !sC && !sI),
+                  float(sA && sC && !sG && !sI), float(sC && sI && !sA && !sG));
+  vec4 actCol = colEdge * v45, actG4 = g4Edge * v45;
+  if (dot(actCol + actG4, vec4(1.0)) < 0.5) return res;
+  vec4 fixEdge = vec4(0.0);
+  for (int k = 0; k < 4; k++)
+  {
+    vec4 ek = vec4(float(k == 0), float(k == 1), float(k == 2), float(k == 3));
+    float doC = dot(actCol, ek), doG = dot(actG4, ek);
+    if (doC + doG < 0.5) continue;
+    vec2 u = k == 0 ? vec2(0.0, -1.0) : k == 1 ? vec2(1.0, 0.0) : k == 2 ? vec2(0.0, 1.0) : vec2(-1.0, 0.0);
+    vec2 s = vec2(u.y, -u.x);
+    if (withinY255(nE, at3(s - 2.0 * u), XBRZ_SAME_M) && withinY255(nE, at3(-s - 2.0 * u), XBRZ_SAME_M)) continue;
+    if (doC > 0.5) fixEdge += ek;
+    if (doG > 0.5)
+    {
+      vec2 c1 = u + s, c2 = u - s;
+      vec4 m1 = vtxCorner(c1), m2 = vtxCorner(c2);
+      if (dot(validG4, m1) > 0.5 && line45In(s, -c1, nE) && !cutsIn(u, c1 - 2.0 * u, nE) && !cutsIn(c1, -c1, nE))
+      {
+        if (dot(l45, m2) > 0.5 || line45In(-s, -c2, nE))
+        {
+          res = mix(res, vec4(5.0), m1);
+          if (dot(st41, m2) > 0.5) fixEdge += ek;
+        }
+      }
+      if (dot(validG4, m2) > 0.5 && line45In(-s, -c2, nE) && !cutsIn(u, c2 - 2.0 * u, nE) && !cutsIn(c2, -c2, nE))
+      {
+        if (dot(l45, m1) > 0.5 || line45In(s, -c1, nE))
+        {
+          res = mix(res, vec4(13.0), m2);
+          if (dot(sh41, m1) > 0.5) fixEdge += ek;
+        }
+      }
+    }
+  }
+  fixEdge = min(fixEdge, vec4(1.0));
+  res -= 16.0 * (sh41 * fixEdge) + 64.0 * (st41 * fixEdge.wxyz);
+  return res;
+}
+
 // ---- Rules 47 and 48: lone shades along a stroke ----
 #define XBRZ_NOTCH47 60.0
 #define XBRZ_FAR47 80.0
@@ -858,8 +938,10 @@ void main()
         vec3 C1 = c.x > 0.0 ? nF : nD, C2 = c.y > 0.0 ? nH : nB;
         bool plug = withinY255(R1, R2, XBRZ_SAME_M) && !withinY255(R1, C1, XBRZ_SAME_M) &&
                     !withinY255(R1, C2, XBRZ_SAME_M);
-        if (!plug && BLEND(dot(res, m1)) < 0.5 && !goesOn(s1, E)) res = mix(res, vec4(s1.x * s1.y > 0.0 ? 5.0 : 13.0), m1);
-        if (!plug && BLEND(dot(res, m2)) < 0.5 && !goesOn(s2, E)) res = mix(res, vec4(s2.x * s2.y > 0.0 ? 13.0 : 5.0), m2);
+        bool ok1 = withinY255(C1, R2, 100.0) || withinY255(C1, at3(s1), 100.0);
+        bool ok2 = withinY255(C2, R1, 100.0) || withinY255(C2, at3(s2), 100.0);
+        if (!plug && ok1 && BLEND(dot(res, m1)) < 0.5 && !goesOn(s1, E)) res = mix(res, vec4(s1.x * s1.y > 0.0 ? 5.0 : 13.0), m1);
+        if (!plug && ok2 && BLEND(dot(res, m2)) < 0.5 && !goesOn(s2, E)) res = mix(res, vec4(s2.x * s2.y > 0.0 ? 13.0 : 5.0), m2);
         float lE = E.x, lA = at3(e).x, lS = 0.5 * (C1.x + C2.x);
         if ((BLEND(dot(res, me)) < 0.5 || FLAG(dot(res, me), 4.0) < 0.5) && (lA - lS) * (lE - lS) <= 0.0 && !goesOn(e, E))
         {
@@ -907,9 +989,41 @@ void main()
           vec2 pk = (hz == sec) ? vec2(0.0, k.y) : vec2(k.x, 0.0);
           vec3 other = -n == vec2(cn.x, 0.0) ? at3(n + vec2(0.0, cn.y)) : at3(n + vec2(cn.x, 0.0));
           vec3 pCol = cardColor(pk);
-          if (!withinY255(pCol, En, XBRZ_SAME_M) && withinY255(pCol, other, XBRZ_SAME_M)) { res = mix(res, vec4(0.0), mk); }
+          bool barPaintedSide = withinY255(nE, at3(k), 100.0) || withinY255(nE, cardColor(k - n), 100.0);
+          if (barPaintedSide && !withinY255(pCol, En, XBRZ_SAME_M) && withinY255(pCol, other, XBRZ_SAME_M)) { res = mix(res, vec4(0.0), mk); }
         }
       }
+    }
+  }
+  if (loneE && dot(cut4(res), vec4(1.0)) > 0.0) res = apex41(res, pairSq);
+  // 38b. 3+ color corner on a 1px bar flush against a 4-color orthogonal crosshair
+  if (dot(cut4(res) * vec4(greaterThanEqual(pairSq, vec4(SQ255(XBRZ_JUNC4)))), vec4(1.0)) > 0.5)
+  {
+    for (int i = 0; i < 4; i++)
+    {
+      vec2 c = i == 0 ? vec2(-1.0, -1.0) : i == 1 ? vec2(1.0, -1.0) : i == 2 ? vec2(1.0, 1.0) : vec2(-1.0, 1.0);
+      vec4 m = vtxCorner(c);
+      float wc = dot(res, m);
+      if (BLEND(wc) < 0.5 || dot(pairSq, m) < SQ255(XBRZ_JUNC4)) continue;
+      vec2 pOff = paintOf(c, wc);
+      bool kill = false;
+      for (int ax = 0; ax < 2; ax++)
+      {
+        vec2 h = ax == 0 ? vec2(c.x, 0.0) : vec2(0.0, c.y);
+        vec2 v = ax == 0 ? vec2(0.0, c.y) : vec2(c.x, 0.0);
+        if (dot(pOff, h) < 0.5 || sideSq(-h) >= SQ255(XBRZ_SAME_M)) continue;
+        if (sideSq(h) <= SQ255(40.0) || sideSq(-v) <= SQ255(40.0)) continue;
+        vec3 Hc = cardColor(h), Bc = cardColor(-v);
+        if (distSqY(Hc, Bc) <= SQ255(40.0)) continue;
+        if (!withinY255(Hc, at3(2.0 * h), XBRZ_SAME_M)) continue;
+        if (!withinY255(Bc, at3(-v - h), XBRZ_SAME_M) || !withinY255(Bc, at3(-2.0 * v), XBRZ_SAME_M)) continue;
+        vec3 Cc = at3(h - v);
+        if (distSqY(Bc, Cc) <= SQ255(40.0) || distSqY(Hc, Cc) <= SQ255(XBRZ_JUNC4) || distSqY(nE, Cc) <= SQ255(40.0)) continue;
+        if (!withinY255(Cc, at3(2.0 * h - v), XBRZ_SAME_M) || !withinY255(Cc, at3(h - 2.0 * v), XBRZ_SAME_M)) continue;
+        kill = true;
+        break;
+      }
+      if (kill) res = mix(res, vec4(0.0), m);
     }
   }
   FRAG_OUT = res / 255.0;

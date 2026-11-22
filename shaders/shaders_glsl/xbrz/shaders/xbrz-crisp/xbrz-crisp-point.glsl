@@ -335,6 +335,12 @@ vec2 crossWin(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 tl, vec3 tr, vec3 kh, 
 // ============================================================================================
 // 46. A checkerboard keeps its squares
 // ============================================================================================
+// Soft parity match: q is within tolSq of same and strictly at least 2x closer to same than to opp.
+bool chkSoftEq(vec3 q, vec3 same, vec3 opp, float tolSq)
+{
+  float ds = distSqY(q, same);
+  return ds <= tolSq && ds < 0.25 * distSqY(q, opp);
+}
 // a) 2D interior checkerboards: 3+ of the four 2x2 blocks beside (0, 0) are in-phase checkers of c1 and c2.
 // b) 1D 2-pixel-wide checker strips: full 6-pixel axial run (bU && bD or bL && bR) bounded laterally by
 //    axis-aligned walls (rejecting shifted 45-degree diagonal stripes).
@@ -356,26 +362,122 @@ bool checker46(vec2 coord, vec3 c1, vec3 c2, vec3 kb, vec3 kc, vec3 ke, vec3 kh,
   bool hStrip = bL && bR && ((wU && wD) || (wD && (eq(kn, c1) || eq(kn, c2)) && hU) || (wU && (eq(kb, c1) || eq(kb, c2)) && hD));
   return vStrip || hStrip;
 }
-// c) A 4-pixel solid wall column/row immediately adjacent to a confirmed 2x4 checker strip of the wall color and one other color.
-//    All 11 in-register checks run before the 2 outer-corner texture reads.
+bool meshWall46(vec3 w0, vec3 w1, vec3 pM, vec3 oA, vec3 oB, float gapSq)
+{
+  return eq(w0, w1) && neq(w0, oA) && neq(w0, oB) && distSqY(w0, pM) >= gapSq;
+}
+bool meshParity46(vec2 coord, vec3 cA, vec3 cB, vec3 oA, vec3 oB, float tolSq, float gapSq,
+                  vec3 mL, vec3 oL, vec3 mR, vec3 oR, vec3 mU, vec3 oU, vec3 mD, vec3 oD,
+                  vec2 pmL, vec2 poL, vec2 pmR, vec2 poR, vec2 pmU, vec2 poU, vec2 pmD, vec2 poD)
+{
+  vec3 pM = 0.5 * (cA + cB);
+  bool hL = distSqY(mL, pM) <= tolSq && distSqY(oL, pM) >= gapSq;
+  bool hR = distSqY(mR, pM) <= tolSq && distSqY(oR, pM) >= gapSq;
+  bool hU = distSqY(mU, pM) <= tolSq && distSqY(oU, pM) >= gapSq;
+  bool hD = distSqY(mD, pM) <= tolSq && distSqY(oD, pM) >= gapSq;
+  bool wL = meshWall46(mL, oL, pM, oA, oB, gapSq);
+  bool wR = meshWall46(mR, oR, pM, oA, oB, gapSq);
+  bool wU = meshWall46(mU, oU, pM, oA, oB, gapSq);
+  bool wD = meshWall46(mD, oD, pM, oA, oB, gapSq);
+  if (!((hL && hR && ((hU && hD) || (hU && wD) || (hD && wU)))
+     || (hU && hD && ((hL && wR) || (hR && wL)))))
+    return false;
+  bool bL = hL && distSqY(PY(pmL.x, pmL.y), pM) <= tolSq && distSqY(PY(poL.x, poL.y), pM) >= gapSq;
+  bool bR = hR && distSqY(PY(pmR.x, pmR.y), pM) <= tolSq && distSqY(PY(poR.x, poR.y), pM) >= gapSq;
+  bool bU = hU && distSqY(PY(pmU.x, pmU.y), pM) <= tolSq && distSqY(PY(poU.x, poU.y), pM) >= gapSq;
+  bool bD = hD && distSqY(PY(pmD.x, pmD.y), pM) <= tolSq && distSqY(PY(poD.x, poD.y), pM) >= gapSq;
+  return (bL && bR && ((bU && bD) || (bU && wD) || (bD && wU)))
+      || (bU && bD && ((bL && wR) || (bR && wL)));
+}
+// d) Shaded / gradient 2D checkerboards and high-contrast 1-parity 50% mesh-transparency overlays.
+bool checkerShaded46(vec2 coord, vec3 kf, vec3 kg, vec3 kj, vec3 kk,
+                     vec3 kb, vec3 kc, vec3 ke, vec3 kh, vec3 ki, vec3 kl, vec3 kn, vec3 ko)
+{
+  float minEdgeSq = min(min(distSqY(kf, kg), distSqY(kf, kj)), min(distSqY(kk, kg), distSqY(kk, kj)));
+  if (minEdgeSq < SQ255(30.0)) return false;
+  float d0 = distSqY(kf, kk), d1 = distSqY(kg, kj);
+  if (max(d0, d1) < 0.18 * minEdgeSq)
+  {
+    vec3 p0 = 0.5 * (kf + kk), p1 = 0.5 * (kg + kj);
+    float tolSq = 0.18 * distSqY(p0, p1);
+    bool hL = chkSoftEq(ke, p1, p0, tolSq) && chkSoftEq(ki, p0, p1, tolSq);
+    bool hR = chkSoftEq(kh, p0, p1, tolSq) && chkSoftEq(kl, p1, p0, tolSq);
+    bool hU = chkSoftEq(kb, p1, p0, tolSq) && chkSoftEq(kc, p0, p1, tolSq);
+    bool hD = chkSoftEq(kn, p0, p1, tolSq) && chkSoftEq(ko, p1, p0, tolSq);
+    if ((hU && hD) || (hL && hR))
+    {
+      bool bL = hL && chkSoftEq(PY(-2.0, 0.0), p0, p1, tolSq) && chkSoftEq(PY(-2.0, 1.0), p1, p0, tolSq);
+      bool bR = hR && chkSoftEq(PY( 3.0, 0.0), p1, p0, tolSq) && chkSoftEq(PY( 3.0, 1.0), p0, p1, tolSq);
+      bool bU = hU && chkSoftEq(PY( 0.0,-2.0), p0, p1, tolSq) && chkSoftEq(PY( 1.0,-2.0), p1, p0, tolSq);
+      bool bD = hD && chkSoftEq(PY( 0.0, 3.0), p1, p0, tolSq) && chkSoftEq(PY( 1.0, 3.0), p0, p1, tolSq);
+      if (int(bL) + int(bR) + int(bU) + int(bD) >= 3) return true;
+    }
+  }
+  if (minEdgeSq < SQ255(72.0)) return false;
+  float mTolSq = min(SQ255(26.0), 0.08 * minEdgeSq);
+  float mGapSq = max(SQ255(72.0), 4.0 * mTolSq);
+  if (d0 <= mTolSq && meshParity46(coord, kf, kk, kg, kj, mTolSq, mGapSq,
+                                   ki, ke, kh, kl, kc, kb, kn, ko,
+                                   vec2(-2.0, 0.0), vec2(-2.0, 1.0), vec2(3.0, 1.0), vec2(3.0, 0.0),
+                                   vec2(0.0, -2.0), vec2(1.0, -2.0), vec2(1.0, 3.0), vec2(0.0, 3.0)))
+    return true;
+  if (d1 <= mTolSq && meshParity46(coord, kg, kj, kf, kk, mTolSq, mGapSq,
+                                   ke, ki, kl, kh, kb, kc, ko, kn,
+                                   vec2(-2.0, 1.0), vec2(-2.0, 0.0), vec2(3.0, 0.0), vec2(3.0, 1.0),
+                                   vec2(1.0, -2.0), vec2(0.0, -2.0), vec2(0.0, 3.0), vec2(1.0, 3.0)))
+    return true;
+  return false;
+}
+// Helper for 2x4 shaded checker strip beside an exact 1x4 solid wall (in-register checks first, 2 corner fetches last).
+bool chkEdgeSoft2x4(vec2 coord, vec3 a0, vec3 b0, vec3 a1, vec3 b1, vec3 a2, vec3 b2, vec2 oA, vec2 oB)
+{
+  float minEdgeSq = min(min(distSqY(a0, b0), distSqY(a0, b1)), min(distSqY(a1, b0), distSqY(a1, b1)));
+  if (minEdgeSq < SQ255(35.0)) return false;
+  if (max(distSqY(a0, a1), distSqY(b0, b1)) >= 0.18 * minEdgeSq) return false;
+  vec3 pA = 0.5 * (a0 + a1), pB = 0.5 * (b0 + b1);
+  float tolSq = 0.18 * distSqY(pA, pB);
+  if (!(chkSoftEq(a2, pA, pB, tolSq) && chkSoftEq(b2, pB, pA, tolSq))) return false;
+  return chkSoftEq(PY(oA.x, oA.y), pA, pB, tolSq) && chkSoftEq(PY(oB.x, oB.y), pB, pA, tolSq);
+}
+// c) A 4-pixel solid wall column/row immediately adjacent to a confirmed 2x4 checker strip (exact or shaded).
 bool checkerEdge46(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3 kh, vec3 ki, vec3 kj, vec3 kk, vec3 kl, vec3 kn, vec3 ko)
 {
-  if (eq(kg, kk) && eq(kc, kg) && eq(ko, kg) && neq(kf, kj) && (eq(kf, kg) || eq(kj, kg))
-      && eq(kb, kj) && eq(kn, kf) && eq(ke, kj) && eq(ki, kf)
-      && eq(PY(-1.0, -1.0), kf) && eq(PY(-1.0, 2.0), kj))
-    return true;
-  if (eq(kf, kj) && eq(kb, kf) && eq(kn, kf) && neq(kg, kk) && (eq(kg, kf) || eq(kk, kf))
-      && eq(kc, kk) && eq(ko, kg) && eq(kh, kk) && eq(kl, kg)
-      && eq(PY( 2.0, -1.0), kg) && eq(PY( 2.0, 2.0), kk))
-    return true;
-  if (eq(kj, kk) && eq(ki, kj) && eq(kl, kj) && neq(kf, kg) && (eq(kf, kj) || eq(kg, kj))
-      && eq(ke, kg) && eq(kh, kf) && eq(kb, kg) && eq(kc, kf)
-      && eq(PY(-1.0, -1.0), kf) && eq(PY( 2.0, -1.0), kg))
-    return true;
-  if (eq(kf, kg) && eq(ke, kf) && eq(kh, kf) && neq(kj, kk) && (eq(kj, kf) || eq(kk, kf))
-      && eq(ki, kk) && eq(kl, kj) && eq(kn, kk) && eq(ko, kj)
-      && eq(PY(-1.0,  2.0), kj) && eq(PY( 2.0, 2.0), kk))
-    return true;
+  if (eq(kg, kk) && eq(kc, kg) && eq(ko, kg) && neq(kf, kj))
+  {
+    if ((eq(kf, kg) || eq(kj, kg))
+        && eq(kb, kj) && eq(kn, kf) && eq(ke, kj) && eq(ki, kf)
+        && eq(PY(-1.0, -1.0), kf) && eq(PY(-1.0, 2.0), kj))
+      return true;
+    if (chkEdgeSoft2x4(coord, kf, kj, ki, ke, kn, kb, vec2(-1.0, -1.0), vec2(-1.0, 2.0)))
+      return true;
+  }
+  if (eq(kf, kj) && eq(kb, kf) && eq(kn, kf) && neq(kg, kk))
+  {
+    if ((eq(kg, kf) || eq(kk, kf))
+        && eq(kc, kk) && eq(ko, kg) && eq(kh, kk) && eq(kl, kg)
+        && eq(PY( 2.0, -1.0), kg) && eq(PY( 2.0, 2.0), kk))
+      return true;
+    if (chkEdgeSoft2x4(coord, kg, kk, kl, kh, ko, kc, vec2(2.0, -1.0), vec2(2.0, 2.0)))
+      return true;
+  }
+  if (eq(kj, kk) && eq(ki, kj) && eq(kl, kj) && neq(kf, kg))
+  {
+    if ((eq(kf, kj) || eq(kg, kj))
+        && eq(ke, kg) && eq(kh, kf) && eq(kb, kg) && eq(kc, kf)
+        && eq(PY(-1.0, -1.0), kf) && eq(PY( 2.0, -1.0), kg))
+      return true;
+    if (chkEdgeSoft2x4(coord, kf, kg, kc, kb, kh, ke, vec2(-1.0, -1.0), vec2(2.0, -1.0)))
+      return true;
+  }
+  if (eq(kf, kg) && eq(ke, kf) && eq(kh, kf) && neq(kj, kk))
+  {
+    if ((eq(kj, kf) || eq(kk, kf))
+        && eq(ki, kk) && eq(kl, kj) && eq(kn, kk) && eq(ko, kj)
+        && eq(PY(-1.0,  2.0), kj) && eq(PY( 2.0, 2.0), kk))
+      return true;
+    if (chkEdgeSoft2x4(coord, kj, kk, ko, kn, kl, ki, vec2(-1.0, 2.0), vec2(2.0, 2.0)))
+      return true;
+  }
   return false;
 }
 //#crisp}
@@ -433,11 +535,18 @@ ivec4 pointBlend(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3 k
     vec2 k36 = crossWin(coord, kb, kc, ke, kf, kg, kh, ki, kj, kk, kl, kn, ko);
     if (k36.y > 0.5) r = ivec4(r.x == BLEND_DOMINANT ? BLEND_DOMINANT : BLEND_NORMAL, BLEND_NONE, BLEND_NONE, r.w == BLEND_DOMINANT ? BLEND_DOMINANT : BLEND_NORMAL);
     else if (k36.x > 0.5) r = ivec4(BLEND_NONE, r.y == BLEND_DOMINANT ? BLEND_DOMINANT : BLEND_NORMAL, r.z == BLEND_DOMINANT ? BLEND_DOMINANT : BLEND_NORMAL, BLEND_NONE);
-    // 46. a 2x2 checker of two colors inside a checker texture (or its edge against a solid wall) keeps its corners square
-    if ((r.x + r.y + r.z + r.w > 0)
-        && (isChecker ? checker46(coord, kf, kg, kb, kc, ke, kh, ki, kl, kn, ko)
-                      : checkerEdge46(coord, kb, kc, ke, kf, kg, kh, ki, kj, kk, kl, kn, ko)))
-      r = ivec4(BLEND_NONE);
+    // 46. a 2x2 checker (exact, shaded, or 50% mesh) inside a checker texture (or its edge against a solid wall) keeps its corners square
+    if (r.x + r.y + r.z + r.w > 0)
+    {
+      if (eq(kf, kg) || eq(kj, kk) || eq(kf, kj) || eq(kg, kk))
+      {
+        if (checkerEdge46(coord, kb, kc, ke, kf, kg, kh, ki, kj, kk, kl, kn, ko))
+          r = ivec4(BLEND_NONE);
+      }
+      else if ((isChecker && checker46(coord, kf, kg, kb, kc, ke, kh, ki, kl, kn, ko))
+               || checkerShaded46(coord, kf, kg, kj, kk, kb, kc, ke, kh, ki, kl, kn, ko))
+        r = ivec4(BLEND_NONE);
+    }
   }
 //#crisp}
   return r;

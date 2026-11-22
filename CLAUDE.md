@@ -66,3 +66,24 @@ RetroArch compiles `.slang` shaders through its C preprocessor (`rslc`) and `.gl
    - Keep exact `<` vs `<=` asymmetries where documented to match Zenju's C++ xBRZ 1.9.
    - Keep `TexCoord * 1.0001` in `pass1` vertex UV generation so `sign(0)` ties on even integer scales match libretro `xbrz-freescale`.
    - When fixing asymmetric directional checks (horizontal vs. vertical, 4 rotations of a corner), verify all 4 orientations symmetrically and re-check comparison scenes in `docs/img/` if visual output changes.
+
+## 5. Lab Testing, 100-Scene Suite & Latency Policy
+
+Visual regression testing, D4 symmetry verification, and performance profiling run against the persistent 100-scene lab at `/home/antigravity/.gemini/xbrz_crisp_lab/`:
+
+- **Layout:**
+  - `games100/` — 100 validated 1× pixel-art PNGs + `manifest.json`
+  - `lab_kit.py` — Unified CLI (`cache-warm`, `diff100`, `pin-audit`, `build-cmp`, `hunt`, `bench`)
+  - `studio_mobile_template_v3.html` — Standalone Mobile HTML Studio v3 template (includes `Orig 1×` hold button / `O` key)
+  - `cache/<sha12>/<scene>.png` & `cache/zenju19/<scene>.png` — Content-addressed 6× render cache
+  - `bin/libbench_multi_v2.so` & `bin/libzenju_xbrz19.so` — Headless EGL/GLES3 multi-pass & Zenju 1.9 C++ backends
+- **Mandatory Mesa `llvmpipe` environment guard:**
+  Always export `LP_NATIVE_VECTOR_WIDTH=128` before loading Mesa/EGL (`llvmpipe`'s AVX-512 backend miscompiles `resolve.glsl`). `lab_kit.py` enforces this automatically at import time in both parent and spawned workers; set it explicitly in any standalone script or shader runner.
+- **Fast iteration workflow (2 workers + persistent cache):**
+  - `lab_kit.py cache-warm` — Pre-warm 6× renders (`--shader main` or `--zenju`) with 2 workers.
+  - `lab_kit.py diff100` — Cached 100-scene diff scan (`--cand ... --ref main`, 2 workers), ranked table, and top-N 4-panel visual hotspot cards.
+  - `lab_kit.py pin-audit` — 5-pass state dump + zoomed 1×-gridded cards from Studio Markdown pins (`--pin-md`) or `scene x y [corner]` tuples.
+  - `lab_kit.py hunt` — 2-worker D4 equivariance audit (`flipH`, `flipV`, `rot180`; target `0/0/0`, default 12 stratified scenes or `--full` for all 100).
+  - `lab_kit.py build-cmp` — Builds the offline Mobile HTML Studio v3 comparator (with `Orig 1×` hold button and automatic `node --check` JS validation; 2 workers for cache misses).
+- **Final-only latency benchmark policy:**
+  **Defer `lab_kit.py bench` until AFTER all rule changes are finalized.** Never run latency benchmarks after each individual rule tweak. When measuring final performance, run `lab_kit.py bench` **strictly single-worker (1 worker ONLY) on an idle CPU** (never concurrently with renders, builds, or other heavy commands).

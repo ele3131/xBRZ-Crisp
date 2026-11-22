@@ -181,7 +181,10 @@ precision highp int;
 //     cloth above it meet a buckle with square corners on both sides (Isaac in Golden Sun). Where the pixel is
 //     the middle step of a strong ramp between the area whose color the corner takes and the area on its other
 //     side, both going on past it in line, it is no junction, so a light cheek meets orange and brown round (the
-//     boy in Final Fantasy Tactics Advance); and the end of a 1-pixel diagonal stroke keeps its cut.
+//     boy in Final Fantasy Tactics Advance); and the end of a 1-pixel diagonal stroke keeps its cut. On a
+//     4-color orthogonal tile crosshair (where two adjacent quadrants are solid 2x2 blocks and both opposite
+//     colors extend straight orthogonally), flat-block continuations, diagonal runs, and wide ramps do not
+//     rescue the corner.
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
 //     straight line of three of its color along the pixel's side, where the corner's other neighbor
 //     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
@@ -191,8 +194,9 @@ precision highp int;
 //     ramp (the two neighbors are close shades far from the pixel, and the cut goes on) the corner is cut.
 //     At the tip of an outline that runs diagonally into an area of one color, the area is no line: the
 //     corner is cut as in xBRZ where the area and the other neighbor are close shades of one background,
-//     and otherwise takes the other neighbor's color, so the background does not bite into the object,
-//     like the hand in Golden Sun's village.
+//     and otherwise takes the other neighbor's color (except where the line's color also surrounds the
+//     opposite sides of E, preventing unrelated object bleed across a shared background), so the background
+//     does not bite into the object, like the hand in Golden Sun's village.
 //     The ramp also counts where the pixel's color goes on diagonally on the far side of the cut, or where
 //     the pixel past it there is a close shade of the pixel (within XBRZ_LINE_TONE of its distance to the
 //     line), so the tip of a V and a diagonal outline that steps along a straight line are cut as in xBRZ,
@@ -240,8 +244,8 @@ precision highp int;
 //     the two pixels between them then cut into each other along their shared side, each with a 2:1 line in
 //     the other's color, so the two colors seem to swap places. The pixel that is held less by its
 //     surroundings keeps its cut, and the other stays whole: each of the 8 neighbors within XBRZ_HOLD_SAME
-//     of a pixel's color counts for it, a side neighbor twice, and on a tie the darker pixel stays whole
-//     (the two differ by more than XBRZ_JUNCTION), like the tree crowns of Golden Sun's Mt. Aleph.
+//     of a pixel's color counts for it, a side neighbor twice, and on a tie the darker pixel stays whole,
+//     like the tree crowns of Golden Sun's Mt. Aleph.
 // 29. The burr of a square stroke: the corner of a pixel at the tip of a dark outline (its color goes on only
 //     on the side away from the corner) that xBRZ cuts with a line in the color of a lighter neighbor stays
 //     square where that neighbor's own corner at the same point is square, the corner pixel has the other
@@ -298,6 +302,8 @@ precision highp int;
 //     paint the whole pixel's color or end as a lone ramp against its square side (Golden Sun's menu frame).
 //     Not where the two colors the cut joins are two shades of one stroke (under XBRZ_STEP38 as far apart as
 //     the other colors), like the dark brown and brown outline of a hood, which bends there as in xBRZ.
+//     A 3+ color corner (pairSq >= XBRZ_JUNC4^2) on a 1-pixel bar flush against a 4-color orthogonal crosshair
+//     likewise stays square so straight tile-border bars do not notch across the seam.
 // 39. A tie on a ramp: where E's two neighbors at a corner are equally far from E and E lies on the straight
 //     ramp between them, neither color has a better claim to the corner when the pixel across it is a
 //     fourth color, so the corner stays square and E touches both, like the light pink under the white of
@@ -312,7 +318,11 @@ precision highp int;
 //     diagonally, an outer corner that xBRZ leaves square between two side neighbors of different colors is
 //     cut along the stroke where the stroke is darker than both, like the black outline at Harry's knees,
 //     and two 2:1 lines that lean opposite ways at one edge, squeezing the stripe into a thin tip, are
-//     drawn as a 45-degree cut and a plain cut, like the olive stripe on the Golden Sun slime.
+//     drawn as a 45-degree cut and a plain cut, like the olive stripe on the Golden Sun slime. On a true
+//     45-degree convex apex (two diagonals of E's color behind one edge, excluding parallel stem walls),
+//     colliding 2:1 cuts are stripped to 45 degrees and a missing multi-tone 45-degree corner whose two
+//     outer neighbors are closer to each other than to E (pairSq < minSideSq) is completed when confirmed
+//     by an adjacent 45-degree line in E's color.
 // 42. A step in a 45-degree edge: a corner that xBRZ leaves square, where its two neighbors at the corner and
 //     the pixel across it are one color K (XBRZ_MINC or more from E) and E's other two neighbors are not K,
 //     is cut along the edge when the same corner of both pixels along the edge is cut with a 45-degree line
@@ -332,11 +342,12 @@ precision highp int;
 //     with a 2:1 line, the three pixels around that corner are close tones of E (XBRZ_MINC to
 //     XBRZ_MATCH_EDGE from it, the two side ones two different tones) and the pixel on E's other side is 80
 //     or more away, the corner stays square, so the stroke ends square (a gray seam on Isaac's shoulder).
-// 46. A checkerboard keeps its squares: a 2x2 checker of two colors with three or more of the 2x2 blocks
-//     beside it (2 pixels left, right, above and below) checkers of the same two colors, or forming a 2x6
-//     axial checker strip bounded laterally by axis-aligned walls, is not cut; likewise a 1x4 solid wall
-//     immediately adjacent to a confirmed 2x4 checker strip keeps its squares, so checker dithering stays
-//     square right up to its borders without affecting 1-pixel dotted lines or diagonal strokes.
+// 46. A checkerboard keeps its squares: a 2x2 checker of two colors (or a shaded/gradient checker and a
+//     high-contrast 1-parity 50% mesh transparency overlay) with three or more of the 2x2 blocks beside it
+//     (2 pixels left, right, above and below) matching its parity, or forming a 2x6 axial checker strip
+//     bounded laterally by axis-aligned walls, is not cut; likewise a 1x4 solid wall immediately adjacent to
+//     a confirmed 2x4 exact or shaded checker strip keeps its squares, so checker dithering and 50% HUD mesh
+//     overlays stay square right up to their borders without affecting 1-pixel dotted lines or diagonal strokes.
 // 47. A notch in a straight stroke: where E's corner would be cut in the color of a lone pixel beside it
 //     that is a close shade of E, while E's color goes on straight past its other neighbor and diagonally
 //     past the lone pixel, and the color on E's far side is XBRZ_FAR47 or more away, the corner stays square,
@@ -349,13 +360,14 @@ precision highp int;
 // 49. A 1-pixel diagonal bar ends even: where E ends a stroke 1 pixel wide that goes on only diagonally (its
 //     color goes on at one diagonal, and E and the next pixel are XBRZ_BAR49 or more from all their other
 //     neighbors), lighter or darker than both pixels beside it and drawn joined, E's two side corners are cut at
-//     45 degrees in the color beside the stroke and its end corner at 45 degrees in the nearer neighbor, so the
-//     stroke is an even bar with a straight end (a light stroke on the boy's shoulder in Final Fantasy Tactics
-//     Advance). The end stays as it is where the stroke runs on into a region on its own side of the sides'
-//     shades (a dark stroke into an outline) or into one region that holds both pixels at the end corner (a dark
-//     line that meets a white branch), and no corner is cut where a neighbor already draws the stroke's color
-//     across it. A neighbor's corner at the point where a side cut paints that neighbor is not cut in the color
-//     from the stroke's other side, so that color does not wrap around the bar's end.
+//     45 degrees in the color beside the stroke (when that side color matches either the far side or the corner
+//     pixel within 100 YCbCr, preventing foreign-color leaks) and its end corner at 45 degrees in the nearer
+//     neighbor, so the stroke is an even bar with a straight end (a light stroke on the boy's shoulder in Final
+//     Fantasy Tactics Advance). The end stays as it is where the stroke runs on into a region on its own side of
+//     the sides' shades (a dark stroke into an outline) or into one region that holds both pixels at the end corner
+//     (a dark line that meets a white branch), and no corner is cut where a neighbor already draws the stroke's
+//     color across it. A neighbor's corner at the point where a side cut actually paints that neighbor is not cut
+//     in the color from the stroke's other side, so that color does not wrap around the bar's end.
 // 50. Drop shadow in a 1-pixel cavity: where a mid-tone background pixel (0.12 < E.x < 0.72) is cut on
 //     separate corners by both a bright foreground stroke (like a 1-pixel HUD letter) and a dark drop shadow,
 //     the dark shadow bevel is suppressed so small glyph bowls stay open; likewise a near-black drop-shadow

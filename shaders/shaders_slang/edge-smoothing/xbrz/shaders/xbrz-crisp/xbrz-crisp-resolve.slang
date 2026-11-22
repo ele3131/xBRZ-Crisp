@@ -418,7 +418,7 @@ vec2 straight21(Roles r, vec3 E, float ln)
   {
     bool tipE = !sameColor(E, r.mu) && !sameColor(E, r.mw);
     if (uwSq < (XBRZ_LINE_BACK * XBRZ_LINE_BACK) * minESq) { if (tipE) return vec2(0.0); }
-    else if (tipE || sameColor(r.w, r.w2mu)) return vec2(1.0, 1.0);
+    else if ((tipE || sameColor(r.w, r.w2mu)) && !(sameColor(r.u, r.mu) && sameColor(r.u, r.mw))) return vec2(1.0, 1.0);
   }
   bool middle = sameColor(r.u, r.uw) && sameColor(r.u, r.umw);
   bool four = !middle && euSq >= SQ255(XBRZ_LINE_STRONG) && !sameColor(r.w, r.umw)
@@ -619,7 +619,6 @@ void main()
       vec4 nW28 = mix(oSt17, oSh17, sec);
       vec4 pair28_0 = cutInit * activeCutOf(nW28) * vec4(equal(FLAG(nW28, 8.0), sec)) * line * FLAG(nW28, 4.0)
                     * mix(st, sh, sec) * mix(FLAG(nW28, 64.0), FLAG(nW28, 16.0), sec)
-                    * vec4(greaterThan(mix(dE4.yxzw, dE4.xzwy, sec), vec4(XBRZ_JUNCTION)))
                     * (1.0 - FLAG(nW28, 32.0) * (1.0 - blockedBit) * (1.0 - weak));
       bool needRing = any(greaterThan(
         cutInit * vec4(greaterThanEqual(cand20, vec4(24.0)))
@@ -716,8 +715,14 @@ void main()
           float loD = 1.0 - max(sameF(D, A), max(sameF(D, G), sameF(D, ll))), loB = 1.0 - max(sameF(B, A), max(sameF(B, C), sameF(B, uu)));
           float loF = 1.0 - max(sameF(F, C), max(sameF(F, I), sameF(F, rr))), loH = 1.0 - max(sameF(H, G), max(sameF(H, I), sameF(H, dd)));
           cross20 *= vec4(mix(loD, loB, sec.x), mix(loB, loF, sec.y), mix(loF, loH, sec.z), mix(loH, loD, sec.w));
-          ext1 *= 1.0 - cross20 * vec4(sameF(D, G) * sameF(D, ll), sameF(B, A) * sameF(B, uu), sameF(F, C) * sameF(F, rr), sameF(H, I) * sameF(H, dd));
-          ext2 *= 1.0 - cross20 * vec4(sameF(B, C) * sameF(B, uu), sameF(F, I) * sameF(F, rr), sameF(H, G) * sameF(H, dd), sameF(D, A) * sameF(D, ll));
+          vec4 d4_20 = vec4(greaterThan(min(min(nbASq, nbBSq), dgESq), vec4(SQ255(XBRZ_JUNCTION))));
+          vec4 blkC20 = vec4(sameF(A, llu) * sameF(A, luu), sameF(C, ruu) * sameF(C, rru), sameF(I, rrd) * sameF(I, rdd), sameF(G, ldd) * sameF(G, lld));
+          vec4 blk1_20 = vec4(sameF(D, G) * sameF(D, ll), sameF(B, A) * sameF(B, uu), sameF(F, C) * sameF(F, rr), sameF(H, I) * sameF(H, dd));
+          vec4 blk2_20 = vec4(sameF(B, C) * sameF(B, uu), sameF(F, I) * sameF(F, rr), sameF(H, G) * sameF(H, dd), sameF(D, A) * sameF(D, ll));
+          vec4 ortho1 = d4_20 * blkC20 * vec4(sameF(B, uu) * sameF(E, H), sameF(F, rr) * sameF(E, D), sameF(H, dd) * sameF(E, B), sameF(D, ll) * sameF(E, F));
+          vec4 ortho2 = d4_20 * blkC20 * vec4(sameF(D, ll) * sameF(E, F), sameF(B, uu) * sameF(E, H), sameF(F, rr) * sameF(E, D), sameF(H, dd) * sameF(E, B));
+          ext1 *= 1.0 - max(cross20, ortho1) * blk1_20;
+          ext2 *= 1.0 - max(cross20, ortho2) * blk2_20;
           float eAcross = max(junctionNear(E, G), junctionNear(E, C)), eAlong = max(junctionNear(E, A), junctionNear(E, I));
           bool grayE = dot(E.yz, E.yz) < SQ255(XBRZ_JUNC_GRAY);
           float sC = grayE && chromaSqY(E, C) < SQ255(XBRZ_JUNC_HUE) ? dgESq.y : 4.0, sG = grayE && chromaSqY(E, G) < SQ255(XBRZ_JUNC_HUE) ? dgESq.w : 4.0;
@@ -740,7 +745,8 @@ void main()
             vec4 d2 = (on20.x * cG.x + on20.z * cG.z > 0.0) ? cutNoWeak(INFO_AT(-2.0,  2.0)) : vec4(0.0);
             vec4 runA = vec4(cC.x + cC.x * u2.x, cA.y + cA.y * m2.y, cC.z + cC.z * u2.z, cA.w + cA.w * m2.w);
             vec4 runB = vec4(cG.x + cG.x * d2.x, cI.y + cI.y * p2.y, cG.z + cG.z * d2.z, cI.w + cI.w * p2.w);
-            on20 *= vec4(lessThan(1.0 + runA + runB, vec4(3.0)));
+            vec4 orthoBlock = max(ortho1 * blk1_20, ortho2 * blk2_20);
+            on20 *= max(vec4(lessThan(1.0 + runA + runB, vec4(3.0))), orthoBlock);
             vec4 tipH = vec4(sameF(A, B) * cB.z * cA.w, sameF(C, B) * cB.w * cC.z, sameF(I, H) * cH.x * cI.y, sameF(G, H) * cH.y * cG.x);
             vec4 tipV = vec4(sameF(A, D) * cD.z * cA.y, sameF(C, F) * cF.w * cC.x, sameF(I, F) * cF.x * cI.w, sameF(G, D) * cD.y * cG.z);
             on20 *= 1.0 - mix(tipV, tipH, vec4(1.0 - sec.x, sec.y, 1.0 - sec.z, sec.w));
@@ -751,7 +757,7 @@ void main()
                               vec4(lessThan(dE1 + dE2 + cand20, (1.0 + XBRZ_JUNC_RAMP3) * maxE20)) * vec4(lessThan(cand20, maxE20))
                               * vec4(greaterThan(min(cand20, min(dE1, dE2)), XBRZ_JUNC_MID * maxE20)) * vec4(greaterThan(maxE20, vec4(XBRZ_JUNC_FAR))));
             vec4 keep20 = max(vec4(greaterThan(runA + runB, vec4(0.5))), (isCut(blendResult) * (1.0 - on20)).zwxy);
-            on20 *= 1.0 - keep20 * wide20;
+            on20 *= 1.0 - keep20 * wide20 * (1.0 - orthoBlock);
             vec4 frame20 = vec4(sameF(B, C) * sameF(B, rru) * sameF(D, G) * sameF(D, ldd) * cA.z * max(sameF(A, uu), sameF(A, ll)) * (1.0 - sameF(E, A)),
                                 sameF(B, A) * sameF(B, llu) * sameF(F, I) * sameF(F, rdd) * cC.w * max(sameF(C, uu), sameF(C, rr)) * (1.0 - sameF(E, C)),
                                 sameF(F, C) * sameF(F, ruu) * sameF(H, G) * sameF(H, lld) * cI.x * max(sameF(I, rr), sameF(I, dd)) * (1.0 - sameF(E, I)),
@@ -878,7 +884,6 @@ void main()
           vec4 nCut = activeCutOf(nW);
           vec4 pair = isCut(blendResult) * nCut * vec4(equal(FLAG(nW, 8.0), sec)) * line * FLAG(nW, 4.0)
                     * mix(haveSteepLine, haveShallowLine, sec) * mix(FLAG(nW, 64.0), FLAG(nW, 16.0), sec)
-                    * vec4(greaterThan(mix(dE4.yxzw, dE4.xzwy, sec), vec4(XBRZ_JUNCTION)))
                     * (1.0 - FLAG(nW, 32.0) * (1.0 - blockedBit) * (1.0 - weak));
           if (any(greaterThan(pair, vec4(0.5))))
           {
@@ -890,7 +895,7 @@ void main()
             vec4 hN = mix(vec4(hD, hB, hF, hH), vec4(hB, hF, hH, hD), sec);
             vec4 tie = vec4(tie28(E, sec.x > 0.5 ? B : D), tie28(E, sec.y > 0.5 ? F : B),
                             tie28(E, sec.z > 0.5 ? H : F), tie28(E, sec.w > 0.5 ? D : H));
-            vec4 whole = max(vec4(lessThan(vec4(hE), hN - 0.5)),
+            vec4 whole = max(vec4(greaterThan(vec4(hE), hN + 0.5)),
                              vec4(lessThan(abs(hE - hN), vec4(0.5))) * tie);
             blendResult *= 1.0 - pair * whole;
           }
@@ -997,6 +1002,28 @@ void main()
           max(float(F.x > 0.75 && B.x < 0.08), float(B.x > 0.75 && F.x < 0.08)));
         vec4 dropSh = midCut * oppBright * vec4(lessThan(cand20, vec4(XBRZ_SAME)));
         blendResult *= 1.0 - dropSh;
+      }
+
+
+      // ---- 15b. Strong exact-color 45-deg bridge kept when lonePixel broke it against a weaker/non-line opposite cut ----
+      {
+        vec4 cutB = isCut(blendResult);
+        vec4 stubB = cutB * (1.0 - line) * (1.0 - small23) * vec4(lessThan(cand20, vec4(XBRZ_SAME)));
+        if (any(greaterThan(stubB, vec4(0.5))))
+        {
+          vec4 dMinC = min(dE4.yxzw, dE4.xzwy);
+          vec4 dOppMax = max(dE4.yxzw, dE4.xzwy).zwxy;
+          vec4 oppCut = cutB.zwxy;
+          vec4 oppLine = line.zwxy;
+          float notDotE = float(min(min(dE4.x, dE4.y), min(dE4.z, dE4.w)) < XBRZ_LOOSE
+                                || sameF(E, A) + sameF(E, C) + sameF(E, G) + sameF(E, I) > 0.5);
+          vec4 twoCutBridge = vec4(float(dot(cutB, vec4(1.0)) < 2.5)) * (1.0 - oppLine)
+                            * vec4(greaterThanEqual(cand20.zwxy, vec4(XBRZ_SAME)))
+                            * vec4(lessThan(2.0 * min(dE4.yxzw, dE4.xzwy).zwxy, dMinC));
+          vec4 promB = stubB * vec4(greaterThanEqual(dMinC, vec4(XBRZ_STRAIGHT))) * oppCut
+                     * max(vec4(notDotE) * max(1.0 - oppLine, vec4(lessThan(1.5 * dOppMax, dMinC))), twoCutBridge);
+          line = max(line, promB);
+        }
       }
 
       // ---- 14b. Dark outline 2:1 stub coupling and same-color 2-1-2 arc smoothing ----
