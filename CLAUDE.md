@@ -25,11 +25,11 @@ python3 tools/build-shaders.py    # Regenerates all 10 Slang + GLSL shaders in s
 python3 tools/verify.py           # Lint + single-source sync + make-multipass + ES 1.00/3.00 compile
 python3 tools/make-release.py     # Deterministic build/xbrz-crisp.zip + SHA256
 # Optional helpers:
-python3 tools/render-docs.py      # Render docs/img/*-crisp{10,20,30}.png locally (gitignored; built in CI)
-python3 tools/publish-release.py 3.6 [--publish]  # Full release pipeline + changelog + GitHub Release
+python3 tools/render-docs.py --all --include-xbrz  # Render docs/img/* and README docs/sheets/* locally (gitignored; built in CI)
+python3 tools/publish-release.py 3.6 [--publish]   # Local release helper (or push tag e.g. `3.6` for .github/workflows/release.yml)
 ```
 
-`build/` and `docs/img/*-crisp{10,20,30}.png` are gitignored (`.github/workflows/pages.yml` renders and deploys the comparison page automatically on push to `main`). Commit `tools/src/*` and the regenerated `shaders/*` files together so users cloning the repo or inspecting diffs see exact generated shader changes.
+`build/`, `docs/sheets/`, `docs/img/*-crisp{10,20,30}.png`, `docs/img/*-xbrz.png`, and `docs/img/explain/*.png` are gitignored (`.github/workflows/pages.yml` renders and deploys both the README comparison sheets and the interactive comparison page automatically on push to `main`). Immutable 1× micro-sources for README multi-console sheets live in `tools/assets/micro/` and their declarative layout lives in `tools/sheets_spec.json`. Commit `tools/src/*` and the regenerated `shaders/*` files together so users cloning the repo or inspecting diffs see exact generated shader changes.
 
 ## 2. RetroArch `rslc` & Mobile GLSL ES Compiler Constraints
 

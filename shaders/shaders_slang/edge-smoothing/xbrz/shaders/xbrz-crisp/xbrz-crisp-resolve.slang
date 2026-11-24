@@ -113,50 +113,16 @@ vec3 toYCbCr(vec3 c)
   return vec3(Y, SCALE_B * (c.b - Y), SCALE_R * (c.r - Y));
 }
 
-float luma(vec3 c) { return dot(c, LUMA_W); }
-
 float distSqY(vec3 a, vec3 b)
 {
   vec3 d = a - b;
   return dot(d, d);
 }
 
-float distY(vec3 a, vec3 b) { return sqrt(distSqY(a, b)); }
-float distY255(vec3 a, vec3 b) { return distY(a, b) * 255.0; }
-
-float distSqYCbCr(vec3 pixA, vec3 pixB)
-{
-  vec3 diff = pixA - pixB;
-  float Y = dot(diff, LUMA_W);
-  float Cb = SCALE_B * (diff.b - Y);
-  float Cr = SCALE_R * (diff.r - Y);
-  return (Y * Y) + (Cb * Cb) + (Cr * Cr);
-}
-
-float distYCbCr(vec3 pixA, vec3 pixB)
-{
-  return sqrt(distSqYCbCr(pixA, pixB));
-}
-
-float dist255(vec3 pixA, vec3 pixB)
-{
-  return distYCbCr(pixA, pixB) * 255.0;
-}
-
 // Squared threshold in [0..255] YCbCr units, kept in [0..1.5] so GLSL ES mediump never overflows
 #define SQ255(x) (((x) / 255.0) * ((x) / 255.0))
 // FP16-safe division guard (> 6.1e-5 smallest FP16 normal) so FTZ GPUs never produce NaN
 const float SAFE_EPS = 1e-4;
-
-bool within255(vec3 pixA, vec3 pixB, float lim)
-{
-  return distSqYCbCr(pixA, pixB) < SQ255(lim);
-}
-
-bool withinEq255(vec3 pixA, vec3 pixB, float lim)
-{
-  return distSqYCbCr(pixA, pixB) <= SQ255(lim);
-}
 
 bool withinY255(vec3 a, vec3 b, float lim)
 {
@@ -166,25 +132,6 @@ bool withinY255(vec3 a, vec3 b, float lim)
 bool withinEqY255(vec3 a, vec3 b, float lim)
 {
   return distSqY(a, b) <= SQ255(lim);
-}
-
-// Unified hue-shifting-tolerant AA / sel-out ramp check in YCbCr space (0 sqrt).
-// True when m lies strictly between endpoints a and b along their chord with
-// bounded orthogonal deviation (allowing pixel-art hue-shifting) and monotonic luma.
-bool isAaRampY(vec3 a, vec3 m, vec3 b, float orthoTolSq, float minSpanSq)
-{
-  vec3 ab = b - a;
-  float abSq = dot(ab, ab);
-  if (abSq < minSpanSq) return false;
-  vec3 am = m - a;
-  float proj = dot(am, ab);
-  if (proj <= 0.05 * abSq || proj >= 0.95 * abSq) return false;
-  float t = proj / abSq;
-  vec3 err = am - t * ab;
-  if (dot(err, err) > orthoTolSq * abSq) return false;
-  float loY = min(a.x, b.x), hiY = max(a.x, b.x);
-  if (hiY - loY > 0.08 && (m.x < loY - 0.02 || m.x > hiY + 0.02)) return false;
-  return true;
 }
 // the first pass's decisions for the four corners of the pixel at (x, y) from E; see the decision
 // word in pass 0 (BLEND is the blend type, FLAG(r, f) one of its flags)
@@ -270,6 +217,12 @@ float holdOf(vec3 c, vec3 tl, vec3 t, vec3 tr, vec3 l, vec3 r, vec3 bl, vec3 b, 
 {
   return held(c, tl) + held(c, tr) + held(c, bl) + held(c, br) + 2.0 * (held(c, t) + held(c, l) + held(c, r) + held(c, b));
 }
+float holdOfEdge(vec3 c, float hE, vec3 in0, vec3 in1, vec3 in2, vec3 in3, vec3 in4, vec2 o0, vec2 o1, vec2 o2)
+{
+  float hIn = held(c, in0) + held(c, in1) + 2.0 * (held(c, in2) + held(c, in3) + held(c, in4));
+  if (hE > hIn + 4.5 || hIn > hE + 0.5) return hIn;
+  return hIn + held(c, at(o0)) + 2.0 * held(c, at(o1)) + held(c, at(o2));
+}
 float tie28(vec3 e, vec3 n)
 {
   if (abs(e.x - n.x) > SAFE_EPS) return float(e.x < n.x);
@@ -278,11 +231,12 @@ float tie28(vec3 e, vec3 n)
 }
 
 // ---- 14. Straight steps & 25. A point on a shared edge ----
-float point25(vec3 E, vec3 N, vec3 s1, vec3 s2, vec3 a1, vec3 a2, vec3 notch, vec3 f1, vec3 f2, vec3 b1, vec3 b2)
+float point25(vec3 E, vec3 N, vec3 s1, vec3 s2, vec3 a1, vec3 a2, vec3 notch, vec2 o1, vec2 o2, vec3 b1, vec3 b2)
 {
-  if (!(sameColor(E, a1) && sameColor(E, a2) && !sameColor(E, notch) && !sameColor(E, f1) && !sameColor(E, f2))) return 0.0;
+  if (!(sameColor(E, a1) && sameColor(E, a2) && !sameColor(E, notch))) return 0.0;
   if (withinY255(E, N, XBRZ_JUNCTION) || withinY255(s1, N, XBRZ_JUNC_NEAR) || withinY255(s2, N, XBRZ_JUNC_NEAR) || withinY255(s1, s2, XBRZ_POINT)) return 0.0;
-  return (sameColor(N, b1) || sameColor(N, b2)) ? 1.0 : 0.0;
+  if (!(sameColor(N, b1) || sameColor(N, b2))) return 0.0;
+  return (!sameColor(E, at(o1)) && !sameColor(E, at(o2))) ? 1.0 : 0.0;
 }
 
 bool lighterSide(vec3 side, vec3 stroke) { return side.x > stroke.x && !withinY255(side, stroke, XBRZ_STRAIGHT); }
@@ -366,10 +320,11 @@ float aa20(vec3 Pc, vec3 O, vec3 P2, vec3 O2, float d1, float d2)
 float drawsLine(float r) { return float(r < 128.0 && BLEND(r) > 0.0 && BLEND(r) < 3.0 && FLAG(r, 4.0) > 0.0); }
 
 // ---- 19. A pixel apart keeps to itself ----
-float isoSqOf(vec3 c, vec3 n0, vec3 n1, vec3 n2, vec3 n3, vec3 n4, vec3 n5, vec3 n6, vec3 n7)
+float isoSqOf5(vec3 c, float baseSq, vec3 n0, vec3 n1, vec3 n2, vec3 n3, vec3 n4)
 {
-  return min(min(min(distSqY(c, n0), distSqY(c, n1)), min(distSqY(c, n2), distSqY(c, n3))),
-             min(min(distSqY(c, n4), distSqY(c, n5)), min(distSqY(c, n6), distSqY(c, n7))));
+  if (baseSq < SQ255(XBRZ_SAME)) return baseSq;
+  return min(baseSq, min(min(distSqY(c, n0), distSqY(c, n1)),
+                         min(min(distSqY(c, n2), distSqY(c, n3)), distSqY(c, n4))));
 }
 float squareOf(vec4 word) { return dot(BLEND(word), vec4(1.0)) == 0.0 ? 1.0 : 0.0; }
 
@@ -401,34 +356,38 @@ Roles makeRoles(vec2 v, vec2 h, vec3 cv, vec3 ch, vec3 cvh, vec3 cvmh, vec3 chmv
 }
 
 // ---- 21. A straight line does not bend ----
-vec2 straight21(Roles r, vec3 E, float ln)
+vec2 straight21(Roles r, vec3 E, float ln, float uwSq, float euSq, float ewSq)
 {
-  float uwSq = distSqY(r.u, r.w);
-  if (uwSq <= SQ255(XBRZ_LINE_SIDE)) return vec2(0.0);
-  float euSq = distSqY(E, r.u), ewSq = distSqY(E, r.w);
+  if (uwSq <= SQ255(XBRZ_LINE_SIDE) || !sameColor(r.u, r.uw)) return vec2(0.0);
   float minESq = min(euSq, ewSq);
-  if (minESq >= SQ255(XBRZ_LINE_STRONG) && sameColor(E, r.wmu) && sameColor(E, r.mw) && !sameColor(E, r.mu) && !sameColor(E, r.opp))
+  float dEwmuSq = distSqY(E, r.wmu);
+  bool sEwmu = dEwmuSq < SQ255(XBRZ_SAME);
+  float dEmuSq = distSqY(E, r.mu);
+  bool sEmu = dEmuSq < SQ255(XBRZ_SAME);
+  bool sEmw = sameColor(E, r.mw);
+  if (minESq >= SQ255(XBRZ_LINE_STRONG) && sEwmu && sEmw && !sEmu && !sameColor(E, r.opp))
     return vec2(0.0);
   if (uwSq < (XBRZ_LINE_TONE * XBRZ_LINE_TONE) * minESq
       && (ln > 0.5 || sameColor(r.w, r.mw))
-      && (sameColor(r.mu, E) || sameColor(r.wmu, E)
-          || distSqY(r.mu, E) < (XBRZ_LINE_TONE * XBRZ_LINE_TONE) * distSqY(r.mu, r.u)
-          || distSqY(r.wmu, E) < (XBRZ_LINE_TONE * XBRZ_LINE_TONE) * distSqY(r.wmu, r.u))) return vec2(0.0);
-  if (minESq >= SQ255(XBRZ_LINE_STRONG) && sameColor(r.u, r.u2) && sameColor(r.u, r.uw) && sameColor(E, r.wmu) && !withinY255(r.w, r.mw, XBRZ_LINE_PAST))
+      && (sEmu || sEwmu
+          || dEmuSq < (XBRZ_LINE_TONE * XBRZ_LINE_TONE) * distSqY(r.mu, r.u)
+          || dEwmuSq < (XBRZ_LINE_TONE * XBRZ_LINE_TONE) * distSqY(r.wmu, r.u))) return vec2(0.0);
+  if (minESq >= SQ255(XBRZ_LINE_STRONG) && sameColor(r.u, r.u2) && sEwmu && !withinY255(r.w, r.mw, XBRZ_LINE_PAST))
   {
-    bool tipE = !sameColor(E, r.mu) && !sameColor(E, r.mw);
+    bool tipE = !sEmu && !sEmw;
     if (uwSq < (XBRZ_LINE_BACK * XBRZ_LINE_BACK) * minESq) { if (tipE) return vec2(0.0); }
     else if ((tipE || sameColor(r.w, r.w2mu)) && !(sameColor(r.u, r.mu) && sameColor(r.u, r.mw))) return vec2(1.0, 1.0);
   }
-  bool middle = sameColor(r.u, r.uw) && sameColor(r.u, r.umw);
+  bool middle = sameColor(r.u, r.umw);
   bool four = !middle && euSq >= SQ255(XBRZ_LINE_STRONG) && !sameColor(r.w, r.umw)
            && distSqY(r.u2, r.u) > distSqY(r.u2, E)
-           && sameColor(r.u, r.uw) && sameColor(r.u, r.uw2) && sameColor(r.u, at(r.p + 3.0 * r.q))
+           && sameColor(r.u, r.uw2)
            && distSqY(r.u2mw, E) < min(distSqY(r.u2mw, r.u), distSqY(r.u2mw, r.w))
-           && !withinY255(E, r.wmu, XBRZ_LINE_ALONG) && !withinY255(E, r.umw, XBRZ_LINE_ALONG);
+           && dEwmuSq >= SQ255(XBRZ_LINE_ALONG) && !withinY255(E, r.umw, XBRZ_LINE_ALONG)
+           && sameColor(r.u, at(r.p + 3.0 * r.q));
   if (!middle && !four) return vec2(0.0);
   bool takes = sameColor(r.w, r.w2) && euSq >= SQ255(XBRZ_LINE_STRONG) && sameColor(r.w, r.w2mu)
-            && distSqY(r.wmu, E) < distSqY(r.wmu, r.w) && r.w.x < E.x;
+            && dEwmuSq < distSqY(r.wmu, r.w) && r.w.x < E.x;
   return vec2(1.0, takes ? 1.0 : 0.0);
 }
 
@@ -451,12 +410,11 @@ float back22(Roles r, vec3 E, float eWord, float blocked, float loneE)
 
 float tip22(Roles r, vec3 E)
 {
+  if (BLEND(r.ru) == 0.0 || BLEND(r.rumw) == 0.0 || max(FLAG(r.ru, 128.0), FLAG(r.rumw, 128.0)) < 0.5) return 0.0;
   float dlSq = distSqY(r.umw, r.u);
   if (dlSq < SQ255(XBRZ_SAME) || dlSq >= SQ255(XBRZ_CROSS_MAX) || r.umw.x <= r.u.x) return 0.0;
-  if (sameColor(r.u, r.w) || sameColor(r.u, r.uw) || sameColor(r.w, r.uw) || sameColor(E, r.uw) || sameColor(E, r.u)) return 0.0;
-  if (!sameColor(r.umw, at(2.0 * (r.p - r.q))) || sameColor(r.u, r.u2)) return 0.0;
-  if (BLEND(r.ru) == 0.0 || BLEND(r.rumw) == 0.0 || max(FLAG(r.ru, 128.0), FLAG(r.rumw, 128.0)) < 0.5) return 0.0;
-  return 1.0;
+  if (sameColor(r.u, r.w) || sameColor(r.u, r.uw) || sameColor(r.w, r.uw) || sameColor(E, r.uw) || sameColor(E, r.u) || sameColor(r.u, r.u2)) return 0.0;
+  return sameColor(r.umw, at(2.0 * (r.p - r.q))) ? 1.0 : 0.0;
 }
 #define ROLES_0(s) makeRoles(vX, hX, B, D, A, C, G, uu, ll, ruu, lld, llu, luu, H, F, I, iB.z, iD.z, iC.x, iG.x, s)
 #define ROLES_1(s) makeRoles(vY, hY, F, B, C, I, A, rr, uu, rrd, luu, ruu, rru, D, H, G, iF.w, iB.w, iI.y, iA.y, s)
@@ -502,10 +460,10 @@ void main()
     iI = INFO_AT( 1.0, 1.0);
     iA = INFO_AT(-1.0,-1.0);
     haveDiagInfo = true;
-    vec4 aA = vec4(greaterThan(BLEND(iC), vec4(0.0))) * vec4(lessThan(BLEND(iC), vec4(3.0))) * vec4(lessThan(iC, vec4(128.0)));
-    vec4 aB = vec4(greaterThan(BLEND(iG), vec4(0.0))) * vec4(lessThan(BLEND(iG), vec4(3.0))) * vec4(lessThan(iG, vec4(128.0)));
-    vec4 aC = vec4(greaterThan(BLEND(iI), vec4(0.0))) * vec4(lessThan(BLEND(iI), vec4(3.0))) * vec4(lessThan(iI, vec4(128.0)));
-    vec4 aD = vec4(greaterThan(BLEND(iA), vec4(0.0))) * vec4(lessThan(BLEND(iA), vec4(3.0))) * vec4(lessThan(iA, vec4(128.0)));
+    vec4 aA = activeCutOf(iC);
+    vec4 aB = activeCutOf(iG);
+    vec4 aC = activeCutOf(iI);
+    vec4 aD = activeCutOf(iA);
 
     // ---- 2. Diagonal limit: a blocked corner is cut only where it continues a cut ----
     vec4 chain = vec4(max(aA.x, aB.x), max(aC.y, aD.y), max(aA.z, aB.z), max(aC.w, aD.w));
@@ -596,49 +554,48 @@ void main()
       cachedE = E;
       haveE = true;
 
-      vec4 dE1_raw = sqrt(vec4(distSqY(E, B), distSqY(E, D), distSqY(E, F), distSqY(E, H)));
-      vec4 dLO_raw = sqrt(vec4(distSqY(D, B), distSqY(B, F), distSqY(F, H), distSqY(H, D)));
+      vec4 dE1Sq = vec4(distSqY(E, B), distSqY(E, D), distSqY(E, F), distSqY(E, H));
+      vec4 dLOSq = vec4(distSqY(D, B), distSqY(B, F), distSqY(F, H), distSqY(H, D));
+      vec4 dE1_raw = sqrt(dE1Sq);
+      vec4 dLO_raw = sqrt(dLOSq);
       dE4 = dE1_raw * 255.0;
       cand20 = dLO_raw * 255.0;
+      vec4 sECard = vec4(lessThan(dE1Sq, vec4(SQ255(XBRZ_SAME))));
       vec4 cB = cutNoWeak(iB), cD = cutNoWeak(iD), cF = cutNoWeak(iF), cH = cutNoWeak(iH), cA = cutNoWeak(iA), cC = cutNoWeak(iC), cG = cutNoWeak(iG), cI = cutNoWeak(iI);
 
-      // Exact 0-fetch gate: skip the 12 outer-ring fetches (luu..rdd) and rules 17/19/20/21/37/22/28/29
-      // whenever none of those rules can fire (clean smooth edges with cand20 < 24 and no special flags)
+      // Exact 0-fetch gate: skip the 12 outer-ring fetches (luu..rdd) and rules 17/19/20/21/37/22/29
+      // whenever none of those rules can fire (clean smooth edges with cand20 < 24 and no special flags).
+      // Rule 28 runs inside the ring block using cached luu..rdd, or via lean 0..3 fetch holdOfEdge in else.
       vec4 cutInit = isCut(blendResult);
       vec4 sh = haveShallowLine, st = haveSteepLine;
       vec4 on17 = cutInit * line * abs(sh - st) * vec4(equal(sec, st));
       vec4 oSh17 = vec4(iB.z, iF.w, iH.x, iD.y), oSt17 = vec4(iD.z, iB.w, iF.x, iH.y);
-      vec4 o17 = mix(oSt17, oSh17, sh);
-      vec4 oDraw17 = activeCutOf(o17) * FLAG(o17, 4.0)
-                   * mix(FLAG(o17, 64.0), FLAG(o17, 16.0), sh) * vec4(equal(FLAG(o17, 8.0), sh));
+      vec4 hit17 = vec4(0.0);
+      if (any(greaterThan(on17, vec4(0.0))))
+      {
+        vec4 o17 = mix(oSt17, oSh17, sh);
+        hit17 = on17 * activeCutOf(o17) * FLAG(o17, 4.0)
+              * mix(FLAG(o17, 64.0), FLAG(o17, 16.0), sh) * vec4(equal(FLAG(o17, 8.0), sh));
+      }
       float sqB = squareOf(iB), sqD = squareOf(iD), sqF = squareOf(iF), sqH = squareOf(iH);
       vec4 sq19 = vec4(sec.x > 0.5 ? sqB : sqD, sec.y > 0.5 ? sqF : sqB, sec.z > 0.5 ? sqH : sqF, sec.w > 0.5 ? sqD : sqH);
       vec4 bk22 = max(blockedBit,
                       max(max(FLAG(oSh17, 128.0), FLAG(oSt17, 128.0)),
                           max(FLAG(vec4(iC.x, iI.y, iG.z, iA.w), 128.0), FLAG(vec4(iG.x, iA.y, iC.z, iI.w), 128.0))));
-      vec4 nW28 = mix(oSt17, oSh17, sec);
-      vec4 pair28_0 = cutInit * activeCutOf(nW28) * vec4(equal(FLAG(nW28, 8.0), sec)) * line * FLAG(nW28, 4.0)
-                    * mix(st, sh, sec) * mix(FLAG(nW28, 64.0), FLAG(nW28, 16.0), sec)
-                    * (1.0 - FLAG(nW28, 32.0) * (1.0 - blockedBit) * (1.0 - weak));
       bool needRing = any(greaterThan(
-        cutInit * vec4(greaterThanEqual(cand20, vec4(24.0)))
-        + on17 * oDraw17 + cutInit * sq19 + cutInit * bk22 + pair28_0, vec4(0.0)));
+        cutInit * (vec4(greaterThanEqual(cand20, vec4(24.0))) + sq19 + bk22) + hit17, vec4(0.0)));
 
-      vec3 luu = vec3(0.0), uu = vec3(0.0), ruu = vec3(0.0);
-      vec3 llu = vec3(0.0), ll = vec3(0.0), lld = vec3(0.0);
-      vec3 rru = vec3(0.0), rr = vec3(0.0), rrd = vec3(0.0);
-      vec3 ldd = vec3(0.0), dd = vec3(0.0), rdd = vec3(0.0);
       if (needRing)
       {
-        luu = toYCbCr(P(-1., -2.)); uu = toYCbCr(P(0., -2.)); ruu = toYCbCr(P(1., -2.));
-        llu = toYCbCr(P(-2., -1.)); ll = toYCbCr(P(-2., 0.)); lld = toYCbCr(P(-2., 1.));
-        rru = toYCbCr(P( 2., -1.)); rr = toYCbCr(P( 2., 0.)); rrd = toYCbCr(P( 2., 1.));
-        ldd = toYCbCr(P(-1.,  2.)); dd = toYCbCr(P( 0., 2.)); rdd = toYCbCr(P( 1., 2.));
+        vec3 luu = toYCbCr(P(-1., -2.)), uu = toYCbCr(P(0., -2.)), ruu = toYCbCr(P(1., -2.));
+        vec3 llu = toYCbCr(P(-2., -1.)), ll = toYCbCr(P(-2., 0.)), lld = toYCbCr(P(-2., 1.));
+        vec3 rru = toYCbCr(P( 2., -1.)), rr = toYCbCr(P( 2., 0.)), rrd = toYCbCr(P( 2., 1.));
+        vec3 ldd = toYCbCr(P(-1.,  2.)), dd = toYCbCr(P( 0., 2.)), rdd = toYCbCr(P( 1., 2.));
 
         // ---- 17. A line drawn on one side only ----
-        if (any(greaterThan(on17 * oDraw17, vec4(0.0))))
+        if (any(greaterThan(hit17, vec4(0.0))))
         {
-          vec4 oDraw = oDraw17;
+          vec4 oDraw = hit17;
           vec4 cSh = vec4(max(sameF(D, ll), sameF(C, rru)), max(sameF(B, uu), sameF(I, rdd)),
                           max(sameF(F, rr), sameF(G, lld)), max(sameF(H, dd), sameF(A, luu)));
           vec4 cSt = vec4(max(sameF(B, uu), sameF(G, ldd)), max(sameF(F, rr), sameF(A, llu)),
@@ -650,7 +607,7 @@ void main()
           vec4 dLE = dE1_raw.yxzw;
           vec4 dOE = dE1_raw.xzwy;
           oDraw *= vec4(greaterThan(dLE + dOE, XBRZ_LONE_RAMP * dLO_raw));
-          blendResult *= 1.0 - on17 * oDraw;
+          blendResult *= 1.0 - oDraw;
         }
 
         // ---- 19. A pixel apart keeps to itself ----
@@ -663,10 +620,10 @@ void main()
           if (any(greaterThan(need19, vec4(0.0))))
           {
             float isoB = 0.0, isoD = 0.0, isoF = 0.0, isoH = 0.0;
-            if (need19.x + need19.y > 0.0) isoB = isoSqOf(B, luu, uu, ruu, A, C, D, E, F);
-            if (need19.x + need19.w > 0.0) isoD = isoSqOf(D, llu, A, B, ll, E, lld, G, H);
-            if (need19.y + need19.z > 0.0) isoF = isoSqOf(F, B, C, rru, E, rr, H, I, rrd);
-            if (need19.z + need19.w > 0.0) isoH = isoSqOf(H, D, E, F, G, I, ldd, dd, rdd);
+            if (need19.x + need19.y > 0.0) isoB = isoSqOf5(B, min(dE1Sq.x, min(dLOSq.x, dLOSq.y)), luu, uu, ruu, A, C);
+            if (need19.x + need19.w > 0.0) isoD = isoSqOf5(D, min(dE1Sq.y, min(dLOSq.x, dLOSq.w)), llu, A, ll, lld, G);
+            if (need19.y + need19.z > 0.0) isoF = isoSqOf5(F, min(dE1Sq.z, min(dLOSq.y, dLOSq.z)), C, rru, rr, I, rrd);
+            if (need19.z + need19.w > 0.0) isoH = isoSqOf5(H, min(dE1Sq.w, min(dLOSq.z, dLOSq.w)), G, I, ldd, dd, rdd);
             vec4 near19 = vec4(sec.x > 0.5 ? isoB : isoD, sec.y > 0.5 ? isoF : isoB, sec.z > 0.5 ? isoH : isoF, sec.w > 0.5 ? isoD : isoH);
             vec4 otherNear19 = vec4(sec.x > 0.5 ? isoD : isoB, sec.y > 0.5 ? isoB : isoF, sec.z > 0.5 ? isoF : isoH, sec.w > 0.5 ? isoH : isoD);
             vec4 iso = vec4(greaterThanEqual(near19, vec4(SQ255(XBRZ_ISO)))) * sq19;
@@ -687,96 +644,117 @@ void main()
                       * vec4(greaterThanEqual(vec4(min(distSqY(A, B), distSqY(A, D)), min(distSqY(C, F), distSqY(C, B)),
                                                    min(distSqY(I, H), distSqY(I, F)), min(distSqY(G, D), distSqY(G, H))), vec4(SQ255(XBRZ_SAME))));
             vec4 inlineRing = lone * vec4(sameF(C, G), sameF(A, I), sameF(C, G), sameF(A, I))
-                            * vec4(sameF(B, D), sameF(B, F), sameF(F, H), sameF(D, H));
+                            * vec4(lessThan(dLOSq, vec4(SQ255(XBRZ_SAME))));
             lone *= 1.0 - inlineRing;
             blendResult *= 1.0 - max(max(iso, otherIso), lone);
           }
         }
 
-      // ---- 20. A corner where no edge runs ----
-      {
-        vec4 dE1 = dE4.yxzw, dE2 = dE1.yzwx;
-        vec4 gate20 = isCut(blendResult) * vec4(greaterThan(cand20, vec4(XBRZ_JUNCTION))) * vec4(greaterThanEqual(min(dE1, dE2), XBRZ_JUNC_TONE * cand20));
-        if (any(greaterThan(gate20, vec4(0.0))))
+        // ---- 20. A corner where no edge runs ----
         {
-          vec4 ramp20 = vec4(lessThan(dE1 + dE2 + cand20, (1.0 + XBRZ_JUNC_RAMP) * max(cand20, max(dE1, dE2))));
-          vec4 cr20 = max(vec4(junctionNear(B, lld), junctionNear(F, luu), junctionNear(H, rru), junctionNear(D, rdd)),
-                          vec4(junctionNear(D, ruu), junctionNear(B, rrd), junctionNear(F, ldd), junctionNear(H, llu)));
-          vec4 lu20 = vec4(D.x, B.x, F.x, H.x);
-          vec4 lmin20 = min(min(lu20, lu20.yzwx), vec4(E.x));
-          vec4 ext1 = vec4(junctionNear(D, lld), junctionNear(B, luu), junctionNear(F, rru), junctionNear(H, rdd));
-          vec4 ext2 = vec4(junctionNear(B, ruu), junctionNear(F, rrd), junctionNear(H, ldd), junctionNear(D, llu));
-          vec4 nbASq = vec4(distSqY(D, A), distSqY(B, C), distSqY(F, I), distSqY(H, G));
-          vec4 nbBSq = vec4(distSqY(B, A), distSqY(F, C), distSqY(H, I), distSqY(D, G));
-          vec4 dgESq = vec4(distSqY(E, A), distSqY(E, C), distSqY(E, I), distSqY(E, G));
-          vec4 cross20 = vec4(greaterThan(min(min(nbASq, nbBSq), dgESq), vec4(SQ255(XBRZ_JUNCTION))))
-                       * vec4(greaterThan(min(dE1, dE2), vec4(XBRZ_JUNCTION)));
-          cross20 *= vec4(lessThan(vec4(E.x), min(lu20, lu20.yzwx))) * float(E.x <= XBRZ_DARK) * line;
-          float loD = 1.0 - max(sameF(D, A), max(sameF(D, G), sameF(D, ll))), loB = 1.0 - max(sameF(B, A), max(sameF(B, C), sameF(B, uu)));
-          float loF = 1.0 - max(sameF(F, C), max(sameF(F, I), sameF(F, rr))), loH = 1.0 - max(sameF(H, G), max(sameF(H, I), sameF(H, dd)));
-          cross20 *= vec4(mix(loD, loB, sec.x), mix(loB, loF, sec.y), mix(loF, loH, sec.z), mix(loH, loD, sec.w));
-          vec4 d4_20 = vec4(greaterThan(min(min(nbASq, nbBSq), dgESq), vec4(SQ255(XBRZ_JUNCTION))));
-          vec4 blkC20 = vec4(sameF(A, llu) * sameF(A, luu), sameF(C, ruu) * sameF(C, rru), sameF(I, rrd) * sameF(I, rdd), sameF(G, ldd) * sameF(G, lld));
-          vec4 blk1_20 = vec4(sameF(D, G) * sameF(D, ll), sameF(B, A) * sameF(B, uu), sameF(F, C) * sameF(F, rr), sameF(H, I) * sameF(H, dd));
-          vec4 blk2_20 = vec4(sameF(B, C) * sameF(B, uu), sameF(F, I) * sameF(F, rr), sameF(H, G) * sameF(H, dd), sameF(D, A) * sameF(D, ll));
-          vec4 ortho1 = d4_20 * blkC20 * vec4(sameF(B, uu) * sameF(E, H), sameF(F, rr) * sameF(E, D), sameF(H, dd) * sameF(E, B), sameF(D, ll) * sameF(E, F));
-          vec4 ortho2 = d4_20 * blkC20 * vec4(sameF(D, ll) * sameF(E, F), sameF(B, uu) * sameF(E, H), sameF(F, rr) * sameF(E, D), sameF(H, dd) * sameF(E, B));
-          ext1 *= 1.0 - max(cross20, ortho1) * blk1_20;
-          ext2 *= 1.0 - max(cross20, ortho2) * blk2_20;
-          float eAcross = max(junctionNear(E, G), junctionNear(E, C)), eAlong = max(junctionNear(E, A), junctionNear(E, I));
-          bool grayE = dot(E.yz, E.yz) < SQ255(XBRZ_JUNC_GRAY);
-          float sC = grayE && chromaSqY(E, C) < SQ255(XBRZ_JUNC_HUE) ? dgESq.y : 4.0, sG = grayE && chromaSqY(E, G) < SQ255(XBRZ_JUNC_HUE) ? dgESq.w : 4.0;
-          float sA = grayE && chromaSqY(E, A) < SQ255(XBRZ_JUNC_HUE) ? dgESq.x : 4.0, sI = grayE && chromaSqY(E, I) < SQ255(XBRZ_JUNC_HUE) ? dgESq.z : 4.0;
-          vec4 shadeLimSq = (XBRZ_JUNC_SHADE / 255.0) * min(dE1, dE2);
-          shadeLimSq *= shadeLimSq;
-          vec4 extE = max(vec4(eAcross, eAlong, eAcross, eAlong), vec4(lessThan(vec4(min(sC, sG), min(sA, sI), min(sC, sG), min(sA, sI)), shadeLimSq)));
-          vec4 chr20Sq = vec4(chromaSqY(B, D), chromaSqY(B, F), chromaSqY(F, H), chromaSqY(D, H));
-          float gB20 = dot(B.yz, B.yz), gD20 = dot(D.yz, D.yz), gF20 = dot(F.yz, F.yz), gH20 = dot(H.yz, H.yz);
-          vec4 gray20 = vec4(lessThan(vec4(max(gB20, gD20), max(gB20, gF20), max(gF20, gH20), max(gD20, gH20)), vec4(SQ255(XBRZ_JUNC_GRAY))));
-          vec4 on20 = gate20
-                    * (1.0 - vec4(lessThan(cand20, XBRZ_JUNC_SHADE * min(dE1, dE2))) * vec4(lessThan(chr20Sq, vec4(SQ255(XBRZ_JUNC_HUE)))) * gray20)
-                    * (1.0 - ramp20 * cr20 * vec4(greaterThan(min(dE1, dE2), vec4(XBRZ_JUNC_AA_MIN))) * vec4(lessThan(min(dE1, dE2), vec4(XBRZ_JUNC_AA_MAX))) * vec4(lessThan(lmin20, vec4(XBRZ_JUNC_AA_DARK))))
-                    * (1.0 - ext1) * (1.0 - ext2) * (1.0 - extE);
-          if (any(greaterThan(on20, vec4(0.0))))
+          vec4 dE1 = dE4.yxzw, dE2 = dE1.yzwx;
+          vec4 gate20 = isCut(blendResult) * vec4(greaterThan(cand20, vec4(XBRZ_JUNCTION))) * vec4(greaterThanEqual(min(dE1, dE2), XBRZ_JUNC_TONE * cand20));
+          if (any(greaterThan(gate20, vec4(0.0))))
           {
-            vec4 m2 = (on20.y * cA.y + on20.w * cA.w > 0.0) ? cutNoWeak(INFO_AT(-2.0, -2.0)) : vec4(0.0);
-            vec4 p2 = (on20.y * cI.y + on20.w * cI.w > 0.0) ? cutNoWeak(INFO_AT( 2.0,  2.0)) : vec4(0.0);
-            vec4 u2 = (on20.x * cC.x + on20.z * cC.z > 0.0) ? cutNoWeak(INFO_AT( 2.0, -2.0)) : vec4(0.0);
-            vec4 d2 = (on20.x * cG.x + on20.z * cG.z > 0.0) ? cutNoWeak(INFO_AT(-2.0,  2.0)) : vec4(0.0);
-            vec4 runA = vec4(cC.x + cC.x * u2.x, cA.y + cA.y * m2.y, cC.z + cC.z * u2.z, cA.w + cA.w * m2.w);
-            vec4 runB = vec4(cG.x + cG.x * d2.x, cI.y + cI.y * p2.y, cG.z + cG.z * d2.z, cI.w + cI.w * p2.w);
-            vec4 orthoBlock = max(ortho1 * blk1_20, ortho2 * blk2_20);
-            on20 *= max(vec4(lessThan(1.0 + runA + runB, vec4(3.0))), orthoBlock);
-            vec4 tipH = vec4(sameF(A, B) * cB.z * cA.w, sameF(C, B) * cB.w * cC.z, sameF(I, H) * cH.x * cI.y, sameF(G, H) * cH.y * cG.x);
-            vec4 tipV = vec4(sameF(A, D) * cD.z * cA.y, sameF(C, F) * cF.w * cC.x, sameF(I, F) * cF.x * cI.w, sameF(G, D) * cD.y * cG.z);
-            on20 *= 1.0 - mix(tipV, tipH, vec4(1.0 - sec.x, sec.y, 1.0 - sec.z, sec.w));
-            vec4 half20 = mix(vec4(cD.z, cB.w, cF.x, cH.y), vec4(cB.z, cF.w, cH.x, cD.y), sec);
-            on20 *= 1.0 - half20 * vec4(lessThan(cand20, 0.5 * min(dE1, dE2)));
-            vec4 maxE20 = max(dE1, dE2);
-            vec4 wide20 = max(vec4(lessThan(dE1 + dE2 + cand20, (1.0 + XBRZ_JUNC_RAMP2) * max(cand20, maxE20))),
-                              vec4(lessThan(dE1 + dE2 + cand20, (1.0 + XBRZ_JUNC_RAMP3) * maxE20)) * vec4(lessThan(cand20, maxE20))
-                              * vec4(greaterThan(min(cand20, min(dE1, dE2)), XBRZ_JUNC_MID * maxE20)) * vec4(greaterThan(maxE20, vec4(XBRZ_JUNC_FAR))));
-            vec4 keep20 = max(vec4(greaterThan(runA + runB, vec4(0.5))), (isCut(blendResult) * (1.0 - on20)).zwxy);
-            on20 *= 1.0 - keep20 * wide20 * (1.0 - orthoBlock);
-            vec4 frame20 = vec4(sameF(B, C) * sameF(B, rru) * sameF(D, G) * sameF(D, ldd) * cA.z * max(sameF(A, uu), sameF(A, ll)) * (1.0 - sameF(E, A)),
-                                sameF(B, A) * sameF(B, llu) * sameF(F, I) * sameF(F, rdd) * cC.w * max(sameF(C, uu), sameF(C, rr)) * (1.0 - sameF(E, C)),
-                                sameF(F, C) * sameF(F, ruu) * sameF(H, G) * sameF(H, lld) * cI.x * max(sameF(I, rr), sameF(I, dd)) * (1.0 - sameF(E, I)),
-                                sameF(D, A) * sameF(D, luu) * sameF(H, I) * sameF(H, rrd) * cG.y * max(sameF(G, ll), sameF(G, dd)) * (1.0 - sameF(E, G)));
-            on20 *= 1.0 - frame20;
+            vec4 ramp20 = vec4(lessThan(dE1 + dE2 + cand20, (1.0 + XBRZ_JUNC_RAMP) * max(cand20, max(dE1, dE2))));
+            vec4 cr20 = max(vec4(junctionNear(B, lld), junctionNear(F, luu), junctionNear(H, rru), junctionNear(D, rdd)),
+                            vec4(junctionNear(D, ruu), junctionNear(B, rrd), junctionNear(F, ldd), junctionNear(H, llu)));
+            vec4 lu20 = vec4(D.x, B.x, F.x, H.x);
+            vec4 lmin20 = min(min(lu20, lu20.yzwx), vec4(E.x));
+            vec4 ext1 = vec4(junctionNear(D, lld), junctionNear(B, luu), junctionNear(F, rru), junctionNear(H, rdd));
+            vec4 ext2 = vec4(junctionNear(B, ruu), junctionNear(F, rrd), junctionNear(H, ldd), junctionNear(D, llu));
+            vec4 nbASq = vec4(distSqY(D, A), distSqY(B, C), distSqY(F, I), distSqY(H, G));
+            vec4 nbBSq = vec4(distSqY(B, A), distSqY(F, C), distSqY(H, I), distSqY(D, G));
+            vec4 dgESq = vec4(distSqY(E, A), distSqY(E, C), distSqY(E, I), distSqY(E, G));
+            vec4 sNbA = vec4(lessThan(nbASq, vec4(SQ255(XBRZ_SAME))));
+            vec4 sNbB = vec4(lessThan(nbBSq, vec4(SQ255(XBRZ_SAME))));
+            vec4 sDgE = vec4(lessThan(dgESq, vec4(SQ255(XBRZ_SAME))));
+            vec4 d4_20 = vec4(greaterThan(min(min(nbASq, nbBSq), dgESq), vec4(SQ255(XBRZ_JUNCTION))));
+            vec4 orthoBlock = vec4(0.0);
+            if (any(greaterThan(d4_20, vec4(0.0))))
+            {
+              float sDll = sameF(D, ll), sBuu = sameF(B, uu), sFrr = sameF(F, rr), sHdd = sameF(H, dd);
+              vec4 cross20 = vec4(0.0);
+              if (E.x <= XBRZ_DARK)
+              {
+                cross20 = d4_20 * vec4(greaterThan(min(dE1, dE2), vec4(XBRZ_JUNCTION)))
+                        * vec4(lessThan(vec4(E.x), min(lu20, lu20.yzwx))) * line;
+                float loD = 1.0 - max(sNbA.x, max(sNbB.w, sDll)), loB = 1.0 - max(sNbB.x, max(sNbA.y, sBuu));
+                float loF = 1.0 - max(sNbB.y, max(sNbA.z, sFrr)), loH = 1.0 - max(sNbA.w, max(sNbB.z, sHdd));
+                cross20 *= vec4(mix(loD, loB, sec.x), mix(loB, loF, sec.y), mix(loF, loH, sec.z), mix(loH, loD, sec.w));
+              }
+              vec4 blkC20 = vec4(sameF(A, llu) * sameF(A, luu), sameF(C, ruu) * sameF(C, rru), sameF(I, rrd) * sameF(I, rdd), sameF(G, ldd) * sameF(G, lld));
+              vec4 blk1_20 = sNbB.wxyz * vec4(sDll, sBuu, sFrr, sHdd);
+              vec4 blk2_20 = sNbA.yzwx * vec4(sBuu, sFrr, sHdd, sDll);
+              vec4 vOrtho = vec4(sBuu * sECard.w, sFrr * sECard.y, sHdd * sECard.x, sDll * sECard.z);
+              vec4 ortho1 = d4_20 * blkC20 * vOrtho;
+              vec4 ortho2 = d4_20 * blkC20 * vOrtho.wxyz;
+              ext1 *= 1.0 - max(cross20, ortho1) * blk1_20;
+              ext2 *= 1.0 - max(cross20, ortho2) * blk2_20;
+              orthoBlock = max(ortho1 * blk1_20, ortho2 * blk2_20);
+            }
+            vec4 jnDgE = vec4(lessThan(dgESq, vec4(SQ255(XBRZ_JUNC_NEAR))));
+            float eAcross = max(jnDgE.w, jnDgE.y), eAlong = max(jnDgE.x, jnDgE.z);
+            bool grayE = dot(E.yz, E.yz) < SQ255(XBRZ_JUNC_GRAY);
+            float sC = grayE && chromaSqY(E, C) < SQ255(XBRZ_JUNC_HUE) ? dgESq.y : 4.0, sG = grayE && chromaSqY(E, G) < SQ255(XBRZ_JUNC_HUE) ? dgESq.w : 4.0;
+            float sA = grayE && chromaSqY(E, A) < SQ255(XBRZ_JUNC_HUE) ? dgESq.x : 4.0, sI = grayE && chromaSqY(E, I) < SQ255(XBRZ_JUNC_HUE) ? dgESq.z : 4.0;
+            vec4 shadeLimSq = (XBRZ_JUNC_SHADE / 255.0) * min(dE1, dE2);
+            shadeLimSq *= shadeLimSq;
+            vec4 extE = max(vec4(eAcross, eAlong, eAcross, eAlong), vec4(lessThan(vec4(min(sC, sG), min(sA, sI), min(sC, sG), min(sA, sI)), shadeLimSq)));
+            vec4 chr20Sq = vec4(chromaSqY(B, D), chromaSqY(B, F), chromaSqY(F, H), chromaSqY(D, H));
+            float gB20 = dot(B.yz, B.yz), gD20 = dot(D.yz, D.yz), gF20 = dot(F.yz, F.yz), gH20 = dot(H.yz, H.yz);
+            vec4 gray20 = vec4(lessThan(vec4(max(gB20, gD20), max(gB20, gF20), max(gF20, gH20), max(gD20, gH20)), vec4(SQ255(XBRZ_JUNC_GRAY))));
+            vec4 on20 = gate20
+                      * (1.0 - vec4(lessThan(cand20, XBRZ_JUNC_SHADE * min(dE1, dE2))) * vec4(lessThan(chr20Sq, vec4(SQ255(XBRZ_JUNC_HUE)))) * gray20)
+                      * (1.0 - ramp20 * cr20 * vec4(greaterThan(min(dE1, dE2), vec4(XBRZ_JUNC_AA_MIN))) * vec4(lessThan(min(dE1, dE2), vec4(XBRZ_JUNC_AA_MAX))) * vec4(lessThan(lmin20, vec4(XBRZ_JUNC_AA_DARK))))
+                      * (1.0 - ext1) * (1.0 - ext2) * (1.0 - extE);
             if (any(greaterThan(on20, vec4(0.0))))
             {
-              float aaV = aa20(B, H, uu, dd, dE1_raw.x, dE1_raw.w);
-              float aaH = aa20(D, F, ll, rr, dE1_raw.y, dE1_raw.z);
-              vec4 aa = vec4(mix(aaH, aaV, sec.x), mix(aaV, aaH, sec.y), mix(aaH, aaV, sec.z), mix(aaV, aaH, sec.w));
-              vec4 c20 = isCut(blendResult);
-              vec4 tip1 = vec4(sameF(E, I) * (1.0 - sameF(E, A)) * c20.y * c20.w, sameF(E, G) * (1.0 - sameF(E, C)) * c20.x * c20.z,
-                               sameF(E, A) * (1.0 - sameF(E, I)) * c20.y * c20.w, sameF(E, C) * (1.0 - sameF(E, G)) * c20.x * c20.z);
-              on20 *= (1.0 - aa) * (1.0 - tip1);
-              blendResult *= 1.0 - on20;
+              vec4 tipH = vec4(sNbB.x * cB.z * cA.w, sNbA.y * cB.w * cC.z, sNbB.z * cH.x * cI.y, sNbA.w * cH.y * cG.x);
+              vec4 tipV = vec4(sNbA.x * cD.z * cA.y, sNbB.y * cF.w * cC.x, sNbA.z * cF.x * cI.w, sNbB.w * cD.y * cG.z);
+              on20 *= 1.0 - mix(tipV, tipH, vec4(1.0 - sec.x, sec.y, 1.0 - sec.z, sec.w));
+              vec4 half20 = mix(vec4(cD.z, cB.w, cF.x, cH.y), vec4(cB.z, cF.w, cH.x, cD.y), sec);
+              vec4 w20 = mix(vec4(iG.z, iA.w, iC.x, iI.y), vec4(iC.z, iI.w, iG.x, iA.y), haveShallowLine);
+              vec4 far20 = line * abs(haveShallowLine - haveSteepLine) * mix(sECard.wyxz, sECard.zwyx, haveShallowLine)
+                         * vec4(drawsLine(w20.x), drawsLine(w20.y), drawsLine(w20.z), drawsLine(w20.w))
+                         * vec4(equal(FLAG(w20, 8.0), haveShallowLine))
+                         * vec4(equal(FLAG(w20, 16.0), haveShallowLine))
+                         * vec4(equal(FLAG(w20, 64.0), haveSteepLine))
+                         * (1.0 - orthoBlock);
+              on20 *= 1.0 - max(half20, far20) * vec4(lessThan(cand20, 0.5 * min(dE1, dE2)));
+              vec4 fetch20 = on20 * (1.0 - orthoBlock);
+              vec4 m2 = (fetch20.y * cA.y + fetch20.w * cA.w > 0.0) ? cutNoWeak(INFO_AT(-2.0, -2.0)) : vec4(0.0);
+              vec4 p2 = (fetch20.y * cI.y + fetch20.w * cI.w > 0.0) ? cutNoWeak(INFO_AT( 2.0,  2.0)) : vec4(0.0);
+              vec4 u2 = (fetch20.x * cC.x + fetch20.z * cC.z > 0.0) ? cutNoWeak(INFO_AT( 2.0, -2.0)) : vec4(0.0);
+              vec4 d2 = (fetch20.x * cG.x + fetch20.z * cG.z > 0.0) ? cutNoWeak(INFO_AT(-2.0,  2.0)) : vec4(0.0);
+              vec4 runA = vec4(cC.x + cC.x * u2.x, cA.y + cA.y * m2.y, cC.z + cC.z * u2.z, cA.w + cA.w * m2.w);
+              vec4 runB = vec4(cG.x + cG.x * d2.x, cI.y + cI.y * p2.y, cG.z + cG.z * d2.z, cI.w + cI.w * p2.w);
+              on20 *= max(vec4(lessThan(1.0 + runA + runB, vec4(3.0))), orthoBlock);
+              vec4 maxE20 = max(dE1, dE2);
+              vec4 wide20 = max(vec4(lessThan(dE1 + dE2 + cand20, (1.0 + XBRZ_JUNC_RAMP2) * max(cand20, maxE20))),
+                                vec4(lessThan(dE1 + dE2 + cand20, (1.0 + XBRZ_JUNC_RAMP3) * maxE20)) * vec4(lessThan(cand20, maxE20))
+                                * vec4(greaterThan(min(cand20, min(dE1, dE2)), XBRZ_JUNC_MID * maxE20)) * vec4(greaterThan(maxE20, vec4(XBRZ_JUNC_FAR))));
+              vec4 keep20 = max(vec4(greaterThan(runA + runB, vec4(0.5))), (isCut(blendResult) * (1.0 - on20)).zwxy);
+              on20 *= 1.0 - keep20 * wide20 * (1.0 - orthoBlock);
+              vec4 frame20 = vec4(sNbA.y * sameF(B, rru) * sNbB.w * sameF(D, ldd) * cA.z * max(sameF(A, uu), sameF(A, ll)),
+                                  sNbB.x * sameF(B, llu) * sNbA.z * sameF(F, rdd) * cC.w * max(sameF(C, uu), sameF(C, rr)),
+                                  sNbB.y * sameF(F, ruu) * sNbA.w * sameF(H, lld) * cI.x * max(sameF(I, rr), sameF(I, dd)),
+                                  sNbA.x * sameF(D, luu) * sNbB.z * sameF(H, rrd) * cG.y * max(sameF(G, ll), sameF(G, dd)))
+                           * (1.0 - sDgE);
+              on20 *= 1.0 - frame20;
+              if (any(greaterThan(on20, vec4(0.0))))
+              {
+                float aaV = aa20(B, H, uu, dd, dE1_raw.x, dE1_raw.w);
+                float aaH = aa20(D, F, ll, rr, dE1_raw.y, dE1_raw.z);
+                vec4 aa = vec4(mix(aaH, aaV, sec.x), mix(aaV, aaH, sec.y), mix(aaH, aaV, sec.z), mix(aaV, aaH, sec.w));
+                vec4 c20 = isCut(blendResult);
+                vec4 tip1 = sDgE.zwxy * (1.0 - sDgE) * vec4(c20.y * c20.w, c20.x * c20.z, c20.y * c20.w, c20.x * c20.z);
+                on20 *= (1.0 - aa) * (1.0 - tip1);
+                blendResult *= 1.0 - on20;
+              }
             }
           }
         }
-      }
 
         // ---- 21. A straight line does not bend ----
         if (any(greaterThan(isCut(blendResult) * vec4(greaterThan(cand20, vec4(XBRZ_LINE_SIDE))), vec4(0.0))))
@@ -788,10 +766,10 @@ void main()
           vec4 stOn = line * vec4(haveSteepLine.x, haveShallowLine.y, haveSteepLine.z, haveShallowLine.w);
           vec4 part21 = max(partSh * (1.0 - stOn * (1.0 - shOn)), partSt * (1.0 - shOn * (1.0 - stOn)));
           vec4 run21 = max(part21, vec4(max(cC.x, cG.x), max(cA.y, cI.y), max(cC.z, cG.z), max(cA.w, cI.w)));
-          if (blendResult.x > 0.0 && cand20.x > XBRZ_LINE_SIDE) { vec2 t = straight21(ROLES_0(sec.x), E, run21.x); line21.x = t.x; on21.x = t.y; }
-          if (blendResult.y > 0.0 && cand20.y > XBRZ_LINE_SIDE) { vec2 t = straight21(ROLES_1(sec.y), E, run21.y); line21.y = t.x; on21.y = t.y; }
-          if (blendResult.z > 0.0 && cand20.z > XBRZ_LINE_SIDE) { vec2 t = straight21(ROLES_2(sec.z), E, run21.z); line21.z = t.x; on21.z = t.y; }
-          if (blendResult.w > 0.0 && cand20.w > XBRZ_LINE_SIDE) { vec2 t = straight21(ROLES_3(sec.w), E, run21.w); line21.w = t.x; on21.w = t.y; }
+          if (blendResult.x > 0.0 && cand20.x > XBRZ_LINE_SIDE) { vec2 t = straight21(ROLES_0(sec.x), E, run21.x, dLOSq.x, sec.x > 0.5 ? dE1Sq.x : dE1Sq.y, sec.x > 0.5 ? dE1Sq.y : dE1Sq.x); line21.x = t.x; on21.x = t.y; }
+          if (blendResult.y > 0.0 && cand20.y > XBRZ_LINE_SIDE) { vec2 t = straight21(ROLES_1(sec.y), E, run21.y, dLOSq.y, sec.y > 0.5 ? dE1Sq.z : dE1Sq.x, sec.y > 0.5 ? dE1Sq.x : dE1Sq.z); line21.y = t.x; on21.y = t.y; }
+          if (blendResult.z > 0.0 && cand20.z > XBRZ_LINE_SIDE) { vec2 t = straight21(ROLES_2(sec.z), E, run21.z, dLOSq.z, sec.z > 0.5 ? dE1Sq.w : dE1Sq.z, sec.z > 0.5 ? dE1Sq.z : dE1Sq.w); line21.z = t.x; on21.z = t.y; }
+          if (blendResult.w > 0.0 && cand20.w > XBRZ_LINE_SIDE) { vec2 t = straight21(ROLES_3(sec.w), E, run21.w, dLOSq.w, sec.w > 0.5 ? dE1Sq.y : dE1Sq.w, sec.w > 0.5 ? dE1Sq.w : dE1Sq.y); line21.w = t.x; on21.w = t.y; }
           sec = abs(sec - on21);
           haveShallowLine *= 1.0 - on21;
           haveSteepLine *= 1.0 - on21;
@@ -804,40 +782,39 @@ void main()
           vec4 cutK = isCut(blendResult);
           vec4 sB = FLAG(iB, 8.0), sD = FLAG(iD, 8.0), sF = FLAG(iF, 8.0), sH = FLAG(iH, 8.0);
           vec4 flipK = vec4(0.0);
-          if (cutK.x > 0.5)
+          if (cutK.x > 0.5 && cand20.x >= 24.0)
           {
             bool s1 = sec.x > 0.5; vec3 Pc = s1 ? B : D, O = s1 ? D : B, K = s1 ? C : G;
             float dPcE = s1 ? dE4.x : dE4.y, dOE = s1 ? dE4.y : dE4.x;
             bool face = s1 ? (cB.z > 0.5 && sB.z < 0.5) : (cD.z > 0.5 && sD.z > 0.5);
-            flipK.x = float(face && cand20.x >= 24.0 && dPcE >= XBRZ_JUNCTION && dOE >= XBRZ_JUNCTION && cand20.x + dPcE >= 1.15 * dOE && kin37(O, K, Pc));
+            flipK.x = float(face && dPcE >= XBRZ_JUNCTION && dOE >= XBRZ_JUNCTION && cand20.x + dPcE >= 1.15 * dOE && kin37(O, K, Pc));
           }
-          if (cutK.y > 0.5)
+          if (cutK.y > 0.5 && cand20.y >= 24.0)
           {
             bool s1 = sec.y > 0.5; vec3 Pc = s1 ? F : B, O = s1 ? B : F, K = s1 ? I : A;
             float dPcE = s1 ? dE4.z : dE4.x, dOE = s1 ? dE4.x : dE4.z;
             bool face = s1 ? (cF.w > 0.5 && sF.w < 0.5) : (cB.w > 0.5 && sB.w > 0.5);
-            flipK.y = float(face && cand20.y >= 24.0 && dPcE >= XBRZ_JUNCTION && dOE >= XBRZ_JUNCTION && cand20.y + dPcE >= 1.15 * dOE && kin37(O, K, Pc));
+            flipK.y = float(face && dPcE >= XBRZ_JUNCTION && dOE >= XBRZ_JUNCTION && cand20.y + dPcE >= 1.15 * dOE && kin37(O, K, Pc));
           }
-          if (cutK.z > 0.5)
+          if (cutK.z > 0.5 && cand20.z >= 24.0)
           {
             bool s1 = sec.z > 0.5; vec3 Pc = s1 ? H : F, O = s1 ? F : H, K = s1 ? G : C;
             float dPcE = s1 ? dE4.w : dE4.z, dOE = s1 ? dE4.z : dE4.w;
             bool face = s1 ? (cH.x > 0.5 && sH.x < 0.5) : (cF.x > 0.5 && sF.x > 0.5);
-            flipK.z = float(face && cand20.z >= 24.0 && dPcE >= XBRZ_JUNCTION && dOE >= XBRZ_JUNCTION && cand20.z + dPcE >= 1.15 * dOE && kin37(O, K, Pc));
+            flipK.z = float(face && dPcE >= XBRZ_JUNCTION && dOE >= XBRZ_JUNCTION && cand20.z + dPcE >= 1.15 * dOE && kin37(O, K, Pc));
           }
-          if (cutK.w > 0.5)
+          if (cutK.w > 0.5 && cand20.w >= 24.0)
           {
             bool s1 = sec.w > 0.5; vec3 Pc = s1 ? D : H, O = s1 ? H : D, K = s1 ? A : I;
             float dPcE = s1 ? dE4.y : dE4.w, dOE = s1 ? dE4.w : dE4.y;
             bool face = s1 ? (cD.y > 0.5 && sD.y < 0.5) : (cH.y > 0.5 && sH.y > 0.5);
-            flipK.w = float(face && cand20.w >= 24.0 && dPcE >= XBRZ_JUNCTION && dOE >= XBRZ_JUNCTION && cand20.w + dPcE >= 1.15 * dOE && kin37(O, K, Pc));
+            flipK.w = float(face && dPcE >= XBRZ_JUNCTION && dOE >= XBRZ_JUNCTION && cand20.w + dPcE >= 1.15 * dOE && kin37(O, K, Pc));
           }
           if (any(greaterThan(flipK, vec4(0.0))))
           {
             vec4 straightO = vec4(sameF(A, sec.x > 0.5 ? D : B), sameF(C, sec.y > 0.5 ? B : F), sameF(I, sec.z > 0.5 ? F : H), sameF(G, sec.w > 0.5 ? H : D));
             vec4 lineO = vec4(sec.x > 0.5 ? sameF(G, D) : sameF(C, B), sec.y > 0.5 ? sameF(A, B) : sameF(I, F),
                               sec.z > 0.5 ? sameF(C, F) : sameF(G, H), sec.w > 0.5 ? sameF(I, H) : sameF(A, D));
-            vec4 sECard = vec4(lessThan(dE4, vec4(XBRZ_SAME)));
             vec4 block37 = vec4(sECard.z * sECard.w * sameF(E, I), sECard.y * sECard.w * sameF(E, G),
                                 sECard.x * sECard.y * sameF(E, A), sECard.x * sECard.z * sameF(E, C));
             blendResult *= 1.0 - flipK * straightO * lineO * block37;
@@ -847,25 +824,7 @@ void main()
             haveSteepLine   *= 1.0 - flipK * (1.0 - sec);
           }
         }
-      }
 
-      // ---- 24. A line with nothing to go on to ----
-      if (anyCut(blendResult))
-      {
-        vec4 lone24 = line * isCut(blendResult) * abs(haveShallowLine - haveSteepLine);
-        if (any(greaterThan(lone24, vec4(0.0))))
-        {
-          vec4 partSh = vec4(max(cD.z, cC.z), max(cF.w, cA.w), max(cF.x, cG.x), max(cD.y, cI.y));
-          vec4 partSt = vec4(max(cB.z, cG.z), max(cB.w, cI.w), max(cH.x, cC.x), max(cH.y, cA.y));
-          vec4 steepOnScreen = vec4(haveSteepLine.x, haveShallowLine.y, haveSteepLine.z, haveShallowLine.w);
-          vec4 part = mix(partSh, partSt, steepOnScreen);
-          vec4 pDist = vec4(sec.x > 0.5 ? dE4.x : dE4.y, sec.y > 0.5 ? dE4.z : dE4.x, sec.z > 0.5 ? dE4.w : dE4.z, sec.w > 0.5 ? dE4.y : dE4.w);
-          hook24 = lone24 * (1.0 - part) * vec4(greaterThanEqual(pDist, vec4(XBRZ_HOOK)));
-        }
-      }
-
-      if (needRing)
-      {
         // ---- 22. Crossed cuts ----
         if (any(greaterThan(bk22 * isCut(blendResult), vec4(0.0))))
         {
@@ -878,12 +837,12 @@ void main()
         }
 
         // ---- 28. Two 2:1 cuts that cross ----
-        if (any(greaterThan(isCut(blendResult) * line, vec4(0.0))))
+        vec4 p28pre = isCut(blendResult) * line * mix(haveSteepLine, haveShallowLine, sec);
+        if (any(greaterThan(p28pre, vec4(0.5))))
         {
           vec4 nW = mix(oSt17, oSh17, sec);
-          vec4 nCut = activeCutOf(nW);
-          vec4 pair = isCut(blendResult) * nCut * vec4(equal(FLAG(nW, 8.0), sec)) * line * FLAG(nW, 4.0)
-                    * mix(haveSteepLine, haveShallowLine, sec) * mix(FLAG(nW, 64.0), FLAG(nW, 16.0), sec)
+          vec4 pair = p28pre * activeCutOf(nW) * vec4(equal(FLAG(nW, 8.0), sec)) * FLAG(nW, 4.0)
+                    * mix(FLAG(nW, 64.0), FLAG(nW, 16.0), sec)
                     * (1.0 - FLAG(nW, 32.0) * (1.0 - blockedBit) * (1.0 - weak));
           if (any(greaterThan(pair, vec4(0.5))))
           {
@@ -902,16 +861,15 @@ void main()
         }
 
         // ---- 29. The burr of a square stroke ----
-        if (E.x <= XBRZ_DARK && any(greaterThan(isCut(blendResult) * line * vec4(greaterThan(cand20, vec4(XBRZ_JUNCTION))), vec4(0.0))))
+        if (E.x <= XBRZ_DARK && dot(sECard, vec4(1.0)) == 1.0
+            && any(greaterThan(isCut(blendResult) * line * vec4(greaterThan(cand20, vec4(XBRZ_JUNCTION))), vec4(0.0))))
         {
           vec4 nC = mix(vec4(cD.y, cB.z, cF.w, cH.x), vec4(cB.w, cF.x, cH.y, cD.z), sec);
           vec4 dEN = mix(dE4.yxzw, dE4.xzwy, sec);
           vec4 cP = vec4(cA.z, cC.w, cI.x, cG.y);
           vec4 oA = mix(vec4(sameF(A, B), sameF(C, F), sameF(I, H), sameF(G, D)), vec4(sameF(A, D), sameF(C, B), sameF(I, F), sameF(G, H)), sec);
           vec4 ok = vec4(lessThan(vec4(iC.x, iA.y, iC.z, iA.w), vec4(128.0))) * vec4(cC.x, cA.y, cC.z, cA.w) + vec4(lessThan(vec4(iG.x, iI.y, iG.z, iI.w), vec4(128.0))) * vec4(cG.x, cI.y, cG.z, cI.w);
-          float sB = sameF(E, B), sD = sameF(E, D), sF = sameF(E, F), sH = sameF(E, H);
-          float nS = sB + sD + sF + sH;
-          vec4 tip = vec4(float(nS == 1.0)) * vec4(sF + sH, sD + sH, sB + sD, sB + sF);
+          vec4 tip = vec4(sECard.z + sECard.w, sECard.y + sECard.w, sECard.x + sECard.y, sECard.x + sECard.z);
           vec4 lN = mix(vec4(D.x, B.x, F.x, H.x), vec4(B.x, F.x, H.x, D.x), sec);
           float sA = sameF(E, A), sC = sameF(E, C), sG = sameF(E, G), sI = sameF(E, I);
           tip *= 1.0 - min(vec4(sA + sC + sG, sC + sA + sI, sI + sC + sG, sG + sA + sI), vec4(1.0));
@@ -919,6 +877,53 @@ void main()
           vec4 burr = tip * vec4(lessThan(ok, vec4(0.5))) * isCut(blendResult) * line * oA * (1.0 - nC) * (1.0 - cP)
                     * vec4(greaterThan(cand20, vec4(XBRZ_JUNCTION))) * vec4(greaterThanEqual(dEN, vec4(XBRZ_STRAIGHT)));
           blendResult *= 1.0 - burr;
+        }
+      }
+      else
+      {
+        // ---- 28 (lean non-ring path: fetch only 0 or 3 outer texels per active neighbor instead of all 12) ----
+        vec4 p28pre = cutInit * line * mix(st, sh, sec);
+        if (any(greaterThan(p28pre, vec4(0.5))))
+        {
+          vec4 nW = mix(oSt17, oSh17, sec);
+          vec4 pair = p28pre * activeCutOf(nW) * vec4(equal(FLAG(nW, 8.0), sec)) * FLAG(nW, 4.0)
+                    * mix(FLAG(nW, 64.0), FLAG(nW, 16.0), sec)
+                    * (1.0 - FLAG(nW, 32.0) * (1.0 - blockedBit) * (1.0 - weak));
+          if (any(greaterThan(pair, vec4(0.5))))
+          {
+            float hE = holdOf(E, A, B, C, D, F, G, H, I), hB = 0.0, hD = 0.0, hF = 0.0, hH = 0.0;
+            if (pair.x * sec.x + pair.y * (1.0 - sec.y) > 0.0) hB = holdOfEdge(B, hE, D, F, A, C, E, vec2(-1.,-2.), vec2( 0.,-2.), vec2( 1.,-2.));
+            if (pair.x * (1.0 - sec.x) + pair.w * sec.w > 0.0) hD = holdOfEdge(D, hE, B, H, A, E, G, vec2(-2.,-1.), vec2(-2., 0.), vec2(-2., 1.));
+            if (pair.y * sec.y + pair.z * (1.0 - sec.z) > 0.0) hF = holdOfEdge(F, hE, B, H, C, E, I, vec2( 2.,-1.), vec2( 2., 0.), vec2( 2., 1.));
+            if (pair.z * sec.z + pair.w * (1.0 - sec.w) > 0.0) hH = holdOfEdge(H, hE, D, F, E, G, I, vec2(-1., 2.), vec2( 0., 2.), vec2( 1., 2.));
+            vec4 hN = mix(vec4(hD, hB, hF, hH), vec4(hB, hF, hH, hD), sec);
+            vec4 tie = vec4(tie28(E, sec.x > 0.5 ? B : D), tie28(E, sec.y > 0.5 ? F : B),
+                            tie28(E, sec.z > 0.5 ? H : F), tie28(E, sec.w > 0.5 ? D : H));
+            vec4 whole = max(vec4(greaterThan(vec4(hE), hN + 0.5)),
+                             vec4(lessThan(abs(hE - hN), vec4(0.5))) * tie);
+            blendResult *= 1.0 - pair * whole;
+          }
+        }
+      }
+
+      // ---- 24. A line with nothing to go on to ----
+      if (anyCut(blendResult))
+      {
+        vec4 pDist = mix(dE4.yxzw, dE4.xzwy, sec);
+        vec4 lone24 = line * isCut(blendResult) * abs(haveShallowLine - haveSteepLine)
+                    * vec4(greaterThanEqual(pDist, vec4(XBRZ_HOOK)));
+        if (any(greaterThan(lone24, vec4(0.0))))
+        {
+          vec4 partSh = vec4(max(cD.z, cC.z), max(cF.w, cA.w), max(cF.x, cG.x), max(cD.y, cI.y));
+          vec4 partSt = vec4(max(cB.z, cG.z), max(cB.w, cI.w), max(cH.x, cC.x), max(cH.y, cA.y));
+          vec4 steepOnScreen = vec4(haveSteepLine.x, haveShallowLine.y, haveSteepLine.z, haveShallowLine.w);
+          vec4 part = mix(partSh, partSt, steepOnScreen);
+          vec4 dW24 = vec4(iA.z, iC.w, iI.x, iG.y);
+          vec4 diag24 = vec4(drawsLine(dW24.x), drawsLine(dW24.y), drawsLine(dW24.z), drawsLine(dW24.w))
+                      * vec4(equal(FLAG(dW24, 16.0), haveShallowLine))
+                      * vec4(equal(FLAG(dW24, 64.0), haveSteepLine))
+                      * vec4(lessThan(cand20, vec4(XBRZ_SAME)));
+          hook24 = lone24 * (1.0 - max(part, diag24));
         }
       }
 
@@ -931,14 +936,10 @@ void main()
           float pH = pl.z * pl.w * sec.z * (1.0 - sec.w), pD = pl.w * pl.x * sec.w * (1.0 - sec.x);
           if (pB + pF + pH + pD > 0.0)
           {
-            vec3 a2 = (pF + pH > 0.0) ? toYCbCr(P(-2., -2.)) : vec3(0.0);
-            vec3 c2 = (pH + pD > 0.0) ? toYCbCr(P( 2., -2.)) : vec3(0.0);
-            vec3 g2 = (pB + pF > 0.0) ? toYCbCr(P(-2.,  2.)) : vec3(0.0);
-            vec3 i2 = (pB + pD > 0.0) ? toYCbCr(P( 2.,  2.)) : vec3(0.0);
-            if (pB > 0.0) pB = point25(E, B, D, F, G, I, H, g2, i2, A, C);
-            if (pF > 0.0) pF = point25(E, F, B, H, A, G, D, a2, g2, C, I);
-            if (pH > 0.0) pH = point25(E, H, F, D, A, C, B, a2, c2, G, I);
-            if (pD > 0.0) pD = point25(E, D, H, B, C, I, F, c2, i2, A, G);
+            if (pB > 0.0) pB = point25(E, B, D, F, G, I, H, vec2(-2., 2.), vec2( 2., 2.), A, C);
+            if (pF > 0.0) pF = point25(E, F, B, H, A, G, D, vec2(-2.,-2.), vec2(-2., 2.), C, I);
+            if (pH > 0.0) pH = point25(E, H, F, D, A, C, B, vec2(-2.,-2.), vec2( 2.,-2.), G, I);
+            if (pD > 0.0) pD = point25(E, D, H, B, C, I, F, vec2( 2.,-2.), vec2( 2., 2.), A, G);
             blendResult *= 1.0 - min(vec4(pB + pD, pB + pF, pF + pH, pH + pD), vec4(1.0));
           }
         }
@@ -966,7 +967,7 @@ void main()
         if (cutB.y * cutB.w > 0.5) farSq = max(farSq, distSqY(ky, kw));
         if (farSq >= SQ255(XBRZ_LOOSE))
         {
-          vec4 pair = vec4(sameF(D, B), sameF(B, F), sameF(F, H), sameF(H, D));
+          vec4 pair = vec4(lessThan(dLOSq, vec4(SQ255(XBRZ_SAME))));
           blendResult *= pair;
           line = vec4(0.0); haveShallowLine = vec4(0.0); haveSteepLine = vec4(0.0);
           small23 = isCut(blendResult);
@@ -977,51 +978,61 @@ void main()
       if (E.x > 0.12 && E.x < 0.72 && dot(isCut(blendResult), vec4(1.0)) > 1.5)
       {
         vec4 cut50 = isCut(blendResult);
-        vec4 lumaP = vec4(sec.x > 0.5 ? B.x : D.x, sec.y > 0.5 ? F.x : B.x, sec.z > 0.5 ? H.x : F.x, sec.w > 0.5 ? D.x : H.x);
         vec4 lMinC = vec4(min(B.x, D.x), min(B.x, F.x), min(F.x, H.x), min(D.x, H.x));
         vec4 lMaxC = vec4(max(B.x, D.x), max(B.x, F.x), max(F.x, H.x), max(D.x, H.x));
-        vec4 fgCut = cut50 * vec4(greaterThan(lumaP, vec4(max(E.x + 0.22, 0.70)))) * vec4(greaterThan(lMinC, vec4(E.x + 0.15)));
-        vec4 shCut = cut50 * vec4(lessThan(lumaP, vec4(min(E.x - 0.15, 0.12)))) * vec4(lessThan(lMaxC, vec4(E.x - 0.12)));
-        if (any(greaterThan(fgCut, vec4(0.5))) && any(greaterThan(shCut, vec4(0.5))))
+        vec4 shCand = cut50 * vec4(lessThan(lMaxC, vec4(min(E.x - 0.12, 0.06))))
+                    * (cut50 * vec4(greaterThan(lMinC, vec4(max(E.x + 0.15, 0.85))))).zwxy;
+        if (any(greaterThan(shCand, vec4(0.5))))
         {
+          vec4 lumaP = vec4(sec.x > 0.5 ? B.x : D.x, sec.y > 0.5 ? F.x : B.x, sec.z > 0.5 ? H.x : F.x, sec.w > 0.5 ? D.x : H.x);
+          float cB50 = dot(B.yz, B.yz), cD50 = dot(D.yz, D.yz), cF50 = dot(F.yz, F.yz), cH50 = dot(H.yz, H.yz);
+          vec4 shGray = vec4(lessThan(vec4(max(cB50, cD50), max(cB50, cF50), max(cF50, cH50), max(cD50, cH50)), vec4(SQ255(XBRZ_JUNC_GRAY))));
+          vec4 fgCut = vec4(greaterThan(lumaP, vec4(max(E.x + 0.22, 0.85))))
+                     * vec4(lessThanEqual(vec4(A.x, C.x, I.x, G.x), vec4(E.x + 0.15)));
+          vec4 shCut = shCand * shGray * vec4(sameF(E, A), sameF(E, C), sameF(E, I), sameF(E, G)) * fgCut.zwxy;
           blendResult *= 1.0 - shCut;
-          line *= 1.0 - shCut;
-          haveShallowLine *= 1.0 - shCut;
-          haveSteepLine *= 1.0 - shCut;
         }
       }
       else if (E.x <= 0.08 && anyCut(blendResult))
       {
         vec4 cut50 = isCut(blendResult);
         vec4 lumaP = vec4(sec.x > 0.5 ? B.x : D.x, sec.y > 0.5 ? F.x : B.x, sec.z > 0.5 ? H.x : F.x, sec.w > 0.5 ? D.x : H.x);
-        vec4 midCut = cut50 * vec4(greaterThan(lumaP, vec4(0.14))) * vec4(lessThan(lumaP, vec4(0.65)));
-        vec4 oppBright = vec4(
-          max(float(F.x > 0.75 && H.x < 0.08), float(H.x > 0.75 && F.x < 0.08)),
-          max(float(D.x > 0.75 && H.x < 0.08), float(H.x > 0.75 && D.x < 0.08)),
-          max(float(D.x > 0.75 && B.x < 0.08), float(B.x > 0.75 && D.x < 0.08)),
-          max(float(F.x > 0.75 && B.x < 0.08), float(B.x > 0.75 && F.x < 0.08)));
-        vec4 dropSh = midCut * oppBright * vec4(lessThan(cand20, vec4(XBRZ_SAME)));
-        blendResult *= 1.0 - dropSh;
+        vec4 midCut = cut50 * vec4(greaterThan(lumaP, vec4(0.14))) * vec4(lessThan(lumaP, vec4(0.65)))
+                    * vec4(lessThan(cand20, vec4(XBRZ_SAME)));
+        if (any(greaterThan(midCut, vec4(0.5))))
+        {
+          vec4 lMinOpp = vec4(min(F.x, H.x), min(D.x, H.x), min(B.x, D.x), min(B.x, F.x));
+          vec4 lMaxOpp = vec4(max(F.x, H.x), max(D.x, H.x), max(B.x, D.x), max(B.x, F.x));
+          vec4 oppBright = vec4(greaterThan(lMaxOpp, vec4(0.75))) * vec4(lessThan(lMinOpp, vec4(0.08)));
+          vec4 diagE = vec4(sameF(E, A), sameF(E, C), sameF(E, I), sameF(E, G));
+          vec4 diagE50 = max(diagE, max(diagE.yzwx, diagE.wxyz));
+          blendResult *= 1.0 - midCut * oppBright * (1.0 - diagE50);
+        }
       }
 
 
       // ---- 15b. Strong exact-color 45-deg bridge kept when lonePixel broke it against a weaker/non-line opposite cut ----
       {
         vec4 cutB = isCut(blendResult);
-        vec4 stubB = cutB * (1.0 - line) * (1.0 - small23) * vec4(lessThan(cand20, vec4(XBRZ_SAME)));
-        if (any(greaterThan(stubB, vec4(0.5))))
+        vec4 dMinC = min(dE4.yxzw, dE4.xzwy);
+        vec4 baseB = cutB * (1.0 - line) * (1.0 - small23)
+                   * vec4(lessThan(cand20, vec4(XBRZ_SAME))) * vec4(greaterThanEqual(dMinC, vec4(XBRZ_STRAIGHT)));
+        if (any(greaterThan(baseB, vec4(0.5))))
         {
-          vec4 dMinC = min(dE4.yxzw, dE4.xzwy);
           vec4 dOppMax = max(dE4.yxzw, dE4.xzwy).zwxy;
-          vec4 oppCut = cutB.zwxy;
           vec4 oppLine = line.zwxy;
+          vec4 diagE = vec4(sameF(E, A), sameF(E, C), sameF(E, I), sameF(E, G));
           float notDotE = float(min(min(dE4.x, dE4.y), min(dE4.z, dE4.w)) < XBRZ_LOOSE
-                                || sameF(E, A) + sameF(E, C) + sameF(E, G) + sameF(E, I) > 0.5);
-          vec4 twoCutBridge = vec4(float(dot(cutB, vec4(1.0)) < 2.5)) * (1.0 - oppLine)
+                                || dot(diagE, vec4(1.0)) > 0.5);
+          float isTwoCut = float(dot(cutB, vec4(1.0)) < 2.5);
+          vec4 twoCutBridge = vec4(isTwoCut) * (1.0 - oppLine)
                             * vec4(greaterThanEqual(cand20.zwxy, vec4(XBRZ_SAME)))
-                            * vec4(lessThan(2.0 * min(dE4.yxzw, dE4.xzwy).zwxy, dMinC));
-          vec4 promB = stubB * vec4(greaterThanEqual(dMinC, vec4(XBRZ_STRAIGHT))) * oppCut
-                     * max(vec4(notDotE) * max(1.0 - oppLine, vec4(lessThan(1.5 * dOppMax, dMinC))), twoCutBridge);
+                            * vec4(lessThan(2.0 * dMinC.zwxy, dMinC));
+          vec4 adjLine = cutB * line * vec4(lessThan(cand20, vec4(XBRZ_SAME))) * diagE;
+          vec4 adjBridge = vec4(isTwoCut) * diagE * max(adjLine.yzwx, adjLine.wxyz);
+          vec4 promB = baseB
+                     * max(cutB.zwxy * max(vec4(notDotE) * max(1.0 - oppLine, vec4(lessThan(1.5 * dOppMax, dMinC))), twoCutBridge),
+                           adjBridge);
           line = max(line, promB);
         }
       }
@@ -1039,12 +1050,11 @@ void main()
                    * FLAG(wSh, 16.0) * (1.0 - FLAG(wSh, 64.0));
           vec4 nSt = vec4(drawsLine(wSt.x), drawsLine(wSt.y), drawsLine(wSt.z), drawsLine(wSt.w))
                    * FLAG(wSt, 64.0) * (1.0 - FLAG(wSt, 16.0));
-          vec4 contE_sh = vec4(sameF(E, F), sameF(E, H), sameF(E, D), sameF(E, B));
-          vec4 contE_st = vec4(sameF(E, H), sameF(E, D), sameF(E, B), sameF(E, F));
+          vec4 contE_sh = sECard.zwyx;
+          vec4 contE_st = sECard.wyxz;
           vec4 wall_sh  = vec4(sameF(B, A) * sameF(B, C), sameF(F, C) * sameF(F, I),
                                sameF(H, I) * sameF(H, G), sameF(D, G) * sameF(D, A));
-          vec4 wall_st  = vec4(sameF(D, A) * sameF(D, G), sameF(B, C) * sameF(B, A),
-                               sameF(F, I) * sameF(F, C), sameF(H, G) * sameF(H, I));
+          vec4 wall_st  = wall_sh.wxyz;
           vec4 dEh5 = dE4.yxzw, dEv5 = dE4.xzwy;
           vec4 rampSh = vec4(lessThan(dEh5 + cand20, 1.30 * dEv5));
           vec4 rampSt = vec4(lessThan(dEv5 + cand20, 1.30 * dEh5));

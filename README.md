@@ -1,143 +1,187 @@
 <p align="center">
-  <img src="comparisons/design/banner.png" alt="xBRZ Crisp: Golden Sun village with two magnified circles of grass, xBRZ (original) smoothing it and xBRZ Crisp keeping its pixels" width="100%">
-</p>
-
-<p align="center">
-  ✨ Outlines and text come out smooth and sharp, just like xBRZ<br>
-  🌿 Grass, foliage, stone and dithering keep their original pixels<br>
-  🙂 Faces and small sprites keep their expression, with no fake diagonals<br>
-  🎮 Ready for RetroArch, in GLSL and slang
+  <img src="https://ele3131.github.io/xBRZ-Crisp/sheets/banner.png" alt="xBRZ Crisp: smooth outlines and text without melting checkerboards, textures, or faces — featuring KOF '98 50% mesh and Tales of Phantasia cobblestone comparisons against xBRZ 1.9" width="100%">
 </p>
 
 <div align="center">
-<table align="center" width="100%">
-  <tr>
-    <td align="center" width="33%">🎯<br><b>Only clear edges</b><br><sub>A corner is rounded only when its two colors really differ</sub></td>
-    <td align="center" width="33%">🌿<br><b>Textures stay intact</b><br><sub>Soft shading keeps its pixels</sub></td>
-    <td align="center" width="33%">⚡<br><b>Close to the cost of libretro's port</b><br><sub>The extra checks run once per game pixel, not per screen pixel</sub></td>
-  </tr>
-</table>
+  <p><b>Pixel-faithful edge smoothing for RetroArch — smooth outlines and typography without melting checkerboards, textures, or faces.</b></p>
+  <p>
+    <img src="https://img.shields.io/badge/RetroArch-GLSL%20%26%20Slang-238636?style=flat-square" alt="RetroArch GLSL & Slang">
+    <img src="https://img.shields.io/badge/Compared%20vs-Zenju%20xBRZ%201.9-1f6feb?style=flat-square" alt="Compared vs Zenju xBRZ 1.9">
+    <img src="https://img.shields.io/badge/Pipeline-5%20Passes%20(50%20Rules)-6e7681?style=flat-square" alt="5-Pass Pipeline (50 Rules)">
+    <img src="https://img.shields.io/badge/Verified-100%20Scenes%20%C2%B7%20D4%200%2F0%2F0-8957e5?style=flat-square" alt="100-Scene Suite & D4 Symmetry">
+    <img src="https://img.shields.io/badge/License-GPLv3-d29922?style=flat-square" alt="GPLv3">
+  </p>
+  <p>
+    <a href="https://ele3131.github.io/xBRZ-Crisp/"><img src="https://img.shields.io/badge/%E2%9C%A8%20Open%20Interactive%20Comparator-238636?style=for-the-badge" alt="Open Interactive Comparator"></a>
+    &nbsp;
+    <a href="https://github.com/ele3131/xBRZ-Crisp/releases"><img src="https://img.shields.io/badge/%F0%9F%93%A6%20Download%20Latest%20ZIP-1f6feb?style=for-the-badge" alt="Download Latest ZIP"></a>
+    &nbsp;
+    <a href="#-30-second-retroarch-install"><img src="https://img.shields.io/badge/%E2%9A%A1%20Quick%20Install-30363d?style=for-the-badge" alt="Quick Install"></a>
+  </p>
 </div>
 
-> [!NOTE]
-> **Which xBRZ?** xBRZ is [Zenju's C++ scaler](https://sourceforge.net/projects/xbrz/). The images here compare xBRZ Crisp with that original, version 1.9 at its default settings, labeled **xBRZ (original)**. xBRZ Crisp is not built on the C++ code: it is a RetroArch shader built on libretro's `xbrz-freescale-multipass`, a separate GLSL and slang shader that follows the xBRZ idea with its own code and thresholds. That libretro shader already includes some of xBRZ Crisp's improvements, and the comparison page shows it too, labeled **xBRZ (libretro)**.
-
 <p align="center">
-  <a href="https://ele3131.github.io/xBRZ-Crisp/"><img src="comparisons/design/button.svg" alt="Open the Interactive Comparison Tool" width="420"></a>
+  <img src="https://ele3131.github.io/xBRZ-Crisp/sheets/hero-smw.png" alt="Super Mario World hero triptych: Original 1x, xBRZ 1.9 melting checkerboards into zigzags, xBRZ Crisp keeping checkerboards crisp and Rex smooth" width="100%">
 </p>
 
-<h2 align="center">🎬 Motion Comparison</h2>
+---
 
-<a href="https://ele3131.github.io/xBRZ-Crisp/"><img src="comparisons/preview-20.webp" alt="Animated comparison in Golden Sun, Castlevania: Aria of Sorrow, Harry Potter: Prisoner of Azkaban and Tales of Phantasia: xBRZ (original), then xBRZ Crisp 20" width="720"></a>
+<h2 align="center">🔥 5 Classic xBRZ Problems — Solved Visually</h2>
 
-<h2 align="center">🌄 Gallery</h2>
+<p align="center">Each strip below shows <b>Original 1×</b> on the left, Zenju's C++ <b>xBRZ 1.9</b> in the middle, and <b>xBRZ Crisp</b> (default <code>XBRZ_MINC = 20</code>) on the right.</p>
+
+### 1. Checkerboards, Dithering & 50% Mesh Transparency
+
+**Problem in xBRZ 1.9:** Alternating pixel patterns used for retro transparency and shading get misread as diagonal lines, turning HUD bars and gauges into tangled zigzag worms.  
+**Solution in xBRZ Crisp:** Dedicated checkerboard and 50% mesh preservation keeps every 1×1 square razor-sharp while letting neighboring kanji, badges, and rock textures smooth naturally.
+
+<p align="center">
+  <img src="https://ele3131.github.io/xBRZ-Crisp/sheets/strip-1-checkerboard.png" alt="Problem to solution strip 1: KOF '98 EX gauge and Samurai Shodown III life bars" width="100%">
+</p>
+
+### 2. Organic Textures: Grass, Foliage & Stone
+
+**Problem in xBRZ 1.9:** Subtle pixel-art shading on grass, wood grain, and cobblestones smears into painted blobs.  
+**Solution in xBRZ Crisp:** Contrast-aware edge gating (`XBRZ_MINC = 20`) preserves organic pixel textures while keeping character silhouettes and stepping stones smooth.
+
+<p align="center">
+  <img src="https://ele3131.github.io/xBRZ-Crisp/sheets/strip-2-textures.png" alt="Problem to solution strip 2: Golden Sun grass and Tales of Phantasia cobblestones" width="100%">
+</p>
+
+### 3. Faces, Eyes & Small 8-Bit Icons
+
+**Problem in xBRZ 1.9:** Tight multi-color junctions merge eyebrows into eyes, pinch tiny key loops, and stab spikes out of small 8-bit icons.  
+**Solution in xBRZ Crisp:** Diagonal color-distance guards (`XBRZ_DIAG`) and small-icon rules preserve Link's eye/eyebrow and keep NES Key & Bomb geometry clean and symmetrical.
+
+<p align="center">
+  <img src="https://ele3131.github.io/xBRZ-Crisp/sheets/strip-3-faces.png" alt="Problem to solution strip 3: Minish Cap Link and NES Legend of Zelda Key and Bomb at 12x macro zoom" width="100%">
+</p>
+
+### 4. Sharp Text, Italic Drop Shadows & Game HUDs
+
+**Problem in xBRZ 1.9:** Stepped italic fonts wiggle unevenly, drop shadows bulge into lumpy blobs, health-bar tips round off, and ornate HUD frames dent at corners.  
+**Solution in xBRZ Crisp:** Regular multi-pixel steps draw straight with parallel drop shadows, stacked HP/MP bars end crisp and square, and frame borders stay ruler-straight.
+
+<p align="center">
+  <img src="https://ele3131.github.io/xBRZ-Crisp/sheets/strip-4-text-hud.png" alt="Problem to solution strip 4: Golden Sun italic menu text and Castlevania Aria of Sorrow full HUD" width="100%">
+</p>
+
+### 5. Crisp Diagonals, Thin Strokes & 1px Details
+
+**Problem in xBRZ 1.9:** High-frequency rock dithering turns into chaotic soup and delicate 1px sparkle glints on small sprites break into crooked hooks.  
+**Solution in xBRZ Crisp:** Thin strokes, diagonal starfighter silhouettes, and 1px ear-tip highlights stay crisp without sacrificing xBRZ's signature curve smoothing.
+
+<p align="center">
+  <img src="https://ele3131.github.io/xBRZ-Crisp/sheets/strip-5-diagonals.png" alt="Problem to solution strip 5: Mega Drive Thunder Force IV and Game Boy Color Pokemon Crystal Hoppip" width="100%">
+</p>
+
+---
+
+<h2 align="center">🕹️ Verified Across 6 Classic Consoles</h2>
+
+<p align="center"><sub>Each tile compares <b>xBRZ 1.9</b> (left) vs <b>xBRZ Crisp</b> (right) from our 100-scene multi-console test suite.</sub></p>
 
 <table>
   <tr>
-    <td width="50%"><a href="comparisons/1-golden-sun-20.png"><img src="comparisons/1-golden-sun-20.png" alt="Golden Sun"></a><p align="center"><b>Golden Sun</b></p></td>
-    <td width="50%"><a href="comparisons/2-azkaban-20.png"><img src="comparisons/2-azkaban-20.png" alt="Harry Potter: Prisoner of Azkaban"></a><p align="center"><b>Harry Potter: Prisoner of Azkaban</b></p></td>
+    <td align="center" width="33%"><img src="https://ele3131.github.io/xBRZ-Crisp/sheets/tile-nes.png" alt="NES The Legend of Zelda comparison" width="100%"></td>
+    <td align="center" width="33%"><img src="https://ele3131.github.io/xBRZ-Crisp/sheets/tile-gbc.png" alt="GBC Pokemon Crystal comparison" width="100%"></td>
+    <td align="center" width="33%"><img src="https://ele3131.github.io/xBRZ-Crisp/sheets/tile-gba.png" alt="GBA Dragon Ball Z Buu's Fury dither sky comparison" width="100%"></td>
   </tr>
   <tr>
-    <td width="50%"><a href="comparisons/5-golden-sun-battle-20.png"><img src="comparisons/5-golden-sun-battle-20.png" alt="Golden Sun battles"></a><p align="center"><b>Golden Sun battles</b></p></td>
-    <td width="50%"><a href="comparisons/4-castlevania-20.png"><img src="comparisons/4-castlevania-20.png" alt="Castlevania: Aria of Sorrow"></a><p align="center"><b>Castlevania: Aria of Sorrow</b></p></td>
+    <td align="center" width="33%"><img src="https://ele3131.github.io/xBRZ-Crisp/sheets/tile-snes.png" alt="SNES Chrono Trigger foliage comparison" width="100%"></td>
+    <td align="center" width="33%"><img src="https://ele3131.github.io/xBRZ-Crisp/sheets/tile-md.png" alt="Mega Drive Shining Force II flowers comparison" width="100%"></td>
+    <td align="center" width="33%"><img src="https://ele3131.github.io/xBRZ-Crisp/sheets/tile-neogeo.png" alt="Neo Geo Metal Slug X HUD comparison" width="100%"></td>
   </tr>
 </table>
 
-<img src="comparisons/7-faces.png" alt="Link in The Minish Cap, a face in Final Fantasy Tactics Advance and the health bar of Castlevania: Aria of Sorrow: original, xBRZ (original) and xBRZ Crisp" width="100%">
+<p align="center">
+  <a href="https://ele3131.github.io/xBRZ-Crisp/"><img src="docs/assets/button.svg" alt="Open the Interactive Comparison Tool" width="420"></a>
+</p>
 
-<img src="comparisons/6-azkaban-menu.png" alt="Spell menu: original, xBRZ (original), MMPX Advanced and xBRZ Crisp" width="100%">
+---
 
-<sub>More: [other games](comparisons/3-other-games-20.png)</sub>
+<h2 align="center">🎛️ Tune Your Contrast (<code>XBRZ_MINC</code>)</h2>
 
-<h2 align="center">🔍 Side by Side</h2>
+<p align="center">
+  <img src="https://ele3131.github.io/xBRZ-Crisp/sheets/presets-strip.png" alt="Golden Sun stepping stone and grass across Original, xBRZ 1.9, Crisp 10, Crisp 20 default, and Crisp 30" width="100%">
+</p>
 
-Pairs in the style of Zenju's own xBRZ sheets: xBRZ (original) on the left of each pair, xBRZ Crisp on the right, all at 6x.
+| `10` · Smooth | `20` · Balanced (Default) | `30` · Pixel-Faithful |
+|---|---|---|
+| Closest to classic xBRZ. Keeps only the softest dithering and subtle shading crisp. | **Recommended sweet spot.** Grass, stone, and checkerboards stay crisp; outlines, faces, and text stay smooth. | Maximum texture fidelity. Retains nearly all pixel texture, with firmer steps on soft diagonals. |
 
-<img src="comparisons/9-sprites.png" alt="Twelve pairs of sprites and characters, xBRZ (original) and xBRZ Crisp: a 1-pixel highlight on armor, a skull, stone floors, grass, a staff, banded hair, a dancer, an airplane, a fire horse, a wizard portrait and a red robot" width="100%">
+---
 
-<img src="comparisons/10-lines.png" alt="Twelve pairs of lines, text, frames and textures, xBRZ (original) and xBRZ Crisp: shallow lines from Zenju's test image, a striped band, thin map lines, a dotted border, a frame of dots, a fence pattern, text, letters, a score, a title, grass and coral" width="100%">
+<h2 align="center" id="-30-second-retroarch-install">💾 30-Second RetroArch Install</h2>
 
-<h2 align="center">🎛️ Contrast</h2>
+> [!TIP]
+> Grab the ready-to-use zip from **[GitHub Releases](https://github.com/ele3131/xBRZ-Crisp/releases)**.
 
-The `xbrz-crisp` preset uses `XBRZ_MINC` 20. To keep more or fewer of the original pixels, change it in Quick Menu › Shaders › Shader Parameters and save the preset:
+1. Extract the zip into RetroArch's shaders directory: `shaders_slang` for Vulkan, `glcore`, D3D, and Metal; `shaders_glsl` for the `gl` driver.
+2. While running a game, open **Quick Menu › Shaders › Load** and select `edge-smoothing/xbrz/xbrz-crisp.slangp` (Slang) or `xbrz/xbrz-crisp.glslp` (GLSL).
+3. Save via **Quick Menu › Shaders › Save › Save Global Preset** (or **Save Game Preset** per title).
 
-<img src="comparisons/design/presets-strip.png" alt="Golden Sun grass: original, xBRZ (original), crisp 10, 20 and 30" width="100%">
+---
 
-| `XBRZ_MINC` | Look |
-|---|---|
-| 10 | The closest to xBRZ. Only the softest shading and dithering keep their pixels, and everything else, including soft edges like the steps of a roof, is smoothed as in xBRZ, still visibly sharper. |
-| **20** (default) | The balance. Grass, foliage and stone keep most of their detail, while outlines, faces, text and most soft diagonals stay smooth. |
-| 30 | The closest to the original art. Textures keep nearly all their pixels, and more soft diagonals turn into steps. |
+<h2 align="center">🔬 Technical Specs & Details</h2>
 
-20 is the default because up to 20 each step keeps more of the original pixels for little loss of smoothness. Past it, smooth antialiased shapes start to lose more.
-
-<h2 align="center">🛠️ Parameters</h2>
+> [!NOTE]
+> **Which xBRZ?** xBRZ is [Zenju's C++ scaler](https://sourceforge.net/projects/xbrz/). Every comparison here pits xBRZ Crisp (default `XBRZ_MINC = 20`) against Zenju's original C++ **xBRZ 1.9** at 6×. xBRZ Crisp is an independent RetroArch shader (GLSL & Slang) built on libretro's `xbrz-freescale-multipass`; the [interactive comparison page](https://ele3131.github.io/xBRZ-Crisp/) also includes libretro's plain port side by side.
 
 <details>
 <summary>Show all shader parameters</summary>
 
+<br>
+
 | Parameter | Default | What it does |
 |---|---|---|
-| `XBRZ_MINC` | 20 | Minimum color contrast (x/255) for a corner to be rounded. 0 turns it off. |
-| `XBRZ_DIAG` | 100 | Maximum color distance (x/255) between the two colors a cut would join. Above it, the corner stays square. 0 turns it off. |
-| `XBRZ_TOL` | 15 | Equal color tolerance. The original C++ xBRZ uses 30. |
-| `XBRZ_STEEP` | 3.2 | Steep and shallow line threshold. The original C++ xBRZ uses 2.4 (2.2 before version 1.9), which turns more 1-pixel steps into slopes. |
-| `XBRZ_DOM` | 3.8 | Dominant direction threshold. The original C++ xBRZ uses 3.6; 3.8 keeps small corners close to square instead of cutting them into long tips. |
+| `XBRZ_MINC` | **20** | Minimum color contrast (`x/255`) for a corner to be rounded. `0` turns it off. |
+| `XBRZ_DIAG` | **100** | Maximum color distance (`x/255`) between the two colors a cut would join. Above it, the corner stays square. `0` turns it off. |
+| `XBRZ_TOL` | **15** | Equal-color tolerance. Zenju's original C++ xBRZ uses `30`. |
+| `XBRZ_STEEP` | **3.2** | Steep and shallow line threshold. C++ xBRZ 1.9 uses `2.4` (`2.2` prior to 1.9), turning more 1px steps into slopes. |
+| `XBRZ_DOM` | **3.8** | Dominant direction threshold. C++ xBRZ uses `3.6`; `3.8` keeps small corners close to square instead of cutting long tips. |
 
-libretro's `xbrz-freescale-multipass` uses the same tolerance, steep and dominant values as xBRZ Crisp, with `XBRZ_MINC` and `XBRZ_DIAG` at 0, so it differs from the original C++ xBRZ in these thresholds as well as in its code.
+libretro's `xbrz-freescale-multipass` uses the same tolerance, steep, and dominant values as xBRZ Crisp, with `XBRZ_MINC` and `XBRZ_DIAG` set to `0`, so it differs from Zenju's C++ xBRZ in both thresholds and shader logic.
 
 </details>
 
-<h2 align="center">🔬 How it works</h2>
-
 <details>
-<summary>Show how xBRZ Crisp differs from xBRZ</summary>
+<summary>How the 50 Crisp rules work (4 core pillars)</summary>
 
 <br>
 
-The pictures show the original C++ xBRZ. xBRZ Crisp runs xBRZ's corner test as reimplemented in libretro's port, with the thresholds listed under Parameters, and then applies the rules below.
+- **🌿 Soft shading, checkerboards & 50% mesh (`XBRZ_MINC`):** Low-contrast shading, exact/shaded checkerboard textures, 2×N checker strips, and 50% transparency meshes keep their crisp square pixels while strong outlines, antialiasing bands, and crossing strokes stay smooth.
+- **🎨 Color junction protection (`XBRZ_DIAG`):** High-contrast 3- and 4-color junctions (eyes, eyebrows, outlines, drop-shadow cavities) are never bridged by fake diagonals, while intentional shade ramps and 45° corners stay continuous.
+- **📏 Clean endings & 1px geometry:** Stacked bars end square, HUD frames stay straight, convex 8-bit icon corners bevel cleanly, and isolated 1px glints and 1px diagonal strokes keep their exact artist intent.
+- **📐 Straight stepped slopes:** Regular 2–6px staircases (italic fonts, parallel drop shadows, roofs, rails) smooth along their true angle (2:1, 3:1, 4:1) instead of wobbling at each step.
 
-xBRZ looks at each corner of each pixel and decides whether to round it. xBRZ Crisp keeps every one of those decisions and only says no when rounding would invent a shape the artist never drew. In that case the corner stays square. The red circles mark where the two differ.
-
-<img src="comparisons/8-how-it-works.png" alt="Stone in Tales of Phantasia, a face in Tales of Phantasia and a menu frame in Castlevania: Aria of Sorrow: original, xBRZ (original) and xBRZ Crisp, with the differences circled in red" width="100%">
-
-1. 🌿 **Soft shading is not a shape** (`XBRZ_MINC`). When the two colors of a corner are closer than the minimum contrast, they are shading or texture, not an edge, so the corner stays square. A corner just below the limit is still rounded when the corners on both sides of it along the same diagonal are, so a diagonal edge has no tooth where its contrast dips. Where a line crosses an antialiasing pixel on a strong edge, like the edge of a roof in Golden Sun, both halves of the pixel are cut as in xBRZ, so the pixel becomes part of the diagonal instead of a notch in it. A long straight line between two stripes, like the antialiasing band along an outline, keeps every corner cut even where its contrast is low, so it has no teeth. A checkerboard of two colors keeps its squares right up to an outline that crosses it, where xBRZ turns the squares next to the outline into zigzags.
-2. 🎨 **Different colors are not joined** (`XBRZ_DIAG`). Rounding a corner joins the two neighbors on its diagonal. When those are very different colors, the corner is a meeting point, not a line, so it stays square. Dark outlines, eyes and eyebrows keep their full shape. Where the artist stepped an antialiasing pixel along a diagonal edge, like the shaded edge of a cape, the corner is rounded as in xBRZ. The same goes for the tip of a diagonal that ends on a straight edge, like a lock of Link's hair. A single pixel where several colors meet keeps its shape: a line of another color no longer sticks a spike into it, and a line that xBRZ draws on one side of a pixel only leaves the pixel whole. A dark outline that steps across a pixel stays closed, so the colors on its two sides do not touch through it. A dot of color that stands apart from all its neighbors does not leak into them, a pixel where several colors meet without any edge running through it stays square, a straight line of one color goes on straight instead of bending into the pixel next to it, and a darker shade does not bulge into the end of a lighter diagonal stripe. Where four clearly different colors meet at one point, a corner stays square beside the square corner of its neighbor, unless the two colors it joins are two shades of one stroke. Two shades are no junction either: a pixel that is only a shade of its neighbor, or two neighbors that are shades of one gray, still round the corner as in xBRZ, so an outline drawn in two grays bends as one line.
-3. 📏 **Lines end the way they were drawn.** Straight lines do not bend where they meet, a line that runs straight past a corner does not leave a tip of its color in the block beside it, stacked stripes end square (unless a line meets their end), and diagonal lines run on to their end or up to the outline. A 45-degree diagonal the artist drew, like a lock of hair, and thin light strokes, like the white strokes of letters, are rounded as in xBRZ. A row of 1-pixel tiles between two walls, like the squares of a gauge, keeps its tiles square. On a strong edge, a line runs on through a light pixel that is only a shade off its background, and a light tip wrapped in one shade is rounded rather than cut, as in the original xBRZ, so a leg or a limb is not cut short. A block two pixels wide under a cap that wraps it on both sides is rounded on both sides like a dome. A 1-pixel stripe that runs between two other stripes at the same slope stays one unbroken line, and a stroke in close tones of its neighbors ends square. The end of a 1-pixel bar does not grow a hook, a small detail at the point of a V keeps its whole edge instead of an arrow tip, and a lone dot stays a square with softened corners instead of a circle. Last, a separate pass looks at the finished corners of neighboring pixels together: where these rules left one corner square in the middle of a diagonal that xBRZ draws, leaving a burr, that corner is cut again, so the line stays whole.
-4. 📐 **Steps are drawn straight.** xBRZ only draws 45-degree and 2:1 lines. Where an edge climbs in regular steps of 2 to 6 pixels, like the italic letters of Golden Sun, a rail or the edge of a roof, the cut follows the steps' own slope, so both sides of a stroke run parallel and the line does not bend at every step. A letter's dark shadow runs parallel to its letter, and a stroke whose side is antialiased in several shades runs as straight on that side as on a side of one color. Curves, irregular steps and low-contrast edges keep xBRZ's lines.
-
-Edges are still found with xBRZ's corner test, so outlines and text are smoothed as before. The diagonal check is inspired by [cleanEdge](https://github.com/libretro/slang-shaders/tree/master/edge-smoothing/cleanEdge) by torcado. The [comparison page](https://ele3131.github.io/xBRZ-Crisp/#how) goes through every rule with more examples.
+See the [interactive comparison page](https://ele3131.github.io/xBRZ-Crisp/#how) for visual diagrams of the core rules.
 
 </details>
 
 <details>
-<summary>Port details and testing</summary>
+<summary>Port architecture, single-source pipeline & testing</summary>
 
-xBRZ Crisp started as a set of fixes to libretro's `xbrz-freescale-multipass`, a shader written for RetroArch separately from [Zenju's C++ xBRZ](https://sourceforge.net/projects/xbrz/), and most of its code has been rewritten since. Blend color ties, exact ties between two corners, corners with both a shallow and a steep line, and the order of the four corners were changed to follow the C++ xBRZ, the GLSL version takes the output scale from the image size instead of the texture size, and the output pass reads the image from the pass before xBRZ, so it also works after other shaders in a preset (a color correction, for example). It runs in five passes: a point pass decides once each point where four pixels meet, as the C++ xBRZ's own preprocessing does, the next pass decides every corner once per game pixel, a resolve pass settles the decisions that depend on the neighbors, a matching pass checks the finished corners of neighboring pixels together so that no diagonal is left with a burr, all once per game pixel, and the output pass only draws the corners. The slang preset runs the point pass where it used to run a plain copy of the image, under the same alias.
+<br>
 
-The Slang and GLSL passes are generated from shared single-source templates in `tools/src/` by `tools/build-shaders.py`. The code is also shared with plain `xbrz-freescale-multipass`: `tools/make-multipass.py` writes it from these files, with its own title, `XBRZ_MINC` at 0 and four passes (no matching pass), so it keeps rules 2, 4 to 7 and 10, the ones that fix clear errors of the port; the other rules are the crisp look and run only with `XBRZ_MINC` above 0. Pass 0 starts with a numbered list of the rules, and each rule has its own section with the same number in the code.
+xBRZ Crisp started as a set of fixes to libretro's `xbrz-freescale-multipass` and has since been largely rewritten around **50 documented visual rules**. Blend color ties, exact corner ties, dual shallow/steep corners, and corner processing order follow Zenju's C++ xBRZ 1.9, while the output pass reads directly from the pass preceding xBRZ so it chains cleanly after color-correction shaders.
 
-Tested in RetroArch on Android (gl driver, Game Boy Advance at 6x). The slang version was compiled to SPIR-V with glslang and renders the same output as the GLSL version in an offline harness.
+It runs in **five passes** — four at native 1× game resolution (`point` → `pass0` → `resolve` → `match`) and one lightweight output rasterization pass (`pass1`) that only draws the resolved corners, with dual-path GLES 3.0+ / Slang `texelFetch` & `uvec4` support and full GLSL ES 1.00 compatibility.
+
+Both Slang and GLSL passes are generated from shared single-source templates in `tools/src/` by `tools/build-shaders.py` (with `tools/make-multipass.py` deriving plain `xbrz-freescale-multipass`). Every visual asset in this README and the interactive comparator is deterministically rendered in GitHub Actions via `tools/render-docs.py --all`, and every rule change is verified for exact **D4 rotational/reflection symmetry (`0/0/0`)** across a **100-scene multi-console test suite** (NES, Master System, GBC, GBA, SNES, Mega Drive, PC Engine, Neo Geo, Arcade, WonderSwan).
 
 </details>
 
-<h2 align="center">💾 Install</h2>
-
-> [!TIP]
-> Get the latest zip from **[Releases](https://github.com/ele3131/xbrz-crisp/releases)**.
-
-1. Copy the zip's contents into RetroArch's shader folder: `shaders_slang` for Vulkan, glcore, D3D and Metal, `shaders_glsl` for the gl driver.
-2. In a game, open Quick Menu › Shaders › Load and pick `edge-smoothing/xbrz/xbrz-crisp.slangp` (slang) or `xbrz/xbrz-crisp.glslp` (glsl).
-3. Save it with Quick Menu › Shaders › Save › Save Global Preset, or per game with Save Game Preset.
+---
 
 <h2 align="center">🤝 Giving back to libretro</h2>
 
-Part of xBRZ Crisp is now in libretro's port of the xBRZ scaler. Starting with our first pull request on October 20, 2026, libretro's `xbrz-freescale-multipass` has taken in its port fixes, tuned thresholds and lighter output pass, plus the `xbrz-crisp` preset ([glsl #576](https://github.com/libretro/glsl-shaders/pull/576), [#577](https://github.com/libretro/glsl-shaders/pull/577), [slang #971](https://github.com/libretro/slang-shaders/pull/971), [#973](https://github.com/libretro/slang-shaders/pull/973)). None of these changes are in the original C++ xBRZ. The comparison page shows this libretro version as xBRZ (libretro), next to the original.
+Part of xBRZ Crisp is now upstream in libretro's xBRZ port. Starting October 20, 2026, libretro's `xbrz-freescale-multipass` adopted our port fixes, tuned thresholds, lighter output pass, and the `xbrz-crisp` preset ([glsl #576](https://github.com/libretro/glsl-shaders/pull/576), [#577](https://github.com/libretro/glsl-shaders/pull/577), [slang #971](https://github.com/libretro/slang-shaders/pull/971), [#973](https://github.com/libretro/slang-shaders/pull/973)). None of these changes are in Zenju's original C++ xBRZ.
 
 <h2 align="center">⚖️ License</h2>
 
-xBRZ is © Zenju, who wrote the [original C++ version](https://sourceforge.net/projects/xbrz/), and is distributed under the GNU General Public License v3; libretro's shader and xBRZ Crisp keep that license, as noted in the shader headers. Hyllian's xBR vertex code and texel mapping are under the MIT-style license included there. The similar diagonal check is inspired by torcado's cleanEdge (MIT license); no cleanEdge code is included.
+xBRZ is © Zenju ([original C++ version](https://sourceforge.net/projects/xbrz/)) under the **GNU General Public License v3**; libretro's shader and xBRZ Crisp keep that license as noted in the shader headers. Hyllian's xBR vertex code and texel mapping retain their MIT-style license. The diagonal junction check is inspired by torcado's cleanEdge (MIT license; no cleanEdge code is included).
 
-xBRZ Crisp is an independent shader. It is not affiliated with or endorsed by Zenju, and it is not the original xBRZ.
+xBRZ Crisp is an independent shader — not affiliated with or endorsed by Zenju, and not the original xBRZ.
 
-<sub>Developed with the help of Claude (Anthropic).</sub>
+<sub>Developed with the help of Claude (Anthropic) and Google Antigravity.</sub>

@@ -101,8 +101,8 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 #ifndef DOM_E
 #define DOM_E XBRZ_DOM
 #endif
-#define eq(a,b)  (a == b)
-#define neq(a,b) (a != b)
+#define eq(a,b)  ((a) == (b))
+#define neq(a,b) ((a) != (b))
 // small epsilon on jg vs fk so exact floating-point ties don't break arbitrarily due to FMA/reassociation
 const float TIE_EPS = 1e-4;
 
@@ -119,50 +119,16 @@ vec3 toYCbCr(vec3 c)
   return vec3(Y, SCALE_B * (c.b - Y), SCALE_R * (c.r - Y));
 }
 
-float luma(vec3 c) { return dot(c, LUMA_W); }
-
 float distSqY(vec3 a, vec3 b)
 {
   vec3 d = a - b;
   return dot(d, d);
 }
 
-float distY(vec3 a, vec3 b) { return sqrt(distSqY(a, b)); }
-float distY255(vec3 a, vec3 b) { return distY(a, b) * 255.0; }
-
-float distSqYCbCr(vec3 pixA, vec3 pixB)
-{
-  vec3 diff = pixA - pixB;
-  float Y = dot(diff, LUMA_W);
-  float Cb = SCALE_B * (diff.b - Y);
-  float Cr = SCALE_R * (diff.r - Y);
-  return (Y * Y) + (Cb * Cb) + (Cr * Cr);
-}
-
-float distYCbCr(vec3 pixA, vec3 pixB)
-{
-  return sqrt(distSqYCbCr(pixA, pixB));
-}
-
-float dist255(vec3 pixA, vec3 pixB)
-{
-  return distYCbCr(pixA, pixB) * 255.0;
-}
-
 // Squared threshold in [0..255] YCbCr units, kept in [0..1.5] so GLSL ES mediump never overflows
 #define SQ255(x) (((x) / 255.0) * ((x) / 255.0))
 // FP16-safe division guard (> 6.1e-5 smallest FP16 normal) so FTZ GPUs never produce NaN
 const float SAFE_EPS = 1e-4;
-
-bool within255(vec3 pixA, vec3 pixB, float lim)
-{
-  return distSqYCbCr(pixA, pixB) < SQ255(lim);
-}
-
-bool withinEq255(vec3 pixA, vec3 pixB, float lim)
-{
-  return distSqYCbCr(pixA, pixB) <= SQ255(lim);
-}
 
 bool withinY255(vec3 a, vec3 b, float lim)
 {
@@ -172,25 +138,6 @@ bool withinY255(vec3 a, vec3 b, float lim)
 bool withinEqY255(vec3 a, vec3 b, float lim)
 {
   return distSqY(a, b) <= SQ255(lim);
-}
-
-// Unified hue-shifting-tolerant AA / sel-out ramp check in YCbCr space (0 sqrt).
-// True when m lies strictly between endpoints a and b along their chord with
-// bounded orthogonal deviation (allowing pixel-art hue-shifting) and monotonic luma.
-bool isAaRampY(vec3 a, vec3 m, vec3 b, float orthoTolSq, float minSpanSq)
-{
-  vec3 ab = b - a;
-  float abSq = dot(ab, ab);
-  if (abSq < minSpanSq) return false;
-  vec3 am = m - a;
-  float proj = dot(am, ab);
-  if (proj <= 0.05 * abSq || proj >= 0.95 * abSq) return false;
-  float t = proj / abSq;
-  vec3 err = am - t * ab;
-  if (dot(err, err) > orthoTolSq * abSq) return false;
-  float loY = min(a.x, b.x), hiY = max(a.x, b.x);
-  if (hiY - loY > 0.08 && (m.x < loY - 0.02 || m.x > hiY + 0.02)) return false;
-  return true;
 }
 #define PY(x,y) toYCbCr(P(x, y))
 
@@ -256,38 +203,12 @@ bool massOuter(vec2 coord, vec3 s1, vec3 s2, vec3 a1, vec3 a2, vec2 diagOff, vec
 }
 #define XBRZ_X36_DARK 0.15
 #define XBRZ_X36_DULL 0.6
-vec2 crossWin(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 tl, vec3 tr, vec3 kh, vec3 ki, vec3 bl, vec3 br, vec3 kl, vec3 kn, vec3 ko)
+bool crossWinCore(vec3 bg, vec3 st1, vec3 st2, float dStrokeSq)
 {
-  if (eq(tl, br) && neq(tr, bl))
-  {
-    float farSq = min(distSqY(tl, tr), distSqY(tl, bl));
-    float dStrokeSq = distSqY(tr, bl);
-    if (farSq < SQ255(64.0) || dStrokeSq >= 0.25 * farSq) return vec2(0.0);
-    // a dark outline next to a dull stroke separates two areas: it stays joined
-    if (tl.x < XBRZ_X36_DARK && max(tr.x, bl.x) < XBRZ_X36_DULL) return vec2(0.0);
-    float limSq = max(SQ255(30.0), 0.64 * dStrokeSq);
-    bool thin = thinOuter(coord, kc, kh, kb, kl, vec2(2.0, -1.0), tr, bl, limSq)
-             && thinOuter(coord, ki, kn, ke, ko, vec2(-1.0, 2.0), tr, bl, limSq);
-    if (!thin) return vec2(0.0);
-    bool mass = massOuter(coord, kb, ke, kc, ki, vec2(-1.0, -1.0), tl)
-             || massOuter(coord, kl, ko, kh, kn, vec2(2.0, 2.0), tl);
-    return mass ? vec2(0.0, 1.0) : vec2(0.0);
-  }
-  if (eq(tr, bl) && neq(tl, br))
-  {
-    float farSq = min(distSqY(tr, tl), distSqY(tr, br));
-    float dStrokeSq = distSqY(tl, br);
-    if (farSq < SQ255(64.0) || dStrokeSq >= 0.25 * farSq) return vec2(0.0);
-    if (tr.x < XBRZ_X36_DARK && max(tl.x, br.x) < XBRZ_X36_DULL) return vec2(0.0);
-    float limSq = max(SQ255(30.0), 0.64 * dStrokeSq);
-    bool thin = thinOuter(coord, kb, ke, kc, ki, vec2(-1.0, -1.0), tl, br, limSq)
-             && thinOuter(coord, kl, ko, kh, kn, vec2(2.0, 2.0), tl, br, limSq);
-    if (!thin) return vec2(0.0);
-    bool mass = massOuter(coord, kc, kh, kb, kl, vec2(2.0, -1.0), tr)
-             || massOuter(coord, ki, kn, ke, ko, vec2(-1.0, 2.0), tr);
-    return mass ? vec2(1.0, 0.0) : vec2(0.0);
-  }
-  return vec2(0.0);
+  float farSq = min(distSqY(bg, st1), distSqY(bg, st2));
+  if (farSq < SQ255(64.0) || dStrokeSq >= 0.25 * farSq) return false;
+  // a dark outline next to a dull stroke separates two areas: it stays joined
+  return !(bg.x < XBRZ_X36_DARK && max(st1.x, st2.x) < XBRZ_X36_DULL);
 }
 
 // ============================================================================================
@@ -299,61 +220,149 @@ bool chkSoftEq(vec3 q, vec3 same, vec3 opp, float tolSq)
   float ds = distSqY(q, same);
   return ds <= tolSq && ds < 0.25 * distSqY(q, opp);
 }
-// a) 2D interior checkerboards: 3+ of the four 2x2 blocks beside (0, 0) are in-phase checkers of c1 and c2.
+// a) 2D interior checkerboards: 3+ of the four 2x2 blocks beside (0, 0) are in-phase checkers of c1 and c2,
+//    or 2 orthogonal 2x2 blocks plus the diagonal 2x2 corner between them form a solid 4x4 exact checkerboard.
 // b) 1D 2-pixel-wide checker strips: full 6-pixel axial run (bU && bD or bL && bR) bounded laterally by
 //    axis-aligned walls (rejecting shifted 45-degree diagonal stripes).
+bool chkQuad46(vec2 coord, float ox, float oy, vec3 c1, vec3 c2)
+{
+  return eq(PY(ox, oy), c1) && eq(PY(ox + 1.0, oy), c2)
+      && eq(PY(ox, oy + 1.0), c2) && eq(PY(ox + 1.0, oy + 1.0), c1);
+}
+bool chkWallBreak46(vec2 coord, vec3 c1, vec3 c2, vec3 w, vec3 o1, vec3 o2,
+                    vec2 wE1, vec2 wE2, vec2 oE1, vec2 oE2)
+{
+  if (!(eq(w, c1) || eq(w, c2))) return false;
+  vec3 opp = eq(w, c1) ? c2 : c1;
+  bool s1 = eq(o1, opp) && neq(o2, c1) && neq(o2, c2);
+  bool s2 = eq(o2, opp) && neq(o1, c1) && neq(o1, c2);
+  if (!s1 && !s2) return false;
+  if (!eq(PY(wE1.x, wE1.y), w) || !eq(PY(wE2.x, wE2.y), w)) return false;
+  vec2 oe = s1 ? oE1 : oE2;
+  return eq(PY(oe.x, oe.y), opp);
+}
+bool chkStrip46(vec2 coord, vec3 c1, vec3 c2, bool hA, bool hB, bool hS1, bool hS2,
+                bool wA, bool wB, bool wS1, bool wS2, vec3 cA, vec3 cB, vec3 s1a, vec3 s1b, vec3 s2a, vec3 s2b,
+                vec2 pA0, vec2 pA1, vec2 pB0, vec2 pB1, vec2 cTL, vec2 cBL, vec2 cTR, vec2 cBR)
+{
+  bool sWall = (wS1 && wS2) || (wS2 && (eq(s2a, c1) || eq(s2a, c2)) && hS1) || (wS1 && (eq(s1a, c1) || eq(s1a, c2)) && hS2);
+  if (hA && hB)
+  {
+    if (sWall
+        || (wS1 && chkWallBreak46(coord, c1, c2, s1a, s2a, s2b, cTL, cBL, cTR, cBR))
+        || (wS2 && chkWallBreak46(coord, c1, c2, s2a, s1a, s1b, cTR, cBR, cTL, cBL)))
+    {
+      vec3 a0 = PY(pA0.x, pA0.y), a1 = PY(pA1.x, pA1.y), b0 = PY(pB0.x, pB0.y), b1 = PY(pB1.x, pB1.y);
+      bool bA2 = eq(a0, c1) && eq(a1, c2), bB2 = eq(b0, c2) && eq(b1, c1);
+      if (bA2 && bB2) return true;
+      if (sWall && ((bA2 && eq(b0, b1) && neq(b0, c1) && neq(b0, c2))
+                 || (bB2 && eq(a0, a1) && neq(a0, c1) && neq(a0, c2))))
+        return true;
+    }
+    return false;
+  }
+  if (!sWall) return false;
+  bool useA = hA && wB && neq(cB, c1) && neq(cB, c2);
+  bool useB = !useA && hB && wA && neq(cA, c1) && neq(cA, c2);
+  if (!useA && !useB) return false;
+  vec3 cEnd = useA ? cB : cA;
+  vec2 e0 = useA ? cBL : cTL, e1 = useA ? cBR : cTR;
+  vec2 q0 = useA ? pA0 : pB0, q1 = useA ? pA1 : pB1;
+  return eq(PY(e0.x, e0.y), cEnd) && eq(PY(e1.x, e1.y), cEnd)
+      && eq(PY(q0.x, q0.y), useA ? c1 : c2) && eq(PY(q1.x, q1.y), useA ? c2 : c1);
+}
 bool checker46(vec2 coord, vec3 c1, vec3 c2, vec3 kb, vec3 kc, vec3 ke, vec3 kh, vec3 ki, vec3 kl, vec3 kn, vec3 ko)
 {
   bool hL = eq(ke, c2) && eq(ki, c1);
   bool hR = eq(kh, c1) && eq(kl, c2);
   bool hU = eq(kb, c2) && eq(kc, c1);
   bool hD = eq(kn, c1) && eq(ko, c2);
-  // Zero-fetch early-out: both cnt >= 3 and axial 2x6 strips require (hU && hD) || (hL && hR)
-  if (!((hU && hD) || (hL && hR))) return false;
+  if (!(hL || hR || hU || hD)) return false;
+  bool wL = eq(ke, ki), wR = eq(kh, kl), wU = eq(kb, kc), wD = eq(kn, ko);
+  if ((hU || hD) && chkStrip46(coord, c1, c2, hU, hD, hL, hR, wU, wD, wL, wR, kb, kn, ke, ki, kh, kl,
+                               vec2(0.0, -2.0), vec2(1.0, -2.0), vec2(0.0, 3.0), vec2(1.0, 3.0),
+                               vec2(-1.0, -1.0), vec2(-1.0, 2.0), vec2(2.0, -1.0), vec2(2.0, 2.0)))
+    return true;
+  if ((hL || hR) && chkStrip46(coord, c1, c2, hL, hR, hU, hD, wL, wR, wU, wD, ke, kh, kb, kc, kn, ko,
+                               vec2(-2.0, 0.0), vec2(-2.0, 1.0), vec2(3.0, 0.0), vec2(3.0, 1.0),
+                               vec2(-1.0, -1.0), vec2(2.0, -1.0), vec2(-1.0, 2.0), vec2(2.0, 2.0)))
+    return true;
+  if (!((hU || hD) && (hL || hR))) return false;
   bool bL = hL && eq(PY(-2.0, 0.0), c1) && eq(PY(-2.0, 1.0), c2);
   bool bR = hR && eq(PY( 3.0, 0.0), c2) && eq(PY( 3.0, 1.0), c1);
+  if (!bL && !bR) return false;
   bool bU = hU && eq(PY( 0.0,-2.0), c1) && eq(PY( 1.0,-2.0), c2);
   bool bD = hD && eq(PY( 0.0, 3.0), c2) && eq(PY( 1.0, 3.0), c1);
+  if (!bU && !bD) return false;
   if (int(bL) + int(bR) + int(bU) + int(bD) >= 3) return true;
-  bool wL = eq(ke, ki), wR = eq(kh, kl), wU = eq(kb, kc), wD = eq(kn, ko);
-  bool vStrip = bU && bD && ((wL && wR) || (wR && (eq(kh, c1) || eq(kh, c2)) && hL) || (wL && (eq(ke, c1) || eq(ke, c2)) && hR));
-  bool hStrip = bL && bR && ((wU && wD) || (wD && (eq(kn, c1) || eq(kn, c2)) && hU) || (wU && (eq(kb, c1) || eq(kb, c2)) && hD));
-  return vStrip || hStrip;
+  // Exactly 2 orthogonal 2x2 blocks match: accept if the diagonal 2x2 between them completes an exact 4x4 checker
+  return chkQuad46(coord, bL ? -2.0 : 2.0, bU ? -2.0 : 2.0, c1, c2);
 }
-bool meshWall46(vec3 w0, vec3 w1, vec3 pM, vec3 oA, vec3 oB, float gapSq)
+bool meshWall46(vec3 w0, vec3 w1, vec3 pM, vec3 oA, vec3 oB, float tolSq, float gapSq)
 {
-  return eq(w0, w1) && neq(w0, oA) && neq(w0, oB) && distSqY(w0, pM) >= gapSq;
+  if (!eq(w0, w1)) return false;
+  float dw = distSqY(w0, pM);
+  return dw <= tolSq || (dw >= gapSq && neq(w0, oA) && neq(w0, oB));
+}
+bool meshFlankStroke46(vec2 coord, vec3 oS, vec3 oOpp, vec3 oD1, vec3 oD2, vec3 oN1, vec3 oN2, vec2 pcFar, float tolSq)
+{
+  if (distSqY(oD1, oS) > tolSq || distSqY(oD2, oS) > tolSq) return false;
+  if (min(min(distSqY(oOpp, oS), distSqY(oN1, oS)), distSqY(oN2, oS)) < SQ255(54.0)) return false;
+  if (distSqY(PY(pcFar.x, pcFar.y), oS) < SQ255(54.0)) return false;
+  vec2 pS = step(vec2(0.5), pcFar);
+  vec2 dS = 2.0 * (pcFar - pS);
+  vec2 pe1 = pS + vec2(-dS.y, dS.x), pe2 = pS - vec2(-dS.y, dS.x);
+  return distSqY(PY(pe1.x, pe1.y), oS) <= tolSq || distSqY(PY(pe2.x, pe2.y), oS) <= tolSq;
 }
 bool meshParity46(vec2 coord, vec3 cA, vec3 cB, vec3 oA, vec3 oB, float tolSq, float gapSq,
-                  vec3 mL, vec3 oL, vec3 mR, vec3 oR, vec3 mU, vec3 oU, vec3 mD, vec3 oD,
-                  vec2 pmL, vec2 poL, vec2 pmR, vec2 poR, vec2 pmU, vec2 poU, vec2 pmD, vec2 poD)
+                  vec3 mH1, vec3 oH1, vec3 mH2, vec3 oH2, vec3 mV1, vec3 oV1, vec3 mV2, vec3 oV2,
+                  vec2 pmH1, vec2 poH1, vec2 pmH2, vec2 poH2, vec2 pmV1, vec2 poV1, vec2 pmV2, vec2 poV2,
+                  vec2 pcA, vec2 pcB)
 {
   vec3 pM = 0.5 * (cA + cB);
-  bool hL = distSqY(mL, pM) <= tolSq && distSqY(oL, pM) >= gapSq;
-  bool hR = distSqY(mR, pM) <= tolSq && distSqY(oR, pM) >= gapSq;
-  bool hU = distSqY(mU, pM) <= tolSq && distSqY(oU, pM) >= gapSq;
-  bool hD = distSqY(mD, pM) <= tolSq && distSqY(oD, pM) >= gapSq;
-  bool wL = meshWall46(mL, oL, pM, oA, oB, gapSq);
-  bool wR = meshWall46(mR, oR, pM, oA, oB, gapSq);
-  bool wU = meshWall46(mU, oU, pM, oA, oB, gapSq);
-  bool wD = meshWall46(mD, oD, pM, oA, oB, gapSq);
-  if (!((hL && hR && ((hU && hD) || (hU && wD) || (hD && wU)))
-     || (hU && hD && ((hL && wR) || (hR && wL)))))
+  bool hH1 = distSqY(mH1, pM) <= tolSq && distSqY(oH1, pM) >= gapSq;
+  bool hH2 = distSqY(mH2, pM) <= tolSq && distSqY(oH2, pM) >= gapSq;
+  if (!hH1 && !hH2) return false;
+  bool hV1 = distSqY(mV1, pM) <= tolSq && distSqY(oV1, pM) >= gapSq;
+  bool hV2 = distSqY(mV2, pM) <= tolSq && distSqY(oV2, pM) >= gapSq;
+  // Zero-fetch early-out: every valid case has >= 3 mesh sides (hCnt >= 3).
+  // Moreover, when hX is true, distSqY(mX,pM)<=tolSq and distSqY(oX,pM)>=gapSq > tolSq, so eq(mX,oX) is false => wX is false.
+  int hCnt = int(hH1) + int(hH2) + int(hV1) + int(hV2);
+  if (hCnt < 3) return false;
+  bool wH1 = !hH1 && meshWall46(mH1, oH1, pM, oA, oB, tolSq, gapSq);
+  bool wH2 = !hH2 && meshWall46(mH2, oH2, pM, oA, oB, tolSq, gapSq);
+  bool wV1 = !hV1 && meshWall46(mV1, oV1, pM, oA, oB, tolSq, gapSq);
+  bool wV2 = !hV2 && meshWall46(mV2, oV2, pM, oA, oB, tolSq, gapSq);
+  if (hCnt == 3 && !(wH1 || wH2 || wV1 || wV2)) return false;
+  bool bH1 = false, bH2 = false, bV1 = false, bV2 = false;
+  bool eH1 = false, eH2 = false, eV1 = false, eV2 = false;
+  if (hH1) { vec3 qm = PY(pmH1.x, pmH1.y), qo = PY(poH1.x, poH1.y); bH1 = distSqY(qm, pM) <= tolSq && distSqY(qo, pM) >= gapSq; eH1 = bH1 || meshWall46(qm, qo, pM, oA, oB, tolSq, gapSq); }
+  if (hH2) { vec3 qm = PY(pmH2.x, pmH2.y), qo = PY(poH2.x, poH2.y); bH2 = distSqY(qm, pM) <= tolSq && distSqY(qo, pM) >= gapSq; eH2 = bH2 || meshWall46(qm, qo, pM, oA, oB, tolSq, gapSq); }
+  bool spanH = (eH1 && eH2) || (bH1 && wH2) || (bH2 && wH1);
+  if (!spanH) return false;
+  if (hV1) { vec3 qm = PY(pmV1.x, pmV1.y), qo = PY(poV1.x, poV1.y); bV1 = distSqY(qm, pM) <= tolSq && distSqY(qo, pM) >= gapSq; eV1 = bV1 || meshWall46(qm, qo, pM, oA, oB, tolSq, gapSq); }
+  if (hV2) { vec3 qm = PY(pmV2.x, pmV2.y), qo = PY(poV2.x, poV2.y); bV2 = distSqY(qm, pM) <= tolSq && distSqY(qo, pM) >= gapSq; eV2 = bV2 || meshWall46(qm, qo, pM, oA, oB, tolSq, gapSq); }
+  bool spanV = (eV1 && eV2) || (bV1 && wV2) || (bV2 && wV1);
+  if (!((bH1 && bH2 && spanV) || (bV1 && bV2 && spanH)))
     return false;
-  bool bL = hL && distSqY(PY(pmL.x, pmL.y), pM) <= tolSq && distSqY(PY(poL.x, poL.y), pM) >= gapSq;
-  bool bR = hR && distSqY(PY(pmR.x, pmR.y), pM) <= tolSq && distSqY(PY(poR.x, poR.y), pM) >= gapSq;
-  bool bU = hU && distSqY(PY(pmU.x, pmU.y), pM) <= tolSq && distSqY(PY(poU.x, poU.y), pM) >= gapSq;
-  bool bD = hD && distSqY(PY(pmD.x, pmD.y), pM) <= tolSq && distSqY(PY(poD.x, poD.y), pM) >= gapSq;
-  return (bL && bR && ((bU && bD) || (bU && wD) || (bD && wU)))
-      || (bU && bD && ((bL && wR) || (bR && wL)));
+  if (distSqY(oA, oB) <= tolSq)
+  {
+    vec3 pO = 0.5 * (oA + oB);
+    if (min(min(distSqY(oH1, pO), distSqY(oH2, pO)), min(distSqY(oV1, pO), distSqY(oV2, pO))) >= SQ255(54.0)
+        && (distSqY(PY(pcA.x, pcA.y), pO) <= tolSq || distSqY(PY(pcB.x, pcB.y), pO) <= tolSq))
+      return false;
+  }
+  if (meshFlankStroke46(coord, oA, oB, oH2, oV1, oH1, oV2, pcA, tolSq)
+   || meshFlankStroke46(coord, oB, oA, oH1, oV2, oH2, oV1, pcB, tolSq))
+    return false;
+  return true;
 }
 // d) Shaded / gradient 2D checkerboards and high-contrast 1-parity 50% mesh-transparency overlays.
-bool checkerShaded46(vec2 coord, vec3 kf, vec3 kg, vec3 kj, vec3 kk,
+bool checkerShaded46(vec2 coord, vec3 kf, vec3 kg, vec3 kj, vec3 kk, float d0, float d1,
                      vec3 kb, vec3 kc, vec3 ke, vec3 kh, vec3 ki, vec3 kl, vec3 kn, vec3 ko)
 {
   float minEdgeSq = min(min(distSqY(kf, kg), distSqY(kf, kj)), min(distSqY(kk, kg), distSqY(kk, kj)));
-  if (minEdgeSq < SQ255(30.0)) return false;
-  float d0 = distSqY(kf, kk), d1 = distSqY(kg, kj);
+  if (minEdgeSq < SQ255(30.0) || min(d0, d1) >= 0.18 * minEdgeSq) return false;
   if (max(d0, d1) < 0.18 * minEdgeSq)
   {
     vec3 p0 = 0.5 * (kf + kk), p1 = 0.5 * (kg + kj);
@@ -362,79 +371,145 @@ bool checkerShaded46(vec2 coord, vec3 kf, vec3 kg, vec3 kj, vec3 kk,
     bool hR = chkSoftEq(kh, p0, p1, tolSq) && chkSoftEq(kl, p1, p0, tolSq);
     bool hU = chkSoftEq(kb, p1, p0, tolSq) && chkSoftEq(kc, p0, p1, tolSq);
     bool hD = chkSoftEq(kn, p0, p1, tolSq) && chkSoftEq(ko, p1, p0, tolSq);
-    if ((hU && hD) || (hL && hR))
+    int rem = int(hL) + int(hR) + int(hU) + int(hD);
+    if (rem >= 3)
     {
-      bool bL = hL && chkSoftEq(PY(-2.0, 0.0), p0, p1, tolSq) && chkSoftEq(PY(-2.0, 1.0), p1, p0, tolSq);
-      bool bR = hR && chkSoftEq(PY( 3.0, 0.0), p1, p0, tolSq) && chkSoftEq(PY( 3.0, 1.0), p0, p1, tolSq);
-      bool bU = hU && chkSoftEq(PY( 0.0,-2.0), p0, p1, tolSq) && chkSoftEq(PY( 1.0,-2.0), p1, p0, tolSq);
-      bool bD = hD && chkSoftEq(PY( 0.0, 3.0), p1, p0, tolSq) && chkSoftEq(PY( 1.0, 3.0), p0, p1, tolSq);
-      if (int(bL) + int(bR) + int(bU) + int(bD) >= 3) return true;
+      int ok = 0;
+      if (hL) { if (chkSoftEq(PY(-2.0, 0.0), p0, p1, tolSq) && chkSoftEq(PY(-2.0, 1.0), p1, p0, tolSq)) ok++; rem--; }
+      if (ok + rem >= 3 && hR) { if (chkSoftEq(PY( 3.0, 0.0), p1, p0, tolSq) && chkSoftEq(PY( 3.0, 1.0), p0, p1, tolSq)) ok++; rem--; }
+      if (ok + rem >= 3 && hU) { if (chkSoftEq(PY( 0.0,-2.0), p0, p1, tolSq) && chkSoftEq(PY( 1.0,-2.0), p1, p0, tolSq)) ok++; rem--; }
+      if (ok >= 3) return true;
+      if (ok + rem >= 3 && hD && chkSoftEq(PY( 0.0, 3.0), p1, p0, tolSq) && chkSoftEq(PY( 1.0, 3.0), p0, p1, tolSq)) ok++;
+      if (ok >= 3) return true;
     }
   }
-  if (minEdgeSq < SQ255(72.0)) return false;
   float mTolSq = min(SQ255(26.0), 0.08 * minEdgeSq);
+  if (minEdgeSq < SQ255(72.0) || min(d0, d1) > mTolSq) return false;
   float mGapSq = max(SQ255(72.0), 4.0 * mTolSq);
   if (d0 <= mTolSq && meshParity46(coord, kf, kk, kg, kj, mTolSq, mGapSq,
                                    ki, ke, kh, kl, kc, kb, kn, ko,
                                    vec2(-2.0, 0.0), vec2(-2.0, 1.0), vec2(3.0, 1.0), vec2(3.0, 0.0),
-                                   vec2(0.0, -2.0), vec2(1.0, -2.0), vec2(1.0, 3.0), vec2(0.0, 3.0)))
+                                   vec2(0.0, -2.0), vec2(1.0, -2.0), vec2(1.0, 3.0), vec2(0.0, 3.0),
+                                   vec2(2.0, -1.0), vec2(-1.0, 2.0)))
     return true;
   if (d1 <= mTolSq && meshParity46(coord, kg, kj, kf, kk, mTolSq, mGapSq,
-                                   ke, ki, kl, kh, kb, kc, ko, kn,
-                                   vec2(-2.0, 1.0), vec2(-2.0, 0.0), vec2(3.0, 0.0), vec2(3.0, 1.0),
-                                   vec2(1.0, -2.0), vec2(0.0, -2.0), vec2(0.0, 3.0), vec2(1.0, 3.0)))
+                                   kl, kh, ke, ki, kb, kc, ko, kn,
+                                   vec2(3.0, 0.0), vec2(3.0, 1.0), vec2(-2.0, 1.0), vec2(-2.0, 0.0),
+                                   vec2(1.0, -2.0), vec2(0.0, -2.0), vec2(0.0, 3.0), vec2(1.0, 3.0),
+                                   vec2(-1.0, -1.0), vec2(2.0, 2.0)))
     return true;
   return false;
 }
-// Helper for 2x4 shaded checker strip beside an exact 1x4 solid wall (in-register checks first, 2 corner fetches last).
-bool chkEdgeSoft2x4(vec2 coord, vec3 a0, vec3 b0, vec3 a1, vec3 b1, vec3 a2, vec3 b2, vec2 oA, vec2 oB)
+// Helper for 2x4 shaded or 3-row 1-parity 50% mesh checker strip beside an exact 1x4 solid wall (in-register checks first).
+bool chkEdgeSoft2x4(vec2 coord, vec3 a0, vec3 b0, vec3 a1, vec3 b1, vec3 a2, vec3 b2, vec2 oA, vec2 oB, vec2 p3A, vec2 p3B, vec3 w, float dA01Sq, float dB01Sq)
 {
   float minEdgeSq = min(min(distSqY(a0, b0), distSqY(a0, b1)), min(distSqY(a1, b0), distSqY(a1, b1)));
-  if (minEdgeSq < SQ255(35.0)) return false;
-  if (max(distSqY(a0, a1), distSqY(b0, b1)) >= 0.18 * minEdgeSq) return false;
+  if (minEdgeSq < SQ255(35.0) || min(dA01Sq, dB01Sq) >= 0.18 * minEdgeSq) return false;
   vec3 pA = 0.5 * (a0 + a1), pB = 0.5 * (b0 + b1);
-  float tolSq = 0.18 * distSqY(pA, pB);
-  if (!(chkSoftEq(a2, pA, pB, tolSq) && chkSoftEq(b2, pB, pA, tolSq))) return false;
-  return chkSoftEq(PY(oA.x, oA.y), pA, pB, tolSq) && chkSoftEq(PY(oB.x, oB.y), pB, pA, tolSq);
+  if (max(dA01Sq, dB01Sq) < 0.18 * minEdgeSq)
+  {
+    float tolSq = 0.18 * distSqY(pA, pB);
+    if (chkSoftEq(a2, pA, pB, tolSq) && chkSoftEq(b2, pB, pA, tolSq)
+        && chkSoftEq(PY(oA.x, oA.y), pA, pB, tolSq) && chkSoftEq(PY(oB.x, oB.y), pB, pA, tolSq))
+      return true;
+  }
+  float mTolSq = min(SQ255(26.0), 0.08 * minEdgeSq);
+  if (minEdgeSq < SQ255(72.0) || min(dA01Sq, dB01Sq) > mTolSq) return false;
+  float mGapSq = max(SQ255(72.0), 4.0 * mTolSq);
+  float dwA = distSqY(w, pA), dwB = distSqY(w, pB);
+  bool okA = dA01Sq <= mTolSq
+          && (dwA <= mTolSq || (dwA >= mGapSq && neq(w, b0) && neq(w, b1)))
+          && distSqY(a2, pA) <= mTolSq && distSqY(b2, pA) >= mGapSq;
+  bool okB = dB01Sq <= mTolSq
+          && (dwB <= mTolSq || (dwB >= mGapSq && neq(w, a0) && neq(w, a1)))
+          && distSqY(b2, pB) <= mTolSq && distSqY(a2, pB) >= mGapSq;
+  if (!okA && !okB) return false;
+  vec3 qOA = PY(oA.x, oA.y), qOB = PY(oB.x, oB.y);
+  okA = okA && distSqY(qOB, pA) >= mGapSq && !(dwA >= mGapSq && eq(w, b2) && eq(w, qOB)) && distSqY(qOA, pA) <= mTolSq;
+  okB = okB && distSqY(qOA, pB) >= mGapSq && !(dwB >= mGapSq && eq(w, a2) && eq(w, qOA)) && distSqY(qOB, pB) <= mTolSq;
+  if (!okA && !okB) return false;
+  vec3 q3A = PY(p3A.x, p3A.y), q3B = PY(p3B.x, p3B.y);
+  return (okA && distSqY(q3A, pA) <= mTolSq && distSqY(q3B, pA) >= mGapSq)
+      || (okB && distSqY(q3B, pB) <= mTolSq && distSqY(q3A, pB) >= mGapSq);
 }
-// c) A 4-pixel solid wall column/row immediately adjacent to a confirmed 2x4 checker strip (exact or shaded).
-bool checkerEdge46(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3 kh, vec3 ki, vec3 kj, vec3 kk, vec3 kl, vec3 kn, vec3 ko)
+// c) A 4-pixel solid wall column/row immediately adjacent to a confirmed 2x4 checker strip (exact, shaded, or 3-row 50% mesh).
+bool chkCapPerp46(vec2 coord, vec3 c1, vec3 c2, vec3 sA0, vec3 sB0, vec2 pA1, vec2 pB1, vec2 pf0, vec2 pf1)
 {
-  if (eq(kg, kk) && eq(kc, kg) && eq(ko, kg) && neq(kf, kj))
+  bool cA0 = eq(sA0, c2), cB0 = eq(sB0, c1);
+  bool wA0 = eq(sA0, c1), wB0 = eq(sB0, c2);
+  if (!((cA0 && (cB0 || wB0)) || (cB0 && wA0))) return false;
+  if (!eq(PY(pf0.x, pf0.y), c1) || !eq(PY(pf1.x, pf1.y), c2)) return false;
+  vec3 sA1 = PY(pA1.x, pA1.y), sB1 = PY(pB1.x, pB1.y);
+  bool cA = cA0 && eq(sA1, c1), cB = cB0 && eq(sB1, c2);
+  bool wA = (cA0 || wA0) && eq(sA0, sA1);
+  bool wB = (cB0 || wB0) && eq(sB0, sB1);
+  return (cA && (cB || wB)) || (cB && wA);
+}
+bool chkEdgeDir46(vec2 coord, vec3 c1, vec3 c2, vec3 w, bool sameWall, vec3 wA, vec3 wB,
+                  vec3 a1, vec3 b1, vec3 a2, vec3 b2, vec2 oA, vec2 oB, vec2 p3A, vec2 p3B, float dA01Sq, float dB01Sq)
+{
+  bool eqWA = eq(wA, w), eqWB = eq(wB, w);
+  if (!eqWA && !eqWB) return false;
+  bool cIn = eq(b1, c2) && eq(a1, c1);
+  if (eqWA && eqWB)
   {
-    if ((eq(kf, kg) || eq(kj, kg))
-        && eq(kb, kj) && eq(kn, kf) && eq(ke, kj) && eq(ki, kf)
-        && eq(PY(-1.0, -1.0), kf) && eq(PY(-1.0, 2.0), kj))
-      return true;
-    if (chkEdgeSoft2x4(coord, kf, kj, ki, ke, kn, kb, vec2(-1.0, -1.0), vec2(-1.0, 2.0)))
-      return true;
+    if (cIn)
+    {
+      if (sameWall)
+      {
+        if (eq(b2, c2) && eq(a2, c1) && eq(PY(oA.x, oA.y), c1) && eq(PY(oB.x, oB.y), c2))
+          return true;
+      }
+      else if (chkCapPerp46(coord, c1, c2, b2, a2, oA, oB, p3A, p3B))
+        return true;
+    }
+    return chkEdgeSoft2x4(coord, c1, c2, a1, b1, a2, b2, oA, oB, p3A, p3B, w, dA01Sq, dB01Sq);
   }
-  if (eq(kf, kj) && eq(kb, kf) && eq(kn, kf) && neq(kg, kk))
+  if (!sameWall || !cIn) return false;
+  vec3 wOth = eqWA ? wB : wA;
+  if (!(eq(eqWA ? a2 : b2, wOth) && neq(wOth, c1) && neq(wOth, c2) && eq(eqWA ? b2 : a2, eqWA ? c2 : c1)))
+    return false;
+  vec2 t = p3B - p3A, n = (oA - p3A) + t;
+  vec2 oS = eqWA ? oA : oB;
+  vec2 s1 = oS + n + (eqWA ? -t : t);
+  vec2 s2 = s1 + n;
+  vec3 cExp = eqWA ? c1 : c2;
+  return eq(PY(oS.x, oS.y), cExp) && eq(PY(s1.x, s1.y), cExp) && eq(PY(s2.x, s2.y), w);
+}
+bool checkerEdge46(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3 kh, vec3 ki, vec3 kj, vec3 kk, vec3 kl, vec3 kn, vec3 ko,
+                   bool eqFG, bool eqFJ, bool eqJK, bool eqGK, vec4 jgSq, vec4 fkSq)
+{
+  if (eqGK != eqFJ)
   {
-    if ((eq(kg, kf) || eq(kk, kf))
-        && eq(kc, kk) && eq(ko, kg) && eq(kh, kk) && eq(kl, kg)
-        && eq(PY( 2.0, -1.0), kg) && eq(PY( 2.0, 2.0), kk))
-      return true;
-    if (chkEdgeSoft2x4(coord, kg, kk, kl, kh, ko, kc, vec2(2.0, -1.0), vec2(2.0, 2.0)))
-      return true;
+    float dA = eqGK ? jgSq.x : fkSq.w, dB = eqGK ? fkSq.x : jgSq.w;
+    vec3 c1 = eqGK ? kf : kg, c2 = eqGK ? kj : kk;
+    if (min(dA, dB) <= 0.18 * distSqY(c1, c2))
+    {
+      vec3 w = eqGK ? kg : kf, wA = eqGK ? kc : kb, wB = eqGK ? ko : kn;
+      if ((eq(wA, w) || eq(wB, w))
+          && chkEdgeDir46(coord, c1, c2, w, eqFG || eqJK, wA, wB,
+                          eqGK ? ki : kl, eqGK ? ke : kh, eqGK ? kn : ko, eqGK ? kb : kc,
+                          eqGK ? vec2(-1.0, -1.0) : vec2(2.0, -1.0), eqGK ? vec2(-1.0, 2.0) : vec2(2.0, 2.0),
+                          eqGK ? vec2(-2.0,  0.0) : vec2(3.0,  0.0), eqGK ? vec2(-2.0, 1.0) : vec2(3.0, 1.0),
+                          dA, dB))
+        return true;
+    }
   }
-  if (eq(kj, kk) && eq(ki, kj) && eq(kl, kj) && neq(kf, kg))
+  if (eqJK != eqFG)
   {
-    if ((eq(kf, kj) || eq(kg, kj))
-        && eq(ke, kg) && eq(kh, kf) && eq(kb, kg) && eq(kc, kf)
-        && eq(PY(-1.0, -1.0), kf) && eq(PY( 2.0, -1.0), kg))
-      return true;
-    if (chkEdgeSoft2x4(coord, kf, kg, kc, kb, kh, ke, vec2(-1.0, -1.0), vec2(2.0, -1.0)))
-      return true;
-  }
-  if (eq(kf, kg) && eq(ke, kf) && eq(kh, kf) && neq(kj, kk))
-  {
-    if ((eq(kj, kf) || eq(kk, kf))
-        && eq(ki, kk) && eq(kl, kj) && eq(kn, kk) && eq(ko, kj)
-        && eq(PY(-1.0,  2.0), kj) && eq(PY( 2.0, 2.0), kk))
-      return true;
-    if (chkEdgeSoft2x4(coord, kj, kk, ko, kn, kl, ki, vec2(-1.0, 2.0), vec2(2.0, 2.0)))
-      return true;
+    float dA = eqJK ? jgSq.y : fkSq.y, dB = eqJK ? fkSq.z : jgSq.z;
+    vec3 c1 = eqJK ? kf : kj, c2 = eqJK ? kg : kk;
+    if (min(dA, dB) <= 0.18 * distSqY(c1, c2))
+    {
+      vec3 w = eqJK ? kj : kf, wA = eqJK ? ki : ke, wB = eqJK ? kl : kh;
+      if ((eq(wA, w) || eq(wB, w))
+          && chkEdgeDir46(coord, c1, c2, w, eqFJ || eqGK, wA, wB,
+                          eqJK ? kc : ko, eqJK ? kb : kn, eqJK ? kh : kl, eqJK ? ke : ki,
+                          eqJK ? vec2(-1.0, -1.0) : vec2(-1.0, 2.0), eqJK ? vec2(2.0, -1.0) : vec2(2.0, 2.0),
+                          eqJK ? vec2( 0.0, -2.0) : vec2( 0.0, 3.0), eqJK ? vec2(1.0, -2.0) : vec2(1.0, 3.0),
+                          dA, dB))
+        return true;
+    }
   }
   return false;
 }
@@ -454,24 +529,32 @@ ivec4 pointBlend(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3 k
 {
   ivec4 r = ivec4(BLEND_NONE);
   // the weighted lengths of the two diagonals, j-g and f-k: the shorter one is drawn
-  float jg = distY(kf, ki) + distY(kc, kf) + distY(kk, kn) + distY(kh, kk) + (4.0 * distY(kg, kj));
-  float fk = distY(ke, kj) + distY(kj, ko) + distY(kb, kg) + distY(kg, kl) + (4.0 * distY(kf, kk));
+  vec4 jgSq = vec4(distSqY(kf, ki), distSqY(kc, kf), distSqY(kk, kn), distSqY(kh, kk));
+  vec4 fkSq = vec4(distSqY(ke, kj), distSqY(kj, ko), distSqY(kb, kg), distSqY(kg, kl));
+  float dJgSq = distSqY(kg, kj), dFkSq = distSqY(kf, kk);
+  vec4 sJG = sqrt(jgSq);
+  vec4 sFK = sqrt(fkSq);
+  vec2 sDiag = sqrt(vec2(dJgSq, dFkSq));
+  float jg = sJG.x + sJG.y + sJG.z + sJG.w + (4.0 * sDiag.x);
+  float fk = sFK.x + sFK.y + sFK.z + sFK.w + (4.0 * sDiag.y);
+  bool eqFG = eq(kf, kg), eqFJ = eq(kf, kj), eqJK = eq(kj, kk), eqGK = eq(kg, kk);
   if (jg + TIE_EPS < fk)
   {
     int t = (DOM_E * jg < fk) ? BLEND_DOMINANT : BLEND_NORMAL;
-    if (neq(kf, kg) && neq(kf, kj)) r.x = t;
-    if (neq(kk, kj) && neq(kk, kg)) r.w = t;
+    if (!eqFG && !eqFJ) r.x = t;
+    if (!eqJK && !eqGK) r.w = t;
   }
   else if (fk + TIE_EPS < jg)
   {
     int t = (DOM_E * fk < jg) ? BLEND_DOMINANT : BLEND_NORMAL;
-    if (neq(kg, kf) && neq(kg, kk)) r.y = t;
-    if (neq(kj, kf) && neq(kj, kk)) r.z = t;
+    if (!eqFG && !eqGK) r.y = t;
+    if (!eqFJ && !eqJK) r.z = t;
   }
 //#crisp{
   if (CRISP_RULES)
   {
-    bool isChecker = eq(kf, kk) && eq(kg, kj) && neq(kf, kg);
+    bool eqFK = eq(kf, kk), eqGJ = eq(kg, kj);
+    bool isChecker = eqFK && eqGJ && !eqFG;
     // 31. an exact tie between two diagonals of one color each
     if (isChecker && abs(jg - fk) < 0.001 && jg > 0.0 && !withinEqY255(kf, kg, 64.0))
     {
@@ -489,20 +572,32 @@ ivec4 pointBlend(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3 k
         }
       }
     }
-    // 36. Crossing strokes: k36.y joins j-g, k36.x joins f-k (preserve BLEND_DOMINANT if already set on that diagonal)
-    vec2 k36 = crossWin(coord, kb, kc, ke, kf, kg, kh, ki, kj, kk, kl, kn, ko);
-    if (k36.y > 0.5) r = ivec4(r.x == BLEND_DOMINANT ? BLEND_DOMINANT : BLEND_NORMAL, BLEND_NONE, BLEND_NONE, r.w == BLEND_DOMINANT ? BLEND_DOMINANT : BLEND_NORMAL);
-    else if (k36.x > 0.5) r = ivec4(BLEND_NONE, r.y == BLEND_DOMINANT ? BLEND_DOMINANT : BLEND_NORMAL, r.z == BLEND_DOMINANT ? BLEND_DOMINANT : BLEND_NORMAL, BLEND_NONE);
+    // 36. Crossing strokes: join j-g (if kf==kk) or f-k (if kg==kj); skip when r already chose that diagonal (no-op)
+    if (eqFK != eqGJ)
+    {
+      float dStSq = eqFK ? dJgSq : dFkSq;
+      if ((eqFK ? r.x : r.y) == BLEND_NONE && crossWinCore(eqFK ? kf : kg, eqFK ? kg : kf, eqFK ? kj : kk, dStSq))
+      {
+        float limSq = max(SQ255(30.0), 0.64 * dStSq);
+        vec3 st1 = eqFK ? kg : kf, st2 = eqFK ? kj : kk, bg = eqFK ? kf : kg;
+        if (thinOuter(coord, eqFK ? kc : kb, eqFK ? kh : ke, eqFK ? kb : kc, eqFK ? kl : ki, eqFK ? vec2(2.0, -1.0) : vec2(-1.0, -1.0), st1, st2, limSq)
+            && thinOuter(coord, eqFK ? ki : kl, eqFK ? kn : ko, eqFK ? ke : kh, eqFK ? ko : kn, eqFK ? vec2(-1.0, 2.0) : vec2(2.0, 2.0), st1, st2, limSq)
+            && (massOuter(coord, eqFK ? kb : kc, eqFK ? ke : kh, eqFK ? kc : kb, eqFK ? ki : kl, eqFK ? vec2(-1.0, -1.0) : vec2(2.0, -1.0), bg)
+                || massOuter(coord, eqFK ? kl : ki, eqFK ? ko : kn, eqFK ? kh : ke, eqFK ? kn : ko, eqFK ? vec2(2.0, 2.0) : vec2(-1.0, 2.0), bg)))
+          r = eqFK ? ivec4(BLEND_NORMAL, BLEND_NONE, BLEND_NONE, BLEND_NORMAL) : ivec4(BLEND_NONE, BLEND_NORMAL, BLEND_NORMAL, BLEND_NONE);
+      }
+    }
     // 46. a 2x2 checker (exact, shaded, or 50% mesh) inside a checker texture (or its edge against a solid wall) keeps its corners square
     if (r.x + r.y + r.z + r.w > 0)
     {
-      if (eq(kf, kg) || eq(kj, kk) || eq(kf, kj) || eq(kg, kk))
+      if (eqFG || eqJK || eqFJ || eqGK)
       {
-        if (checkerEdge46(coord, kb, kc, ke, kf, kg, kh, ki, kj, kk, kl, kn, ko))
+        if (checkerEdge46(coord, kb, kc, ke, kf, kg, kh, ki, kj, kk, kl, kn, ko, eqFG, eqFJ, eqJK, eqGK, jgSq, fkSq))
           r = ivec4(BLEND_NONE);
       }
       else if ((isChecker && checker46(coord, kf, kg, kb, kc, ke, kh, ki, kl, kn, ko))
-               || checkerShaded46(coord, kf, kg, kj, kk, kb, kc, ke, kh, ki, kl, kn, ko))
+               || (min(dFkSq, dJgSq) < 0.18 * min(distSqY(kf, kg), distSqY(kf, kj))
+                   && checkerShaded46(coord, kf, kg, kj, kk, dFkSq, dJgSq, kb, kc, ke, kh, ki, kl, kn, ko)))
         r = ivec4(BLEND_NONE);
     }
   }

@@ -115,7 +115,10 @@
 //     differs from both colors of the corner by 64 or more (54 for the L), these tests use the reference
 //     xBRZ tolerance (30) instead of XBRZ_TOL, so a light pixel close to its background is cut, and a
 //     light tip is rounded, as in the reference xBRZ, like Isaac's leg in Golden Sun; textures and
-//     shading keep XBRZ_TOL.
+//     shading keep XBRZ_TOL. A strong exact-color 45-degree corner (dMinC >= XBRZ_STRAIGHT, cand20 < XBRZ_SAME)
+//     whose line was suppressed by the lone-pixel test gets its 45-degree line back when the opposite cut
+//     is non-line or much weaker, or on a 2-cut pixel where an adjacent corner draws an exact-color line
+//     and E's color continues diagonally across both corners.
 // 16. Line in another color: where xBRZ draws a line through a lone pixel along a pair of one color
 //     but paints the corner with the other neighbor's color, which differs from the line's by more
 //     than XBRZ_TINT and does not lie on an antialiasing ramp with it, the corner stays square when
@@ -166,9 +169,10 @@
 //     is no line, so a dark outline pixel is not nibbled by a small detail beside it. At the end of a bar two
 //     pixels wide whose two corners at the end are cut, the corner just under the end is cut too, so the tip
 //     stays round, like the tip of a foot in Tales of Phantasia. A corner whose cut goes on as one straight
-//     line through the facing corner of the neighbor that gives its color stays cut where its two neighbors
-//     are much closer to each other than to the pixel, so a thin stroke between two background colors keeps
-//     both its edges, like the halo of King Kai in Buu's Fury. Two shades are no junction: where E is a
+//     line through the facing corner of the neighbor that gives its color (or through its matching far-end 2:1
+//     line partner painting E's color, outside a 4-color orthogonal crosshair) stays cut where its two neighbors
+//     are much closer to each other than to the pixel, so a thin stroke or 2:1 contour between two light colors
+//     keeps both its edges (the halo of King Kai in Buu's Fury, Sonic's muzzle outline). Two shades are no junction: where E is a
 //     close shade of one neighbor (under XBRZ_JUNC_TONE of the neighbors' distance) the corner is the edge of
 //     E's area, like a highlight beside antialiased red; where the two neighbors are shades of one gray (both
 //     nearly gray, under XBRZ_JUNC_GRAY, and their hue under XBRZ_JUNC_HUE apart) much closer to each other than
@@ -208,9 +212,10 @@
 //     round tip into the pixel past the stripe's end either.
 // 24. A line with nothing to go on to: a 2:1 or 1:2 line between two colors XBRZ_HOOK or more apart is drawn only
 //     where a corner at one of the two ends of its step is cut too (the pixel beside E along the line has the
-//     other half of the line), and the corner is not a step of a straight edge (rule 14). Where none is, the corner
-//     is a plain tip like a corner without a line, so the end of a 1-pixel bar, like the end of a letter's stroke,
-//     does not grow a hook.
+//     other half of the line), or where the facing corner diagonally across a uniform band (cand20 < XBRZ_SAME)
+//     draws the same parallel 2:1 slope, and the corner is not a step of a straight edge (rule 14). Where none is,
+//     the corner is a plain tip like a corner without a line, so the end of a 1-pixel bar, like the end of a
+//     letter's stroke, does not grow a hook.
 // 23. A loose pixel is a square with rounded corners: where a pixel differs from each of its 4 side neighbors by
 //     XBRZ_LOOSE or more and from all 4 diagonal neighbors, and xBRZ cuts all 4 of its corners (a dot, an eye, a
 //     highlight), the corners take a plain tip with no line and the output pass draws that tip smaller than a
@@ -324,7 +329,10 @@
 //     the pixel across it are one color K (XBRZ_MINC or more from E) and E's other two neighbors are not K,
 //     is cut along the edge when the same corner of both pixels along the edge is cut with a 45-degree line
 //     painting K. xBRZ leaves such a corner square where its two diagonals nearly tie and a pixel farther
-//     away tips them the other way, which leaves a square step in a straight diagonal edge.
+//     away tips them the other way, which leaves a square step in a straight diagonal edge. Likewise, where a
+//     2-pixel run of a mid-tone pixel E sits beside a 2-pixel brighter wall S and shares a darker background U
+//     whose facing corner already cuts into E with a 45-degree line (with the outer corners of U and S uncut),
+//     E's uncut corner is beveled at 45 degrees in U's color to complete the convex corner.
 // 43. A dome: where the resolve pass took back a corner of a 2-pixel run, and a cap color runs over the run
 //     and past both ends while the run ends on both sides in one other color, the corner is cut again (if the
 //     mirror corner of the run's other pixel is cut), so the cap ends round on both sides, like the top of
@@ -341,10 +349,15 @@
 //     or more away, the corner stays square, so the stroke ends square (a gray seam on Isaac's shoulder).
 // 46. A checkerboard keeps its squares: a 2x2 checker of two colors (or a shaded/gradient checker and a
 //     high-contrast 1-parity 50% mesh transparency overlay) with three or more of the 2x2 blocks beside it
-//     (2 pixels left, right, above and below) matching its parity, or forming a 2x6 axial checker strip
-//     bounded laterally by axis-aligned walls, is not cut; likewise a 1x4 solid wall immediately adjacent to
-//     a confirmed 2x4 exact or shaded checker strip keeps its squares, so checker dithering and 50% HUD mesh
-//     overlays stay square right up to their borders without affecting 1-pixel dotted lines or diagonal strokes.
+//     (2 pixels left, right, above and below) matching its parity, or two orthogonal 2x2 blocks plus the
+//     diagonal 2x2 corner between them forming a solid 4x4 exact checkerboard, or forming a 2x6 axial
+//     checker strip bounded laterally by axis-aligned walls (including where one wall transitions to a
+//     foreign third color, or >= 4px wide along a full 6-pixel pure mesh axis), is not cut—except where a
+//     distinct 1-pixel 45-degree diagonal stroke crosses through the 50%
+//     mesh, so diagonal dividers stay smooth. Likewise a 1x4 solid wall immediately adjacent to a confirmed
+//     2x4 exact/shaded or 3-row 50% mesh strip (with any non-mesh wall distinct from the adjacent non-mesh
+//     pixels) keeps its squares, so checker dithering and 50% HUD mesh overlays stay square right up to
+//     their borders without affecting 1-pixel dotted lines, compact glyphs, sawtooth edges, or diagonal strokes.
 // 47. A notch in a straight stroke: where E's corner would be cut in the color of a lone pixel beside it
 //     that is a close shade of E, while E's color goes on straight past its other neighbor and diagonally
 //     past the lone pixel, and the color on E's far side is XBRZ_FAR47 or more away, the corner stays square,
@@ -366,9 +379,13 @@
 //     color across it. A neighbor's corner at the point where a side cut actually paints that neighbor is not cut
 //     in the color from the stroke's other side, so that color does not wrap around the bar's end.
 // 50. Drop shadow in a 1-pixel cavity: where a mid-tone background pixel (0.12 < E.x < 0.72) is cut on
-//     separate corners by both a bright foreground stroke (like a 1-pixel HUD letter) and a dark drop shadow,
-//     the dark shadow bevel is suppressed so small glyph bowls stay open; likewise a near-black drop-shadow
-//     pixel (E.x <= 0.08) tucked against a bright 1-pixel stroke does not bevel its mid-tone background corner.
+//     opposite corners by both a high-brightness 1-pixel foreground stroke (Y > 0.85, outer diagonal not
+//     bright, like a HUD letter) and a near-black neutral 1-pixel drop shadow (Y < 0.06, chroma < XBRZ_JUNC_GRAY,
+//     with E's own background color reappearing diagonally across the shadow), the dark shadow bevel is
+//     suppressed so small glyph bowls stay open without breaking shaded 3-tone foliage or colored diagonals;
+//     likewise a near-black drop-shadow pixel (E.x <= 0.08) tucked against a bright 1-pixel stroke does not
+//     bevel its mid-tone background corner unless E continues diagonally along the cut as a curved dark outline
+//     or reappears across the corner (where the two corner neighbors form a 1-pixel diagonal stripe).
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9, 11 and
 // 13 to 50 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}

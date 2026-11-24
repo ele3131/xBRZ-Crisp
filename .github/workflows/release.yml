@@ -1,0 +1,101 @@
+name: Publish GitHub Release
+
+on:
+  push:
+    tags:
+      - "[0-9].*"
+      - "[0-9][0-9].*"
+      - "v[0-9].*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version tag (e.g. 3.6)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG_NAME="${{ inputs.version }}"
+          else
+            TAG_NAME="${GITHUB_REF_NAME}"
+          fi
+          VERSION="${TAG_NAME#v}"
+          echo "tag=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "zip_name=xbrz-crisp-v${VERSION}.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Install headless Mesa OpenGL ES & Python imaging libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgles2 libgl1-mesa-dri python3-pil python3-numpy
+
+      - name: Verify shaders
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          LP_NATIVE_VECTOR_WIDTH: "128"
+        run: python3 tools/verify.py
+
+      - name: Build deterministic RetroArch release zip
+        id: pkg
+        shell: bash
+        run: |
+          ZIP_PATH="build/${{ steps.ver.outputs.zip_name }}"
+          python3 tools/make-release.py "$ZIP_PATH"
+          SHA256="$(sha256sum "$ZIP_PATH" | awk '{print $1}')"
+          echo "zip_path=${ZIP_PATH}" >> "$GITHUB_OUTPUT"
+          echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
+          echo "SHA256 (${{ steps.ver.outputs.zip_name }}): ${SHA256}"
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG_NAME="${{ steps.ver.outputs.tag }}"
+          VERSION="${{ steps.ver.outputs.version }}"
+          ZIP_PATH="${{ steps.pkg.outputs.zip_path }}"
+          ZIP_NAME="${{ steps.ver.outputs.zip_name }}"
+          SHA256="${{ steps.pkg.outputs.sha256 }}"
+
+          PREV_TAG="$(git tag --sort=-creatordate | grep -vx "$TAG_NAME" | head -n 1 || true)"
+          if [ -n "$PREV_TAG" ]; then
+            CHANGES="$(git log "${PREV_TAG}..HEAD" --no-merges --pretty=format:'- %s (%h)')"
+          else
+            CHANGES="$(git log -n 20 --no-merges --pretty=format:'- %s (%h)')"
+          fi
+
+          cat > build/release-notes.md <<EOF
+          ## Changes since ${PREV_TAG:-initial commit}
+
+          ${CHANGES:-"- Maintenance and shader updates."}
+
+          ---
+
+          **Install:** Extract \`${ZIP_NAME}\` into RetroArch's shaders directory (\`shaders_slang\` or \`shaders_glsl\`) and load \`xbrz-crisp\`.
+
+          **SHA-256 (\`${ZIP_NAME}\`):** \`${SHA256}\`
+          EOF
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" "$ZIP_PATH" --clobber
+          else
+            gh release create "$TAG_NAME" "$ZIP_PATH" \
+              --title "xBRZ Crisp ${VERSION}" \
+              --notes-file build/release-notes.md
+          fi

@@ -1,0 +1,136 @@
+{
+  "sources": {
+    "kof98_gauge":    { "kind": "micro", "pad_crop": [12, 12, 92, 48], "platform": "NEO GEO",    "game": "The King of Fighters '98" },
+    "samsho2_hud":    { "kind": "micro", "pad_crop": [12, 12, 98, 40], "platform": "NEO GEO",    "game": "Samurai Shodown III" },
+    "smw_rex":        { "kind": "micro", "pad_crop": [12, 12, 72, 60], "platform": "SNES",       "game": "Super Mario World" },
+    "chrono_forest":  { "kind": "micro", "pad_crop": [12, 12, 72, 62], "platform": "SNES",       "game": "Chrono Trigger" },
+    "sf2_flowers":    { "kind": "micro", "pad_crop": [12, 12, 78, 62], "platform": "MEGA DRIVE", "game": "Shining Force II" },
+    "nes_zelda_hud":  { "kind": "micro", "pad_crop": [12, 12, 48, 40], "platform": "NES",        "game": "The Legend of Zelda" },
+    "mslug_hud":      { "kind": "micro", "pad_crop": [12,  6, 80, 40], "platform": "NEO GEO",    "game": "Metal Slug X" },
+    "tf4_ship":       { "kind": "micro", "pad_crop": [12, 12, 92, 62], "platform": "MEGA DRIVE", "game": "Thunder Force IV" },
+    "crystal_hoppip": { "kind": "micro", "pad_crop": [12, 12, 56, 52], "platform": "GBC",        "game": "Pokemon Crystal" },
+
+    "gs_village_main": { "kind": "docs", "scene": "gs_village", "box": [ 98, 44, 158, 100], "platform": "GBA", "game": "Golden Sun" },
+    "tales_stone":     { "kind": "docs", "scene": "tales",      "box": [108, 66, 152, 102], "platform": "GBA", "game": "Tales of Phantasia" },
+    "tales_banner":    { "kind": "docs", "scene": "tales",      "box": [ 90, 65, 170, 101], "platform": "GBA", "game": "Tales of Phantasia" },
+    "mc_link":         { "kind": "docs", "scene": "mc_eu",      "box": [106, 54, 136,  84], "platform": "GBA", "game": "Zelda: The Minish Cap" },
+    "gs_italic_text":  { "kind": "docs", "scene": "gs_menu",    "box": [  4, 79,  98, 107], "platform": "GBA", "game": "Golden Sun (Menu)" },
+    "cv_aria_hud":     { "kind": "docs", "scene": "cv_aria",    "box": [  0,  0, 108,  32], "platform": "GBA", "game": "Castlevania: Aria of Sorrow" },
+    "dbz_sky":         { "kind": "docs", "scene": "dbz_title",  "box": [ 34,  0, 116,  46], "platform": "GBA", "game": "Dragon Ball Z: Buu's Fury" },
+    "gs_presets":      { "kind": "docs", "scene": "gs_village", "box": [129, 65, 165, 101], "platform": "GBA", "game": "Golden Sun" }
+  },
+  "banner": {
+    "output": "banner.png",
+    "bg_scene": "gs_village",
+    "bg_box_6x": [80, 290, 1120, 682],
+    "pill": "RETROARCH SHADER · GLSL & SLANG",
+    "title": "xBRZ Crisp",
+    "subtitle": "Smooth outlines & text, without melting\ncheckerboards, textures, or faces.",
+    "bullets": [
+      "50% mesh & dithering stay razor-sharp",
+      "Grass, stone & foliage keep pixel texture",
+      "Faces, italic shadows & 1px details intact"
+    ],
+    "footnote": "Compared against Zenju C++ xBRZ 1.9 at 6×",
+    "cards": [
+      { "source": "kof98_gauge",  "heading": "Checkerboard Mesh  ·  The King of Fighters '98 (Neo Geo)" },
+      { "source": "tales_banner", "heading": "Cobblestone Texture & Face  ·  Tales of Phantasia (GBA)" }
+    ]
+  },
+  "hero_triptych": {
+    "output": "hero-smw.png",
+    "source": "smw_rex",
+    "heading": "Super Mario World — Smooth characters without destroying checkerboard pixel art",
+    "captions": [
+      "Native 256×224 pixel art",
+      "Checkerboard columns melt into zigzags",
+      "Crisp checkerboard · Smooth Rex outlines"
+    ]
+  },
+  "strips": [
+    {
+      "output": "strip-1-checkerboard.png",
+      "badge": "WIN #1",
+      "title": "Checkerboards, Dithering & 50% Mesh Transparency",
+      "rows": [
+        { "source": "kof98_gauge", "caption": "Gauge mesh stays 100% crisp squares while the EX badge and stone floor stay smooth" },
+        { "source": "samsho2_hud", "caption": "Every checkerboard square stays razor-sharp while the blue kanji stays smooth" }
+      ]
+    },
+    {
+      "output": "strip-2-textures.png",
+      "badge": "WIN #2",
+      "title": "Organic Textures: Grass, Foliage & Stone",
+      "rows": [
+        { "source": "gs_village_main", "caption": "Grass and wood keep their crisp pixel texture while Isaac, Garet and stone stay smooth" },
+        { "source": "tales_stone",     "caption": "Stone floor stays textured and Cless's headband, bangs and eyes stay cleanly separated" }
+      ]
+    },
+    {
+      "output": "strip-3-faces.png",
+      "badge": "WIN #3",
+      "title": "Faces, Eyes & Small 8-Bit Icons (12× Macro Zoom)",
+      "rows": [
+        { "source": "mc_link",       "caption": "Eyebrow, eye and sideburn stay cleanly defined while Link's green cap stays smooth" },
+        { "source": "nes_zelda_hud", "caption": "Classic 8-bit Key ring and Bomb icons stay symmetrical with no stray spikes" }
+      ]
+    },
+    {
+      "output": "strip-4-text-hud.png",
+      "badge": "WIN #4",
+      "title": "Sharp Text, Italic Drop Shadows & Game HUDs",
+      "rows": [
+        { "source": "gs_italic_text", "caption": "Stepped italic slopes run straight with clean parallel drop shadows" },
+        { "source": "cv_aria_hud",    "caption": "Gold frame borders stay straight, health bars end square, and 280 stays smooth" }
+      ]
+    },
+    {
+      "output": "strip-5-diagonals.png",
+      "badge": "WIN #5",
+      "title": "Crisp Diagonals, Thin Strokes & 1px Details",
+      "rows": [
+        { "source": "tf4_ship",       "caption": "Dithered rock canyon stays crisp while starfighter diagonals and clouds stay sleek" },
+        { "source": "crystal_hoppip", "caption": "1px sparkle highlights, ear tips and thin outlines stay faithful without hooks" }
+      ]
+    }
+  ],
+  "console_tiles": [
+    { "output": "tile-nes.png",    "source": "nes_zelda_hud", "title": "The Legend of Zelda" },
+    { "output": "tile-gbc.png",    "source": "crystal_hoppip","title": "Pokemon Crystal" },
+    { "output": "tile-gba.png",    "source": "dbz_sky",       "title": "DBZ: Buu's Fury" },
+    { "output": "tile-snes.png",   "source": "chrono_forest", "title": "Chrono Trigger" },
+    { "output": "tile-md.png",     "source": "sf2_flowers",   "title": "Shining Force II" },
+    { "output": "tile-neogeo.png", "source": "mslug_hud",     "title": "Metal Slug X" }
+  ],
+  "presets": {
+    "output": "presets-strip.png",
+    "source": "gs_presets",
+    "title": "XBRZ_MINC Contrast Presets — Golden Sun (GBA · 12× zoom)",
+    "subtitle": "At 20 (default), grass pixels stay crisp while the stepping stone stays smooth",
+    "columns": [
+      { "variant": "original", "label": "Original 1×",       "note": "Raw GBA pixels",      "style": "neutral" },
+      { "variant": "xbrzcpp",  "label": "xBRZ 1.9",          "note": "Grass & stone melted","style": "red"     },
+      { "variant": "crisp10",  "label": "Crisp 10",          "note": "Softest grass only",  "style": "blue"    },
+      { "variant": "crisp20",  "label": "Crisp 20 (Default)","note": "Best balance",        "style": "green"   },
+      { "variant": "crisp30",  "label": "Crisp 30",          "note": "Near-raw pixel art",  "style": "blue"    }
+    ]
+  },
+  "explain": [
+    { "output": "contrast.png",       "scene": "tales",      "box": [ 54,  18,  70,  28], "zoom": 3, "variants": ["original", "xbrzcpp", "crisp20"] },
+    { "output": "contrast-steps.png", "scene": "gs_village", "box": [ 17,  68,  33,  78], "zoom": 2, "variants": ["original", "xbrzcpp", "crisp10", "crisp20", "crisp30"] },
+    { "output": "diagonal.png",       "scene": "gs_village", "box": [108,  54, 124,  64], "zoom": 3, "variants": ["original", "xbrzcpp", "crisp20"] },
+    { "output": "dark.png",           "scene": "ffta",       "box": [140,  76, 156,  86], "zoom": 3, "variants": ["original", "xbrzcpp", "crisp20"] },
+    { "output": "stripes.png",        "scene": "hpa_house",  "box": [114,  75, 130,  85], "zoom": 3, "variants": ["original", "xbrzcpp", "crisp20"] },
+    { "output": "outline.png",        "scene": "ffta",       "box": [ 92, 112, 114, 142], "zoom": 2, "variants": ["original", "xbrzcpp", "crisp20"] },
+    { "output": "antialias.png",      "scene": "ffta",       "box": [110,  76, 126,  86], "zoom": 3, "variants": ["original", "xbrzcpp", "crisp20"] },
+    {
+      "output": "steps.png",
+      "multi_rows": [
+        { "scene": "gs_menu",    "box": [ 4, 79,  32,  92], "zoom": 2 },
+        { "scene": "gs_village", "box": [54, 12,  82,  25], "zoom": 2 }
+      ],
+      "variants": ["original", "xbrzcpp", "crisp20"]
+    },
+    { "output": "text.png",           "scene": "hpa_house",  "box": [  2,  23,  48,  34], "zoom": 1, "variants": ["original", "xbrzcpp", "crisp20"] }
+  ]
+}

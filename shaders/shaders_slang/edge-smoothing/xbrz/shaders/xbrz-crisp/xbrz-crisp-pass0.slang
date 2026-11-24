@@ -118,7 +118,10 @@ precision highp int;
 //     differs from both colors of the corner by 64 or more (54 for the L), these tests use the reference
 //     xBRZ tolerance (30) instead of XBRZ_TOL, so a light pixel close to its background is cut, and a
 //     light tip is rounded, as in the reference xBRZ, like Isaac's leg in Golden Sun; textures and
-//     shading keep XBRZ_TOL.
+//     shading keep XBRZ_TOL. A strong exact-color 45-degree corner (dMinC >= XBRZ_STRAIGHT, cand20 < XBRZ_SAME)
+//     whose line was suppressed by the lone-pixel test gets its 45-degree line back when the opposite cut
+//     is non-line or much weaker, or on a 2-cut pixel where an adjacent corner draws an exact-color line
+//     and E's color continues diagonally across both corners.
 // 16. Line in another color: where xBRZ draws a line through a lone pixel along a pair of one color
 //     but paints the corner with the other neighbor's color, which differs from the line's by more
 //     than XBRZ_TINT and does not lie on an antialiasing ramp with it, the corner stays square when
@@ -169,9 +172,10 @@ precision highp int;
 //     is no line, so a dark outline pixel is not nibbled by a small detail beside it. At the end of a bar two
 //     pixels wide whose two corners at the end are cut, the corner just under the end is cut too, so the tip
 //     stays round, like the tip of a foot in Tales of Phantasia. A corner whose cut goes on as one straight
-//     line through the facing corner of the neighbor that gives its color stays cut where its two neighbors
-//     are much closer to each other than to the pixel, so a thin stroke between two background colors keeps
-//     both its edges, like the halo of King Kai in Buu's Fury. Two shades are no junction: where E is a
+//     line through the facing corner of the neighbor that gives its color (or through its matching far-end 2:1
+//     line partner painting E's color, outside a 4-color orthogonal crosshair) stays cut where its two neighbors
+//     are much closer to each other than to the pixel, so a thin stroke or 2:1 contour between two light colors
+//     keeps both its edges (the halo of King Kai in Buu's Fury, Sonic's muzzle outline). Two shades are no junction: where E is a
 //     close shade of one neighbor (under XBRZ_JUNC_TONE of the neighbors' distance) the corner is the edge of
 //     E's area, like a highlight beside antialiased red; where the two neighbors are shades of one gray (both
 //     nearly gray, under XBRZ_JUNC_GRAY, and their hue under XBRZ_JUNC_HUE apart) much closer to each other than
@@ -211,9 +215,10 @@ precision highp int;
 //     round tip into the pixel past the stripe's end either.
 // 24. A line with nothing to go on to: a 2:1 or 1:2 line between two colors XBRZ_HOOK or more apart is drawn only
 //     where a corner at one of the two ends of its step is cut too (the pixel beside E along the line has the
-//     other half of the line), and the corner is not a step of a straight edge (rule 14). Where none is, the corner
-//     is a plain tip like a corner without a line, so the end of a 1-pixel bar, like the end of a letter's stroke,
-//     does not grow a hook.
+//     other half of the line), or where the facing corner diagonally across a uniform band (cand20 < XBRZ_SAME)
+//     draws the same parallel 2:1 slope, and the corner is not a step of a straight edge (rule 14). Where none is,
+//     the corner is a plain tip like a corner without a line, so the end of a 1-pixel bar, like the end of a
+//     letter's stroke, does not grow a hook.
 // 23. A loose pixel is a square with rounded corners: where a pixel differs from each of its 4 side neighbors by
 //     XBRZ_LOOSE or more and from all 4 diagonal neighbors, and xBRZ cuts all 4 of its corners (a dot, an eye, a
 //     highlight), the corners take a plain tip with no line and the output pass draws that tip smaller than a
@@ -327,7 +332,10 @@ precision highp int;
 //     the pixel across it are one color K (XBRZ_MINC or more from E) and E's other two neighbors are not K,
 //     is cut along the edge when the same corner of both pixels along the edge is cut with a 45-degree line
 //     painting K. xBRZ leaves such a corner square where its two diagonals nearly tie and a pixel farther
-//     away tips them the other way, which leaves a square step in a straight diagonal edge.
+//     away tips them the other way, which leaves a square step in a straight diagonal edge. Likewise, where a
+//     2-pixel run of a mid-tone pixel E sits beside a 2-pixel brighter wall S and shares a darker background U
+//     whose facing corner already cuts into E with a 45-degree line (with the outer corners of U and S uncut),
+//     E's uncut corner is beveled at 45 degrees in U's color to complete the convex corner.
 // 43. A dome: where the resolve pass took back a corner of a 2-pixel run, and a cap color runs over the run
 //     and past both ends while the run ends on both sides in one other color, the corner is cut again (if the
 //     mirror corner of the run's other pixel is cut), so the cap ends round on both sides, like the top of
@@ -344,10 +352,15 @@ precision highp int;
 //     or more away, the corner stays square, so the stroke ends square (a gray seam on Isaac's shoulder).
 // 46. A checkerboard keeps its squares: a 2x2 checker of two colors (or a shaded/gradient checker and a
 //     high-contrast 1-parity 50% mesh transparency overlay) with three or more of the 2x2 blocks beside it
-//     (2 pixels left, right, above and below) matching its parity, or forming a 2x6 axial checker strip
-//     bounded laterally by axis-aligned walls, is not cut; likewise a 1x4 solid wall immediately adjacent to
-//     a confirmed 2x4 exact or shaded checker strip keeps its squares, so checker dithering and 50% HUD mesh
-//     overlays stay square right up to their borders without affecting 1-pixel dotted lines or diagonal strokes.
+//     (2 pixels left, right, above and below) matching its parity, or two orthogonal 2x2 blocks plus the
+//     diagonal 2x2 corner between them forming a solid 4x4 exact checkerboard, or forming a 2x6 axial
+//     checker strip bounded laterally by axis-aligned walls (including where one wall transitions to a
+//     foreign third color, or >= 4px wide along a full 6-pixel pure mesh axis), is not cut—except where a
+//     distinct 1-pixel 45-degree diagonal stroke crosses through the 50%
+//     mesh, so diagonal dividers stay smooth. Likewise a 1x4 solid wall immediately adjacent to a confirmed
+//     2x4 exact/shaded or 3-row 50% mesh strip (with any non-mesh wall distinct from the adjacent non-mesh
+//     pixels) keeps its squares, so checker dithering and 50% HUD mesh overlays stay square right up to
+//     their borders without affecting 1-pixel dotted lines, compact glyphs, sawtooth edges, or diagonal strokes.
 // 47. A notch in a straight stroke: where E's corner would be cut in the color of a lone pixel beside it
 //     that is a close shade of E, while E's color goes on straight past its other neighbor and diagonally
 //     past the lone pixel, and the color on E's far side is XBRZ_FAR47 or more away, the corner stays square,
@@ -369,9 +382,13 @@ precision highp int;
 //     color across it. A neighbor's corner at the point where a side cut actually paints that neighbor is not cut
 //     in the color from the stroke's other side, so that color does not wrap around the bar's end.
 // 50. Drop shadow in a 1-pixel cavity: where a mid-tone background pixel (0.12 < E.x < 0.72) is cut on
-//     separate corners by both a bright foreground stroke (like a 1-pixel HUD letter) and a dark drop shadow,
-//     the dark shadow bevel is suppressed so small glyph bowls stay open; likewise a near-black drop-shadow
-//     pixel (E.x <= 0.08) tucked against a bright 1-pixel stroke does not bevel its mid-tone background corner.
+//     opposite corners by both a high-brightness 1-pixel foreground stroke (Y > 0.85, outer diagonal not
+//     bright, like a HUD letter) and a near-black neutral 1-pixel drop shadow (Y < 0.06, chroma < XBRZ_JUNC_GRAY,
+//     with E's own background color reappearing diagonally across the shadow), the dark shadow bevel is
+//     suppressed so small glyph bowls stay open without breaking shaded 3-tone foliage or colored diagonals;
+//     likewise a near-black drop-shadow pixel (E.x <= 0.08) tucked against a bright 1-pixel stroke does not
+//     bevel its mid-tone background corner unless E continues diagonally along the cut as a curved dark outline
+//     or reappears across the corner (where the two corner neighbors form a 1-pixel diagonal stripe).
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9, 11 and
 // 13 to 50 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
@@ -555,50 +572,16 @@ vec3 toYCbCr(vec3 c)
   return vec3(Y, SCALE_B * (c.b - Y), SCALE_R * (c.r - Y));
 }
 
-float luma(vec3 c) { return dot(c, LUMA_W); }
-
 float distSqY(vec3 a, vec3 b)
 {
   vec3 d = a - b;
   return dot(d, d);
 }
 
-float distY(vec3 a, vec3 b) { return sqrt(distSqY(a, b)); }
-float distY255(vec3 a, vec3 b) { return distY(a, b) * 255.0; }
-
-float distSqYCbCr(vec3 pixA, vec3 pixB)
-{
-  vec3 diff = pixA - pixB;
-  float Y = dot(diff, LUMA_W);
-  float Cb = SCALE_B * (diff.b - Y);
-  float Cr = SCALE_R * (diff.r - Y);
-  return (Y * Y) + (Cb * Cb) + (Cr * Cr);
-}
-
-float distYCbCr(vec3 pixA, vec3 pixB)
-{
-  return sqrt(distSqYCbCr(pixA, pixB));
-}
-
-float dist255(vec3 pixA, vec3 pixB)
-{
-  return distYCbCr(pixA, pixB) * 255.0;
-}
-
 // Squared threshold in [0..255] YCbCr units, kept in [0..1.5] so GLSL ES mediump never overflows
 #define SQ255(x) (((x) / 255.0) * ((x) / 255.0))
 // FP16-safe division guard (> 6.1e-5 smallest FP16 normal) so FTZ GPUs never produce NaN
 const float SAFE_EPS = 1e-4;
-
-bool within255(vec3 pixA, vec3 pixB, float lim)
-{
-  return distSqYCbCr(pixA, pixB) < SQ255(lim);
-}
-
-bool withinEq255(vec3 pixA, vec3 pixB, float lim)
-{
-  return distSqYCbCr(pixA, pixB) <= SQ255(lim);
-}
 
 bool withinY255(vec3 a, vec3 b, float lim)
 {
@@ -608,25 +591,6 @@ bool withinY255(vec3 a, vec3 b, float lim)
 bool withinEqY255(vec3 a, vec3 b, float lim)
 {
   return distSqY(a, b) <= SQ255(lim);
-}
-
-// Unified hue-shifting-tolerant AA / sel-out ramp check in YCbCr space (0 sqrt).
-// True when m lies strictly between endpoints a and b along their chord with
-// bounded orthogonal deviation (allowing pixel-art hue-shifting) and monotonic luma.
-bool isAaRampY(vec3 a, vec3 m, vec3 b, float orthoTolSq, float minSpanSq)
-{
-  vec3 ab = b - a;
-  float abSq = dot(ab, ab);
-  if (abSq < minSpanSq) return false;
-  vec3 am = m - a;
-  float proj = dot(am, ab);
-  if (proj <= 0.05 * abSq || proj >= 0.95 * abSq) return false;
-  float t = proj / abSq;
-  vec3 err = am - t * ab;
-  if (dot(err, err) > orthoTolSq * abSq) return false;
-  float loY = min(a.x, b.x), hiY = max(a.x, b.x);
-  if (hiY - loY > 0.08 && (m.x < loY - 0.02 || m.x > hiY + 0.02)) return false;
-  return true;
 }
 #define PY(x, y) toYCbCr(P(x, y))
 
@@ -741,14 +705,15 @@ vec2 lineTests(vec3 a, vec3 b, vec3 c, vec3 d, vec3 E, float pairDSq, bool alt45
 // ============================================================================================
 // 30. Diagonal bands
 // ============================================================================================
-float bandSide(vec2 coord, vec2 o, vec2 p, vec2 q, vec3 e, vec3 cp, vec3 cpq)
+float bandSide(vec2 coord, vec2 o, vec2 t, vec3 e, vec3 cp, vec3 cpq,
+               vec3 cPt, vec3 cMt, vec3 c2p, vec3 c2q, vec3 cOpp, bool fetchOpp, vec2 oppOff,
+               vec3 cPpt, vec3 cQmt, bool fetchQmt, vec2 qmtOff)
 {
-  vec2 t = p - q;
   if (eq(cp, cpq))
   {
-    bool a = eq(e, at5x5(coord, o + t)), b = eq(e, at5x5(coord, o - t));
+    bool a = eq(e, cPt), b = eq(e, cMt);
     if (!a && !b) return 0.0;
-    vec3 opp = at5x5(coord, o - p - q);
+    vec3 opp = fetchOpp ? at5x5(coord, oppOff) : cOpp;
     float dSq = distSqY(opp, cp);
     if (dSq <= distSqY(opp, e) || dSq < SQ255(XBRZ_BAND_FAR)) return 0.0;
     if (dSq >= SQ255(XBRZ_BAND_FAR2) || (a && b)) return 1.0;
@@ -756,10 +721,10 @@ float bandSide(vec2 coord, vec2 o, vec2 p, vec2 q, vec3 e, vec3 cp, vec3 cpq)
   }
   float dAESq = distSqY(cpq, e);
   if (dAESq <= distSqY(cpq, cp) || dAESq < SQ255(XBRZ_BAND_FAR)) return 0.0;
-  if (!eq(cpq, at5x5(coord, o + 2.0 * p)) && !eq(cpq, at5x5(coord, o + 2.0 * q))) return 0.0;
-  if (!eq(e, at5x5(coord, o + t)) && !eq(e, at5x5(coord, o - t))) return 0.0;
+  if (!eq(cpq, c2p) && !eq(cpq, c2q)) return 0.0;
+  if (!eq(e, cPt) && !eq(e, cMt)) return 0.0;
   if (dAESq >= SQ255(XBRZ_BAND_FAR2)) return 1.0;
-  return (eq(cp, at5x5(coord, o + p + t)) || eq(cp, at5x5(coord, o + q - t))) ? 1.0 : 0.0;
+  return (eq(cp, cPpt) || eq(cp, (fetchQmt ? at5x5(coord, qmtOff) : cQmt))) ? 1.0 : 0.0;
 }
 
 // 32 to 34: two close shades (under 30 apart)
@@ -780,18 +745,34 @@ vec4 diagonalBands(vec4 xbrz, vec4 mask, vec2 coord, vec3 A, vec3 B, vec3 C, vec
     vec3 cVH = k == 0 ? A : (k == 1 ? C : (k == 2 ? I : G));
     bool vh = eq(cV, cH);
     if (!vh && !eq(E, cVH)) continue;
+    vec3 cVmH  = k == 0 ? C : (k == 1 ? A : (k == 2 ? G : I));
+    vec3 cHmV  = k == 0 ? G : (k == 1 ? I : (k == 2 ? C : A));
+    vec3 cOpp  = k == 0 ? I : (k == 1 ? G : (k == 2 ? A : C));
+    vec3 cMV   = k < 2 ? H : B;
+    vec3 cMH   = k == 1 || k == 2 ? D : F;
+    vec3 c2V   = k < 2 ? N_p0_m2 : N_p0_p2;
+    vec3 c2H   = k == 1 || k == 2 ? N_p2_p0 : N_m2_p0;
+    vec3 c2VmH = k == 0 ? N_p1_m2 : (k == 1 ? N_m1_m2 : (k == 2 ? N_m1_p2 : N_p1_p2));
+    vec3 c2HmV = k == 0 ? N_m2_p1 : (k == 1 ? N_p2_p1 : (k == 2 ? N_p2_m1 : N_m2_m1));
+    vec3 c2VpH = k == 0 ? N_m1_m2 : (k == 1 ? N_p1_m2 : (k == 2 ? N_p1_p2 : N_m1_p2));
+    vec3 c2HpV = k == 0 ? N_m2_m1 : (k == 1 ? N_p2_m1 : (k == 2 ? N_p2_p1 : N_m2_p1));
+    vec2 far2  = 2.0 * (v + h);
     float f = 0.0;
-    for (int j = 0; j < 2; j++)
+    if (vh)
     {
-      if (f > 0.5) continue;
-      bool first = j == 0;
-      vec2 o = vh ? (first ? vec2(0.0) : v + h) : (first ? v : h);
-      vec2 p = vh ? (first ? v : -v) : (first ? -v : v);
-      vec2 q = first ? h : -h;
-      vec3 e   = vh ? (first ? E : cVH) : (first ? cV : cH);
-      vec3 cp  = vh ? (first ? cV : cH) : (first ? E : cVH);
-      vec3 cpq = vh ? (first ? cVH : E) : (first ? cH : cV);
-      f = bandSide(coord, o, p, q, e, cp, cpq);
+      f = bandSide(coord, vec2(0.0), v - h, E, cV, cVH,
+                   cVmH, cHmV, c2V, c2H, cOpp, false, vec2(0.0), c2VmH, c2HmV, false, vec2(0.0));
+      if (f < 0.5)
+        f = bandSide(coord, v + h, h - v, cVH, cH, E,
+                     c2H, c2V, cHmV, cVmH, cOpp, true, far2, c2HmV, c2VmH, false, vec2(0.0));
+    }
+    else
+    {
+      f = bandSide(coord, v, -v - h, cV, E, cH,
+                   cMH, c2VpH, cMV, c2HpV, c2VmH, false, vec2(0.0), cOpp, cOpp, true, far2);
+      if (f < 0.5)
+        f = bandSide(coord, h, v + h, cH, cVH, cV,
+                     c2HpV, cMV, c2VpH, cMH, c2HmV, false, vec2(0.0), cOpp, cOpp, true, far2);
     }
     band += m * f;
   }
@@ -843,10 +824,9 @@ vec4 weakCorners(vec4 res, vec4 weak)
 // ============================================================================================
 // helpers for rules 3 and 4
 // ============================================================================================
-float strokeEnds(vec3 p, vec3 q, vec2 coord, vec2 o, vec2 side)
+float strokeEnds(vec3 p, vec3 q, vec3 T, vec3 Tplus, vec2 coord, vec2 oMinus)
 {
-  vec3 T = at5x5(coord, o);
-  return float(!alike(p, T) && !alike(q, T) && !alike(p, at5x5(coord, o + side)) && !alike(p, at5x5(coord, o - side)));
+  return float(!alike(p, T) && !alike(q, T) && !alike(p, Tplus) && !alike(p, at5x5(coord, oMinus)));
 }
 
 float wallAt(vec2 coord, vec2 t, vec3 T)
@@ -859,8 +839,7 @@ float wallAt(vec2 coord, vec2 t, vec3 T)
 
 float runWall(vec3 E, vec2 coord, vec2 d)
 {
-  vec3 c1 = at5x5(coord, d);
-  if (!alike(E, c1)) return wallAt(coord, d, c1);
+  // caller already confirmed alike(E, d) in 3x3 registers, so start at step 2
   vec3 c2 = PY(2.0 * d.x, 2.0 * d.y);
   if (!alike(E, c2)) return wallAt(coord, 2.0 * d, c2);
   vec3 c3 = PY(3.0 * d.x, 3.0 * d.y);
@@ -996,16 +975,19 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
                       float(!alike(Pz, Qz) && alike(Qz, I) && !alike(Pz, I) && !alike(Pz, Rz) && !alike(E, sec.z > 0.5 ? B : D)),
                       float(!alike(Pw, Qw) && alike(Qw, G) && !alike(Pw, G) && !alike(Pw, Rw) && !alike(E, sec.w > 0.5 ? F : B)))
                 * gate;
-      float stripeCG = float(min(distSqY(C, E), distSqY(E, G)) <= SQ255(XBRZ_STRIPE));
-      float stripeAI = float(min(distSqY(A, E), distSqY(E, I)) <= SQ255(XBRZ_STRIPE));
-      eye *= 1.0 - vec4(stripeCG, stripeAI, stripeCG, stripeAI);
       if (dot(eye, vec4(1.0)) > 0.0)
       {
-        eye *= vec4(eye.x > 0.5 ? (sec.x > 0.5 ? strokeEnds(Px, Qx, coord, vec2(2.0,-1.0), vec2(0.0,1.0)) : strokeEnds(Px, Qx, coord, vec2(-1.0,2.0), vec2(1.0,0.0))) : 0.0,
-                    eye.y > 0.5 ? (sec.y > 0.5 ? strokeEnds(Py, Qy, coord, vec2(1.0,2.0), vec2(-1.0,0.0)) : strokeEnds(Py, Qy, coord, vec2(-2.0,-1.0), vec2(0.0,1.0))) : 0.0,
-                    eye.z > 0.5 ? (sec.z > 0.5 ? strokeEnds(Pz, Qz, coord, vec2(-2.0,1.0), vec2(0.0,-1.0)) : strokeEnds(Pz, Qz, coord, vec2(1.0,-2.0), vec2(-1.0,0.0))) : 0.0,
-                    eye.w > 0.5 ? (sec.w > 0.5 ? strokeEnds(Pw, Qw, coord, vec2(-1.0,-2.0), vec2(1.0,0.0)) : strokeEnds(Pw, Qw, coord, vec2(2.0,1.0), vec2(0.0,-1.0))) : 0.0);
-        res *= 1.0 - eye;
+        float stripeCG = float(min(distSqY(C, E), distSqY(E, G)) <= SQ255(XBRZ_STRIPE));
+        float stripeAI = float(min(distSqY(A, E), distSqY(E, I)) <= SQ255(XBRZ_STRIPE));
+        eye *= 1.0 - vec4(stripeCG, stripeAI, stripeCG, stripeAI);
+        if (dot(eye, vec4(1.0)) > 0.0)
+        {
+          eye *= vec4(eye.x > 0.5 ? (sec.x > 0.5 ? strokeEnds(Px, Qx, N_p2_m1, N_p2_p0, coord, vec2( 2.0,-2.0)) : strokeEnds(Px, Qx, N_m1_p2, N_p0_p2, coord, vec2(-2.0, 2.0))) : 0.0,
+                      eye.y > 0.5 ? (sec.y > 0.5 ? strokeEnds(Py, Qy, N_p1_p2, N_p0_p2, coord, vec2( 2.0, 2.0)) : strokeEnds(Py, Qy, N_m2_m1, N_m2_p0, coord, vec2(-2.0,-2.0))) : 0.0,
+                      eye.z > 0.5 ? (sec.z > 0.5 ? strokeEnds(Pz, Qz, N_m2_p1, N_m2_p0, coord, vec2(-2.0, 2.0)) : strokeEnds(Pz, Qz, N_p1_m2, N_p0_m2, coord, vec2( 2.0,-2.0))) : 0.0,
+                      eye.w > 0.5 ? (sec.w > 0.5 ? strokeEnds(Pw, Qw, N_m1_m2, N_p0_m2, coord, vec2(-2.0,-2.0)) : strokeEnds(Pw, Qw, N_p2_p1, N_p2_p0, coord, vec2( 2.0, 2.0))) : 0.0);
+          res *= 1.0 - eye;
+        }
       }
     }
   }
@@ -1027,14 +1009,6 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
                       float(alike(C, E) || alike(E, G)), float(alike(A, E) || alike(E, I))) * cut * changed;
     if (dot(diagE, vec4(1.0)) > 0.0)
     {
-      vec4 partner = vec4(
-        float((alike(C, E) && !alike(B, C) && !alike(C, N_p1_m2)) || (alike(E, G) && !alike(G, N_m2_p1) && !alike(D, G))),
-        float((alike(A, E) && !alike(A, N_m1_m2) && !alike(A, B)) || (alike(E, I) && !alike(F, I) && !alike(I, N_p2_p1))),
-        float((alike(C, E) && !alike(C, N_p2_m1) && !alike(C, F)) || (alike(E, G) && !alike(G, H) && !alike(G, N_m1_p2))),
-        float((alike(A, E) && !alike(A, D) && !alike(A, N_m2_m1)) || (alike(E, I) && !alike(I, N_p1_p2) && !alike(H, I))));
-      float l3CG = float((alike(C, E) && alike(E, PY(2., -2.))) || (alike(E, G) && alike(E, PY(-2., 2.))));
-      float l3AI = float((alike(A, E) && alike(E, PY(-2., -2.))) || (alike(E, I) && alike(E, PY(2., 2.))));
-      partner = max(partner, vec4(l3CG, l3AI, l3CG, l3AI));
       float lineR = float(alike(E, F) && alike(E, N_p2_p0)), lineL = float(alike(D, E) && alike(E, N_m2_p0));
       float lineD = float(alike(E, H) && alike(E, N_p0_p2)), lineU = float(alike(B, E) && alike(E, N_p0_m2));
       vec4 endLine = vec4(max(lineR, lineD), max(lineL, lineD), max(lineL, lineU), max(lineR, lineU));
@@ -1052,17 +1026,30 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
       vec3 Qnx = sec.x > 0.5 ? N_m2_p1 : N_p1_m2, Qny = sec.y > 0.5 ? N_m1_m2 : N_p2_p1;
       vec3 Qnz = sec.z > 0.5 ? N_p2_m1 : N_m1_p2, Qnw = sec.w > 0.5 ? N_p1_p2 : N_m2_m1;
       vec4 qRun = vec4(float(alike(Qx, Qnx)), float(alike(Qy, Qny)), float(alike(Qz, Qnz)), float(alike(Qw, Qnw)));
-      vec4 run = partner * (1.0 - straight * sQ) * (1.0 - straight * vec4(lessThan(lP, vec4(lE))) * (1.0 - bendQ))
-               * (1.0 - endLine * straight * (1.0 - bendQ)) * (1.0 - straight * (1.0 - straightQ0) * (1.0 - qRun)) * cut * changed;
-      run *= 1.0 - loneP * loneQ;
-      if (dot(run, vec4(1.0)) > 0.0)
+      vec4 runMask = (1.0 - straight * sQ) * (1.0 - straight * vec4(lessThan(lP, vec4(lE))) * (1.0 - bendQ))
+                   * (1.0 - endLine * straight * (1.0 - bendQ)) * (1.0 - straight * (1.0 - straightQ0) * (1.0 - qRun))
+                   * (1.0 - loneP * loneQ) * diagE;
+      if (dot(runMask, vec4(1.0)) > 0.0)
       {
-        float wCG = run.x + run.z > 0.0 ? max(alike(C, E) ? runWall(E, coord, vec2(1.0, -1.0)) : 0.0, alike(E, G) ? runWall(E, coord, vec2(-1.0, 1.0)) : 0.0) : 0.0;
-        float wAI = run.y + run.w > 0.0 ? max(alike(E, I) ? runWall(E, coord, vec2(1.0, 1.0)) : 0.0, alike(A, E) ? runWall(E, coord, vec2(-1.0, -1.0)) : 0.0) : 0.0;
-        run *= vec4(wCG, wAI, wCG, wAI);
+        vec4 partner = vec4(
+          float((alike(C, E) && !alike(B, C) && !alike(C, N_p1_m2)) || (alike(E, G) && !alike(G, N_m2_p1) && !alike(D, G))),
+          float((alike(A, E) && !alike(A, N_m1_m2) && !alike(A, B)) || (alike(E, I) && !alike(F, I) && !alike(I, N_p2_p1))),
+          float((alike(C, E) && !alike(C, N_p2_m1) && !alike(C, F)) || (alike(E, G) && !alike(G, H) && !alike(G, N_m1_p2))),
+          float((alike(A, E) && !alike(A, D) && !alike(A, N_m2_m1)) || (alike(E, I) && !alike(I, N_p1_p2) && !alike(H, I))));
+        float l3CG = (runMask.x * (1.0 - partner.x) + runMask.z * (1.0 - partner.z) > 0.5)
+                   ? float((alike(C, E) && alike(E, PY(2., -2.))) || (alike(E, G) && alike(E, PY(-2., 2.)))) : 0.0;
+        float l3AI = (runMask.y * (1.0 - partner.y) + runMask.w * (1.0 - partner.w) > 0.5)
+                   ? float((alike(A, E) && alike(E, PY(-2., -2.))) || (alike(E, I) && alike(E, PY(2., 2.)))) : 0.0;
+        vec4 run = max(partner, vec4(l3CG, l3AI, l3CG, l3AI)) * runMask;
+        if (dot(run, vec4(1.0)) > 0.0)
+        {
+          float wCG = run.x + run.z > 0.0 ? max(alike(C, E) ? runWall(E, coord, vec2(1.0, -1.0)) : 0.0, alike(E, G) ? runWall(E, coord, vec2(-1.0, 1.0)) : 0.0) : 0.0;
+          float wAI = run.y + run.w > 0.0 ? max(alike(E, I) ? runWall(E, coord, vec2(1.0, 1.0)) : 0.0, alike(A, E) ? runWall(E, coord, vec2(-1.0, -1.0)) : 0.0) : 0.0;
+          run *= vec4(wCG, wAI, wCG, wAI);
+        }
+        res = mix(res, before, run);
+        kept = max(kept, run);
       }
-      res = mix(res, before, run);
-      kept = max(kept, run);
     }
   }
 
@@ -1100,10 +1087,10 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
   vec4 open4 = vec4(greaterThan(BLEND(res), vec4(0.0))) * vec4(greaterThan(pair * 255.0, vec4(XBRZ_TIP))) * (1.0 - kept);
   if ((thinH || thinV) && dot(open4, vec4(1.0)) > 0.0)
   {
-    float endL = float(stripeEnd(coord, vec2(-2., -2.), vec2(-2., 2.), vec2(3., 0.), thinH, E, A, B, C, D, F, G, H, I, N_m2_p0, N_p2_p0, N_p2_m1, N_p2_p1));
-    float endR = float(stripeEnd(coord, vec2(2., -2.), vec2(2., 2.), vec2(-3., 0.), thinH, E, C, B, A, F, D, I, H, G, N_p2_p0, N_m2_p0, N_m2_m1, N_m2_p1));
-    float endT = float(stripeEnd(coord, vec2(-2., -2.), vec2(2., -2.), vec2(0., 3.), thinV, E, A, D, G, B, H, C, F, I, N_p0_m2, N_p0_p2, N_m1_p2, N_p1_p2));
-    float endB = float(stripeEnd(coord, vec2(-2., 2.), vec2(2., 2.), vec2(0., -3.), thinV, E, G, D, A, H, B, I, F, C, N_p0_p2, N_p0_m2, N_m1_m2, N_p1_m2));
+    float endL = float(stripeEnd(coord, vec2(-2., -2.), vec2(-2., 2.), vec2(3., 0.), thinH && (open4.x + open4.w > 0.0), E, A, B, C, D, F, G, H, I, N_m2_p0, N_p2_p0, N_p2_m1, N_p2_p1));
+    float endR = float(stripeEnd(coord, vec2(2., -2.), vec2(2., 2.), vec2(-3., 0.), thinH && (open4.y + open4.z > 0.0), E, C, B, A, F, D, I, H, G, N_p2_p0, N_m2_p0, N_m2_m1, N_m2_p1));
+    float endT = float(stripeEnd(coord, vec2(-2., -2.), vec2(2., -2.), vec2(0., 3.), thinV && (open4.x + open4.y > 0.0), E, A, D, G, B, H, C, F, I, N_p0_m2, N_p0_p2, N_m1_p2, N_p1_p2));
+    float endB = float(stripeEnd(coord, vec2(-2., 2.), vec2(2., 2.), vec2(0., -3.), thinV && (open4.z + open4.w > 0.0), E, G, D, A, H, B, I, F, C, N_p0_p2, N_p0_m2, N_m1_m2, N_p1_m2));
     if (endL + endR + endT + endB > 0.0)
     {
       bool nB = alike(B, E), nD = alike(D, E), nF = alike(E, F), nH = alike(E, H);

@@ -82,10 +82,11 @@ def main() -> None:
     run_py("verify.py")
 
     if args.rebuild_docs:
-        run_py("render-docs.py")
+        run_py("render-docs.py", "--all", "--include-xbrz")
 
     mr = load_make_release()
-    zip_path = os.path.join(BUILD_DIR, "xbrz-crisp.zip")
+    zip_name = f"xbrz-crisp-v{args.version}.zip"
+    zip_path = os.path.join(BUILD_DIR, zip_name)
     count, sha256 = mr.build_zip(zip_path)
     size_kb = os.path.getsize(zip_path) / 1024.0
     print(f"[publish-release] Archive ready: {zip_path} ({count} files, {size_kb:.1f} KB)")
@@ -95,7 +96,7 @@ def main() -> None:
         sync_libretro_clones(args.libretro_dir)
 
     prev = latest_git_tag()
-    notes = f"## Changes since {prev or 'initial commit'}\n\n{generate_changelog(prev)}\n\n**SHA256 (`xbrz-crisp.zip`):** `{sha256}`\n"
+    notes = f"## Changes since {prev or 'initial commit'}\n\n{generate_changelog(prev)}\n\n**SHA256 (`{zip_name}`):** `{sha256}`\n"
     notes_path = os.path.join(BUILD_DIR, f"release-notes-{args.version}.md")
     with open(notes_path, "w", encoding="utf-8") as f:
         f.write(notes)

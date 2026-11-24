@@ -25,6 +25,8 @@ SRC_DIR = os.path.join(TOOLS_DIR, "src")
 SHADERS_DIR = os.path.join(ROOT, "shaders")
 DOCS_IMG_DIR = os.path.join(ROOT, "docs", "img")
 
+os.environ.setdefault("LP_NATIVE_VECTOR_WIDTH", "128")
+
 
 class HeadlessGLES:
     """Zero-dependency ctypes wrapper over surfaceless EGL + OpenGL ES 2/3."""

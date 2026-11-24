@@ -188,14 +188,15 @@ vec2 lineTests(vec3 a, vec3 b, vec3 c, vec3 d, vec3 E, float pairDSq, bool alt45
 // ============================================================================================
 // 30. Diagonal bands
 // ============================================================================================
-float bandSide(vec2 coord, vec2 o, vec2 p, vec2 q, vec3 e, vec3 cp, vec3 cpq)
+float bandSide(vec2 coord, vec2 o, vec2 t, vec3 e, vec3 cp, vec3 cpq,
+               vec3 cPt, vec3 cMt, vec3 c2p, vec3 c2q, vec3 cOpp, bool fetchOpp, vec2 oppOff,
+               vec3 cPpt, vec3 cQmt, bool fetchQmt, vec2 qmtOff)
 {
-  vec2 t = p - q;
   if (eq(cp, cpq))
   {
-    bool a = eq(e, at5x5(coord, o + t)), b = eq(e, at5x5(coord, o - t));
+    bool a = eq(e, cPt), b = eq(e, cMt);
     if (!a && !b) return 0.0;
-    vec3 opp = at5x5(coord, o - p - q);
+    vec3 opp = fetchOpp ? at5x5(coord, oppOff) : cOpp;
     float dSq = distSqY(opp, cp);
     if (dSq <= distSqY(opp, e) || dSq < SQ255(XBRZ_BAND_FAR)) return 0.0;
     if (dSq >= SQ255(XBRZ_BAND_FAR2) || (a && b)) return 1.0;
@@ -203,10 +204,10 @@ float bandSide(vec2 coord, vec2 o, vec2 p, vec2 q, vec3 e, vec3 cp, vec3 cpq)
   }
   float dAESq = distSqY(cpq, e);
   if (dAESq <= distSqY(cpq, cp) || dAESq < SQ255(XBRZ_BAND_FAR)) return 0.0;
-  if (!eq(cpq, at5x5(coord, o + 2.0 * p)) && !eq(cpq, at5x5(coord, o + 2.0 * q))) return 0.0;
-  if (!eq(e, at5x5(coord, o + t)) && !eq(e, at5x5(coord, o - t))) return 0.0;
+  if (!eq(cpq, c2p) && !eq(cpq, c2q)) return 0.0;
+  if (!eq(e, cPt) && !eq(e, cMt)) return 0.0;
   if (dAESq >= SQ255(XBRZ_BAND_FAR2)) return 1.0;
-  return (eq(cp, at5x5(coord, o + p + t)) || eq(cp, at5x5(coord, o + q - t))) ? 1.0 : 0.0;
+  return (eq(cp, cPpt) || eq(cp, (fetchQmt ? at5x5(coord, qmtOff) : cQmt))) ? 1.0 : 0.0;
 }
 
 // 32 to 34: two close shades (under 30 apart)
@@ -227,18 +228,34 @@ vec4 diagonalBands(vec4 xbrz, vec4 mask, vec2 coord, vec3 A, vec3 B, vec3 C, vec
     vec3 cVH = k == 0 ? A : (k == 1 ? C : (k == 2 ? I : G));
     bool vh = eq(cV, cH);
     if (!vh && !eq(E, cVH)) continue;
+    vec3 cVmH  = k == 0 ? C : (k == 1 ? A : (k == 2 ? G : I));
+    vec3 cHmV  = k == 0 ? G : (k == 1 ? I : (k == 2 ? C : A));
+    vec3 cOpp  = k == 0 ? I : (k == 1 ? G : (k == 2 ? A : C));
+    vec3 cMV   = k < 2 ? H : B;
+    vec3 cMH   = k == 1 || k == 2 ? D : F;
+    vec3 c2V   = k < 2 ? N_p0_m2 : N_p0_p2;
+    vec3 c2H   = k == 1 || k == 2 ? N_p2_p0 : N_m2_p0;
+    vec3 c2VmH = k == 0 ? N_p1_m2 : (k == 1 ? N_m1_m2 : (k == 2 ? N_m1_p2 : N_p1_p2));
+    vec3 c2HmV = k == 0 ? N_m2_p1 : (k == 1 ? N_p2_p1 : (k == 2 ? N_p2_m1 : N_m2_m1));
+    vec3 c2VpH = k == 0 ? N_m1_m2 : (k == 1 ? N_p1_m2 : (k == 2 ? N_p1_p2 : N_m1_p2));
+    vec3 c2HpV = k == 0 ? N_m2_m1 : (k == 1 ? N_p2_m1 : (k == 2 ? N_p2_p1 : N_m2_p1));
+    vec2 far2  = 2.0 * (v + h);
     float f = 0.0;
-    for (int j = 0; j < 2; j++)
+    if (vh)
     {
-      if (f > 0.5) continue;
-      bool first = j == 0;
-      vec2 o = vh ? (first ? vec2(0.0) : v + h) : (first ? v : h);
-      vec2 p = vh ? (first ? v : -v) : (first ? -v : v);
-      vec2 q = first ? h : -h;
-      vec3 e   = vh ? (first ? E : cVH) : (first ? cV : cH);
-      vec3 cp  = vh ? (first ? cV : cH) : (first ? E : cVH);
-      vec3 cpq = vh ? (first ? cVH : E) : (first ? cH : cV);
-      f = bandSide(coord, o, p, q, e, cp, cpq);
+      f = bandSide(coord, vec2(0.0), v - h, E, cV, cVH,
+                   cVmH, cHmV, c2V, c2H, cOpp, false, vec2(0.0), c2VmH, c2HmV, false, vec2(0.0));
+      if (f < 0.5)
+        f = bandSide(coord, v + h, h - v, cVH, cH, E,
+                     c2H, c2V, cHmV, cVmH, cOpp, true, far2, c2HmV, c2VmH, false, vec2(0.0));
+    }
+    else
+    {
+      f = bandSide(coord, v, -v - h, cV, E, cH,
+                   cMH, c2VpH, cMV, c2HpV, c2VmH, false, vec2(0.0), cOpp, cOpp, true, far2);
+      if (f < 0.5)
+        f = bandSide(coord, h, v + h, cH, cVH, cV,
+                     c2HpV, cMV, c2VpH, cMH, c2HmV, false, vec2(0.0), cOpp, cOpp, true, far2);
     }
     band += m * f;
   }
@@ -290,10 +307,9 @@ vec4 weakCorners(vec4 res, vec4 weak)
 // ============================================================================================
 // helpers for rules 3 and 4
 // ============================================================================================
-float strokeEnds(vec3 p, vec3 q, vec2 coord, vec2 o, vec2 side)
+float strokeEnds(vec3 p, vec3 q, vec3 T, vec3 Tplus, vec2 coord, vec2 oMinus)
 {
-  vec3 T = at5x5(coord, o);
-  return float(!alike(p, T) && !alike(q, T) && !alike(p, at5x5(coord, o + side)) && !alike(p, at5x5(coord, o - side)));
+  return float(!alike(p, T) && !alike(q, T) && !alike(p, Tplus) && !alike(p, at5x5(coord, oMinus)));
 }
 
 float wallAt(vec2 coord, vec2 t, vec3 T)
@@ -306,8 +322,7 @@ float wallAt(vec2 coord, vec2 t, vec3 T)
 
 float runWall(vec3 E, vec2 coord, vec2 d)
 {
-  vec3 c1 = at5x5(coord, d);
-  if (!alike(E, c1)) return wallAt(coord, d, c1);
+  // caller already confirmed alike(E, d) in 3x3 registers, so start at step 2
   vec3 c2 = PY(2.0 * d.x, 2.0 * d.y);
   if (!alike(E, c2)) return wallAt(coord, 2.0 * d, c2);
   vec3 c3 = PY(3.0 * d.x, 3.0 * d.y);
@@ -443,16 +458,19 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
                       float(!alike(Pz, Qz) && alike(Qz, I) && !alike(Pz, I) && !alike(Pz, Rz) && !alike(E, sec.z > 0.5 ? B : D)),
                       float(!alike(Pw, Qw) && alike(Qw, G) && !alike(Pw, G) && !alike(Pw, Rw) && !alike(E, sec.w > 0.5 ? F : B)))
                 * gate;
-      float stripeCG = float(min(distSqY(C, E), distSqY(E, G)) <= SQ255(XBRZ_STRIPE));
-      float stripeAI = float(min(distSqY(A, E), distSqY(E, I)) <= SQ255(XBRZ_STRIPE));
-      eye *= 1.0 - vec4(stripeCG, stripeAI, stripeCG, stripeAI);
       if (dot(eye, vec4(1.0)) > 0.0)
       {
-        eye *= vec4(eye.x > 0.5 ? (sec.x > 0.5 ? strokeEnds(Px, Qx, coord, vec2(2.0,-1.0), vec2(0.0,1.0)) : strokeEnds(Px, Qx, coord, vec2(-1.0,2.0), vec2(1.0,0.0))) : 0.0,
-                    eye.y > 0.5 ? (sec.y > 0.5 ? strokeEnds(Py, Qy, coord, vec2(1.0,2.0), vec2(-1.0,0.0)) : strokeEnds(Py, Qy, coord, vec2(-2.0,-1.0), vec2(0.0,1.0))) : 0.0,
-                    eye.z > 0.5 ? (sec.z > 0.5 ? strokeEnds(Pz, Qz, coord, vec2(-2.0,1.0), vec2(0.0,-1.0)) : strokeEnds(Pz, Qz, coord, vec2(1.0,-2.0), vec2(-1.0,0.0))) : 0.0,
-                    eye.w > 0.5 ? (sec.w > 0.5 ? strokeEnds(Pw, Qw, coord, vec2(-1.0,-2.0), vec2(1.0,0.0)) : strokeEnds(Pw, Qw, coord, vec2(2.0,1.0), vec2(0.0,-1.0))) : 0.0);
-        res *= 1.0 - eye;
+        float stripeCG = float(min(distSqY(C, E), distSqY(E, G)) <= SQ255(XBRZ_STRIPE));
+        float stripeAI = float(min(distSqY(A, E), distSqY(E, I)) <= SQ255(XBRZ_STRIPE));
+        eye *= 1.0 - vec4(stripeCG, stripeAI, stripeCG, stripeAI);
+        if (dot(eye, vec4(1.0)) > 0.0)
+        {
+          eye *= vec4(eye.x > 0.5 ? (sec.x > 0.5 ? strokeEnds(Px, Qx, N_p2_m1, N_p2_p0, coord, vec2( 2.0,-2.0)) : strokeEnds(Px, Qx, N_m1_p2, N_p0_p2, coord, vec2(-2.0, 2.0))) : 0.0,
+                      eye.y > 0.5 ? (sec.y > 0.5 ? strokeEnds(Py, Qy, N_p1_p2, N_p0_p2, coord, vec2( 2.0, 2.0)) : strokeEnds(Py, Qy, N_m2_m1, N_m2_p0, coord, vec2(-2.0,-2.0))) : 0.0,
+                      eye.z > 0.5 ? (sec.z > 0.5 ? strokeEnds(Pz, Qz, N_m2_p1, N_m2_p0, coord, vec2(-2.0, 2.0)) : strokeEnds(Pz, Qz, N_p1_m2, N_p0_m2, coord, vec2( 2.0,-2.0))) : 0.0,
+                      eye.w > 0.5 ? (sec.w > 0.5 ? strokeEnds(Pw, Qw, N_m1_m2, N_p0_m2, coord, vec2(-2.0,-2.0)) : strokeEnds(Pw, Qw, N_p2_p1, N_p2_p0, coord, vec2( 2.0, 2.0))) : 0.0);
+          res *= 1.0 - eye;
+        }
       }
     }
   }
@@ -474,14 +492,6 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
                       float(alike(C, E) || alike(E, G)), float(alike(A, E) || alike(E, I))) * cut * changed;
     if (dot(diagE, vec4(1.0)) > 0.0)
     {
-      vec4 partner = vec4(
-        float((alike(C, E) && !alike(B, C) && !alike(C, N_p1_m2)) || (alike(E, G) && !alike(G, N_m2_p1) && !alike(D, G))),
-        float((alike(A, E) && !alike(A, N_m1_m2) && !alike(A, B)) || (alike(E, I) && !alike(F, I) && !alike(I, N_p2_p1))),
-        float((alike(C, E) && !alike(C, N_p2_m1) && !alike(C, F)) || (alike(E, G) && !alike(G, H) && !alike(G, N_m1_p2))),
-        float((alike(A, E) && !alike(A, D) && !alike(A, N_m2_m1)) || (alike(E, I) && !alike(I, N_p1_p2) && !alike(H, I))));
-      float l3CG = float((alike(C, E) && alike(E, PY(2., -2.))) || (alike(E, G) && alike(E, PY(-2., 2.))));
-      float l3AI = float((alike(A, E) && alike(E, PY(-2., -2.))) || (alike(E, I) && alike(E, PY(2., 2.))));
-      partner = max(partner, vec4(l3CG, l3AI, l3CG, l3AI));
       float lineR = float(alike(E, F) && alike(E, N_p2_p0)), lineL = float(alike(D, E) && alike(E, N_m2_p0));
       float lineD = float(alike(E, H) && alike(E, N_p0_p2)), lineU = float(alike(B, E) && alike(E, N_p0_m2));
       vec4 endLine = vec4(max(lineR, lineD), max(lineL, lineD), max(lineL, lineU), max(lineR, lineU));
@@ -499,17 +509,30 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
       vec3 Qnx = sec.x > 0.5 ? N_m2_p1 : N_p1_m2, Qny = sec.y > 0.5 ? N_m1_m2 : N_p2_p1;
       vec3 Qnz = sec.z > 0.5 ? N_p2_m1 : N_m1_p2, Qnw = sec.w > 0.5 ? N_p1_p2 : N_m2_m1;
       vec4 qRun = vec4(float(alike(Qx, Qnx)), float(alike(Qy, Qny)), float(alike(Qz, Qnz)), float(alike(Qw, Qnw)));
-      vec4 run = partner * (1.0 - straight * sQ) * (1.0 - straight * vec4(lessThan(lP, vec4(lE))) * (1.0 - bendQ))
-               * (1.0 - endLine * straight * (1.0 - bendQ)) * (1.0 - straight * (1.0 - straightQ0) * (1.0 - qRun)) * cut * changed;
-      run *= 1.0 - loneP * loneQ;
-      if (dot(run, vec4(1.0)) > 0.0)
+      vec4 runMask = (1.0 - straight * sQ) * (1.0 - straight * vec4(lessThan(lP, vec4(lE))) * (1.0 - bendQ))
+                   * (1.0 - endLine * straight * (1.0 - bendQ)) * (1.0 - straight * (1.0 - straightQ0) * (1.0 - qRun))
+                   * (1.0 - loneP * loneQ) * diagE;
+      if (dot(runMask, vec4(1.0)) > 0.0)
       {
-        float wCG = run.x + run.z > 0.0 ? max(alike(C, E) ? runWall(E, coord, vec2(1.0, -1.0)) : 0.0, alike(E, G) ? runWall(E, coord, vec2(-1.0, 1.0)) : 0.0) : 0.0;
-        float wAI = run.y + run.w > 0.0 ? max(alike(E, I) ? runWall(E, coord, vec2(1.0, 1.0)) : 0.0, alike(A, E) ? runWall(E, coord, vec2(-1.0, -1.0)) : 0.0) : 0.0;
-        run *= vec4(wCG, wAI, wCG, wAI);
+        vec4 partner = vec4(
+          float((alike(C, E) && !alike(B, C) && !alike(C, N_p1_m2)) || (alike(E, G) && !alike(G, N_m2_p1) && !alike(D, G))),
+          float((alike(A, E) && !alike(A, N_m1_m2) && !alike(A, B)) || (alike(E, I) && !alike(F, I) && !alike(I, N_p2_p1))),
+          float((alike(C, E) && !alike(C, N_p2_m1) && !alike(C, F)) || (alike(E, G) && !alike(G, H) && !alike(G, N_m1_p2))),
+          float((alike(A, E) && !alike(A, D) && !alike(A, N_m2_m1)) || (alike(E, I) && !alike(I, N_p1_p2) && !alike(H, I))));
+        float l3CG = (runMask.x * (1.0 - partner.x) + runMask.z * (1.0 - partner.z) > 0.5)
+                   ? float((alike(C, E) && alike(E, PY(2., -2.))) || (alike(E, G) && alike(E, PY(-2., 2.)))) : 0.0;
+        float l3AI = (runMask.y * (1.0 - partner.y) + runMask.w * (1.0 - partner.w) > 0.5)
+                   ? float((alike(A, E) && alike(E, PY(-2., -2.))) || (alike(E, I) && alike(E, PY(2., 2.)))) : 0.0;
+        vec4 run = max(partner, vec4(l3CG, l3AI, l3CG, l3AI)) * runMask;
+        if (dot(run, vec4(1.0)) > 0.0)
+        {
+          float wCG = run.x + run.z > 0.0 ? max(alike(C, E) ? runWall(E, coord, vec2(1.0, -1.0)) : 0.0, alike(E, G) ? runWall(E, coord, vec2(-1.0, 1.0)) : 0.0) : 0.0;
+          float wAI = run.y + run.w > 0.0 ? max(alike(E, I) ? runWall(E, coord, vec2(1.0, 1.0)) : 0.0, alike(A, E) ? runWall(E, coord, vec2(-1.0, -1.0)) : 0.0) : 0.0;
+          run *= vec4(wCG, wAI, wCG, wAI);
+        }
+        res = mix(res, before, run);
+        kept = max(kept, run);
       }
-      res = mix(res, before, run);
-      kept = max(kept, run);
     }
   }
 
@@ -547,10 +570,10 @@ vec4 diagonalRules(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E,
   vec4 open4 = vec4(greaterThan(BLEND(res), vec4(0.0))) * vec4(greaterThan(pair * 255.0, vec4(XBRZ_TIP))) * (1.0 - kept);
   if ((thinH || thinV) && dot(open4, vec4(1.0)) > 0.0)
   {
-    float endL = float(stripeEnd(coord, vec2(-2., -2.), vec2(-2., 2.), vec2(3., 0.), thinH, E, A, B, C, D, F, G, H, I, N_m2_p0, N_p2_p0, N_p2_m1, N_p2_p1));
-    float endR = float(stripeEnd(coord, vec2(2., -2.), vec2(2., 2.), vec2(-3., 0.), thinH, E, C, B, A, F, D, I, H, G, N_p2_p0, N_m2_p0, N_m2_m1, N_m2_p1));
-    float endT = float(stripeEnd(coord, vec2(-2., -2.), vec2(2., -2.), vec2(0., 3.), thinV, E, A, D, G, B, H, C, F, I, N_p0_m2, N_p0_p2, N_m1_p2, N_p1_p2));
-    float endB = float(stripeEnd(coord, vec2(-2., 2.), vec2(2., 2.), vec2(0., -3.), thinV, E, G, D, A, H, B, I, F, C, N_p0_p2, N_p0_m2, N_m1_m2, N_p1_m2));
+    float endL = float(stripeEnd(coord, vec2(-2., -2.), vec2(-2., 2.), vec2(3., 0.), thinH && (open4.x + open4.w > 0.0), E, A, B, C, D, F, G, H, I, N_m2_p0, N_p2_p0, N_p2_m1, N_p2_p1));
+    float endR = float(stripeEnd(coord, vec2(2., -2.), vec2(2., 2.), vec2(-3., 0.), thinH && (open4.y + open4.z > 0.0), E, C, B, A, F, D, I, H, G, N_p2_p0, N_m2_p0, N_m2_m1, N_m2_p1));
+    float endT = float(stripeEnd(coord, vec2(-2., -2.), vec2(2., -2.), vec2(0., 3.), thinV && (open4.x + open4.y > 0.0), E, A, D, G, B, H, C, F, I, N_p0_m2, N_p0_p2, N_m1_p2, N_p1_p2));
+    float endB = float(stripeEnd(coord, vec2(-2., 2.), vec2(2., 2.), vec2(0., -3.), thinV && (open4.z + open4.w > 0.0), E, G, D, A, H, B, I, F, C, N_p0_p2, N_p0_m2, N_m1_m2, N_p1_m2));
     if (endL + endR + endT + endB > 0.0)
     {
       bool nB = alike(B, E), nD = alike(D, E), nF = alike(E, F), nH = alike(E, H);
