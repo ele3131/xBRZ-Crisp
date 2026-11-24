@@ -404,7 +404,8 @@ Roles makeRoles(vec2 v, vec2 h, vec3 cv, vec3 ch, vec3 cvh, vec3 cvmh, vec3 chmv
 // ---- 21. A straight line does not bend ----
 vec2 straight21(Roles r, vec3 E, float ln, float uwSq, float euSq, float ewSq)
 {
-  if (uwSq <= SQ255(XBRZ_LINE_SIDE) || !sameColor(r.u, r.uw)) return vec2(0.0);
+  bool shadedLine = withinY255(r.u, r.uw, XBRZ_MINC) && withinY255(r.u, r.umw, XBRZ_MINC) && sameColor(r.uw, r.umw);
+  if (uwSq <= SQ255(XBRZ_LINE_SIDE) || (!sameColor(r.u, r.uw) && !shadedLine)) return vec2(0.0);
   float minESq = min(euSq, ewSq);
   float dEwmuSq = distSqY(E, r.wmu);
   bool sEwmu = dEwmuSq < SQ255(XBRZ_SAME);
@@ -424,7 +425,7 @@ vec2 straight21(Roles r, vec3 E, float ln, float uwSq, float euSq, float ewSq)
     if (uwSq < (XBRZ_LINE_BACK * XBRZ_LINE_BACK) * minESq) { if (tipE) return vec2(0.0); }
     else if ((tipE || sameColor(r.w, r.w2mu)) && !(sameColor(r.u, r.mu) && sameColor(r.u, r.mw))) return vec2(1.0, 1.0);
   }
-  bool middle = sameColor(r.u, r.umw);
+  bool middle = sameColor(r.u, r.umw) || shadedLine;
   bool four = !middle && euSq >= SQ255(XBRZ_LINE_STRONG) && !sameColor(r.w, r.umw)
            && distSqY(r.u2, r.u) > distSqY(r.u2, E)
            && sameColor(r.u, r.uw2)
@@ -686,7 +687,10 @@ void main()
             if (need19.z + need19.w > 0.0) isoH = isoSqOf5(H, min(dE1Sq.w, min(dLOSq.z, dLOSq.w)), G, I, ldd, dd, rdd);
             vec4 near19 = vec4(sec.x > 0.5 ? isoB : isoD, sec.y > 0.5 ? isoF : isoB, sec.z > 0.5 ? isoH : isoF, sec.w > 0.5 ? isoD : isoH);
             vec4 otherNear19 = vec4(sec.x > 0.5 ? isoD : isoB, sec.y > 0.5 ? isoB : isoF, sec.z > 0.5 ? isoF : isoH, sec.w > 0.5 ? isoH : isoD);
-            vec4 iso = vec4(greaterThanEqual(near19, vec4(SQ255(XBRZ_ISO)))) * sq19;
+            vec4 dEP19 = mix(dE4.yxzw, dE4.xzwy, sec), dEQ19 = mix(dE4.xzwy, dE4.yxzw, sec);
+            vec4 notRamp19 = vec4(greaterThan(dEP19 + cand20, XBRZ_JUNC_RAMP3 * dEQ19));
+            vec4 iso = vec4(greaterThanEqual(near19, vec4(SQ255(XBRZ_ISO))))
+                     * max(sq19, (1.0 - line) * vec4(greaterThanEqual(cand20, vec4(XBRZ_ISO_FAR))) * notRamp19);
             vec4 otherIso = vec4(greaterThanEqual(otherNear19, vec4(SQ255(XBRZ_ISO)))) * sqOther19
                           * vec4(greaterThanEqual(cand20, vec4(XBRZ_ISO_FAR)));
             vec4 blockP = vec4(
@@ -1053,9 +1057,17 @@ void main()
                             * vec4(lessThan(2.0 * dMinC.zwxy, dMinC));
           vec4 adjLine = cutB * line * vec4(lessThan(cand20, vec4(XBRZ_SAME))) * diagE;
           vec4 adjBridge = vec4(isTwoCut) * diagE * max(adjLine.yzwx, adjLine.wxyz);
+          vec4 adjWeak = cutB * (1.0 - line) * vec4(greaterThanEqual(cand20, vec4(XBRZ_SAME)));
+          vec4 oW15 = vec4(iA.z, iC.w, iI.x, iG.y);
+          vec4 oLine15 = vec4(drawsLine(oW15.x), drawsLine(oW15.y), drawsLine(oW15.z), drawsLine(oW15.w));
+          vec4 lDiag15 = 0.5 * (vec4(D.x, B.x, F.x, H.x) + vec4(B.x, F.x, H.x, D.x));
+          vec4 lOpp15 = vec4(A.x, C.x, I.x, G.x);
+          vec4 darkDiag15 = vec4(lessThanEqual(lDiag15, vec4(XBRZ_DARK)))
+                          * vec4(greaterThanEqual(min(vec4(E.x), lOpp15), lDiag15 + 0.2));
+          vec4 darkAdjBridge = vec4(isTwoCut * notDotE) * max(adjWeak.yzwx, adjWeak.wxyz) * oLine15 * darkDiag15;
           vec4 promB = baseB
                      * max(cutB.zwxy * max(vec4(notDotE) * max(1.0 - oppLine, vec4(lessThan(1.5 * dOppMax, dMinC))), twoCutBridge),
-                           adjBridge);
+                           max(adjBridge, darkAdjBridge));
           line = max(line, promB);
         }
       }

@@ -123,7 +123,9 @@ precision highp int;
 //     shading keep XBRZ_TOL. A strong exact-color 45-degree corner (dMinC >= XBRZ_STRAIGHT, cand20 < XBRZ_SAME)
 //     whose line was suppressed by the lone-pixel test gets its 45-degree line back when the opposite cut
 //     is non-line or much weaker, or on a 2-cut pixel where an adjacent corner draws an exact-color line
-//     and E's color continues diagonally across both corners.
+//     and E's color continues diagonally across both corners, or on a non-isolated pixel where a dark
+//     outline (<= XBRZ_DARK, >= 0.2 darker than both E and the facing corner) is paired with an adjacent
+//     non-line cut and a facing line partner.
 // 16. Line in another color: where xBRZ draws a line through a lone pixel along a pair of one color
 //     but paints the corner with the other neighbor's color, which differs from the line's by more
 //     than XBRZ_TINT and does not lie on an antialiasing ramp with it, the corner stays square when
@@ -148,7 +150,8 @@ precision highp int;
 //     grey band of a hood). Not where the color the corner would take is near-black too: two dark shades
 //     meet there and there is no outline to close (Isaac's shoulder).
 // 19. A pixel apart keeps to itself: a corner is not painted with the color of a pixel that differs from
-//     all 8 of its neighbors by XBRZ_ISO or more and keeps its own corners square, so a lone dot of
+//     all 8 of its neighbors by XBRZ_ISO or more when it keeps its own corners square (or when the cut is
+//     a plain non-line bevel with cand20 >= XBRZ_ISO_FAR outside an antialiasing ramp), so a lone dot of
 //     color, like the bead of a bracelet in Golden Sun's village, does not leak into the pixels around it.
 //     Likewise, a square isolated dot sitting at the other cardinal neighbor of a right-angle block corner
 //     (cand20 >= XBRZ_ISO_FAR) cannot push a diagonal spur into E.
@@ -192,8 +195,9 @@ precision highp int;
 //     colors extend straight orthogonally), flat-block continuations, diagonal runs, and wide ramps do not
 //     rescue the corner.
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
-//     straight line of three of its color along the pixel's side, where the corner's other neighbor
-//     differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
+//     straight line of three of its color along the pixel's side (including when the two flanking pixels
+//     match within XBRZ_SAME and the middle pixel sits within XBRZ_MINC of both), where the corner's other
+//     neighbor differs from that line by more than XBRZ_LINE_SIDE, so the line goes on straight instead of
 //     bending into the pixel, and checkered patterns keep their squares. A strong thin line of four that
 //     starts beside the pixel and runs toward the corner counts too, and where the other neighbor is darker
 //     and goes on along the cut, the corner takes that neighbor's color instead of staying square. On a
@@ -243,7 +247,13 @@ precision highp int;
 //     neighbors are closer to each other than the farther of them is to E, so the two cuts meet without
 //     creating foreign-color slivers. Only where E differs from one of the corner's two neighbors by more than
 //     XBRZ_MATCH_EDGE. Conversely, an orphaned plain bevel (no line) at a 4-color junction (> XBRZ_MATCH_EDGE)
-//     whose diagonally facing corner was cut in pass 0 and removed by the resolve pass stays square too.
+//     whose diagonally facing corner was cut in pass 0 and removed by the resolve pass stays square too, as does
+//     an uncontinued plain bevel at a 4-color junction (>= XBRZ_JUNC4) whose facing corner draws a diagonal line
+//     (or a symmetric plain bevel across a full 4-color junction) in the opposite side's color with neither
+//     cardinal neighbor continuing the cut, a lone near-black (<= 0.20) plain bevel leaking a darker uncut
+//     neighbor Pc against a brighter 3-pixel straight wall Qc when E already draws a line on Pc's other corner,
+//     or a diagonal dark low-chroma outline corner cut with a non-line, non-extending lighter off-ramp color
+//     (>= 24 YCbCr off segment) across a > 100 YCbCr flat wall whose neighbor already draws the outline's line.
 // 27. A bar at a vertex: where two arms of an outline end a knight's move apart and a bar of another color
 //     (three pixels or more) comes down to the gap pixel between them, pass 0 cuts the gap pixel's corner
 //     along a line in the bar's color, so the bar runs on past the vertex as a spike. The corner becomes a
@@ -379,6 +389,12 @@ precision highp int;
 //     that edge is cut at 45 degrees in E's color, while A and E are close shades (under XBRZ_SHADE48) and one
 //     of them is a lone pixel in a stroke of the other's color, E's corner is cut at 45 degrees too: the two
 //     cuts lie on one straight diagonal, so a light pixel in a staff keeps its slant with no step in its middle.
+//     Likewise, a 2:1 slope (outside a color-matched 2:1 partner pair E <-> tOff) whose long-edge neighbor cuts
+//     its opposite corner with a 45-degree line in a distinct third color (>= XBRZ_JUNC4 from E and both corner
+//     neighbors) falls back to 45 degrees so the 2:1 wedge does not spike through the diagonal across that edge
+//     (Isaac's bangs in Golden Sun's village, title logo bevels); and a non-2:1 cut painting a lighter non-stripe
+//     neighbor Pc (Pc.opp uncut) whose touching corner is already cut along its long edge by a turning dark 2:1
+//     outline Qc (Qc.opp cut) stays square so the bright phantom wedge does not interrupt the dark outline.
 // 49. A 1-pixel diagonal bar ends even: where E ends a stroke 1 pixel wide that goes on only diagonally (its
 //     color goes on at one diagonal, and E and the next pixel are XBRZ_BAR49 or more from all their other
 //     neighbors), lighter or darker than both pixels beside it and drawn joined, E's two side corners are cut at

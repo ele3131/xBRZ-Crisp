@@ -809,16 +809,119 @@ void main()
       res = mix(res, back, fix);
     }
   }
-  // Rule 26b: drop orphaned non-line b1 bevels at 4-color junctions (> 40 YCbCr) whose facing corner was cut in pass 0 and removed by resolve
+  // Rule 26b: drop uncontinued plain (non-line) b1 bevels at 4-color junctions:
+  // (a) pairSq > 40 where the facing corner was cut in pass 0 and removed by resolve, or
+  // (b) pairSq >= 30 where the facing corner draws a diagonal line in the opposite side's color
+  //     and neither cardinal edge neighbor continues the cut
   {
-    vec4 nb1 = vec4(equal(BLEND(res), vec4(1.0))) * (1.0 - FLAG(res, 4.0)) * vec4(greaterThan(pairSq, vec4(SQ255(XBRZ_MATCH_EDGE))));
+    vec4 nb1 = vec4(equal(BLEND(res), vec4(1.0))) * (1.0 - FLAG(res, 4.0))
+             * vec4(greaterThanEqual(pairSq, vec4(SQ255(XBRZ_JUNC4))));
     if (dot(nb1, vec4(1.0)) > 0.5)
     {
-      vec4 oW0 = vec4(activeW0(W0_AT(-1.0, -1.0)).z, activeW0(W0_AT( 1.0, -1.0)).w,
-                      activeW0(W0_AT( 1.0,  1.0)).x, activeW0(W0_AT(-1.0,  1.0)).y);
-      vec4 oR  = vec4(cut4(INFO_AT(-1.0, -1.0)).z, cut4(INFO_AT( 1.0, -1.0)).w,
-                      cut4(INFO_AT( 1.0,  1.0)).x, cut4(INFO_AT(-1.0,  1.0)).y);
-      res *= 1.0 - nb1 * oW0 * (1.0 - oR);
+      vec4 oInfo = vec4(INFO_AT(-1.0, -1.0).z, INFO_AT( 1.0, -1.0).w,
+                        INFO_AT( 1.0,  1.0).x, INFO_AT(-1.0,  1.0).y);
+      vec4 oR = cut4(oInfo);
+      vec4 nb1Orph = nb1 * vec4(greaterThan(pairSq, vec4(SQ255(XBRZ_MATCH_EDGE)))) * (1.0 - oR);
+      vec4 drop = vec4(0.0);
+      if (dot(nb1Orph, vec4(1.0)) > 0.5)
+      {
+        vec4 oW0 = vec4(activeW0(W0_AT(-1.0, -1.0)).z, activeW0(W0_AT( 1.0, -1.0)).w,
+                        activeW0(W0_AT( 1.0,  1.0)).x, activeW0(W0_AT(-1.0,  1.0)).y);
+        drop = nb1Orph * oW0;
+      }
+      vec4 diffSec = nb1 * oR * (1.0 - abs(FLAG(res, 8.0) - FLAG(oInfo, 8.0)));
+      vec4 candB = diffSec * FLAG(oInfo, 4.0);
+      vec4 candB2 = diffSec * vec4(equal(BLEND(oInfo), vec4(1.0))) * (1.0 - FLAG(oInfo, 4.0))
+                  * vec4(greaterThanEqual(min(vec4(sDSq, sFSq, sFSq, sDSq), vec4(sBSq, sBSq, sHSq, sHSq)), vec4(SQ255(XBRZ_MINC))));
+      if (dot(candB2, vec4(1.0)) > 0.5)
+      {
+        vec4 oEdgeOk = vec4(0.0);
+        if (candB2.x > 0.5) { vec3 Oc = at3(vec2(-1.0, -1.0)); oEdgeOk.x = float(distSqY(nE, Oc) >= SQ255(XBRZ_JUNC4) && min(distSqY(Oc, nB), distSqY(Oc, nD)) >= SQ255(XBRZ_MINC)); }
+        if (candB2.y > 0.5) { vec3 Oc = at3(vec2( 1.0, -1.0)); oEdgeOk.y = float(distSqY(nE, Oc) >= SQ255(XBRZ_JUNC4) && min(distSqY(Oc, nB), distSqY(Oc, nF)) >= SQ255(XBRZ_MINC)); }
+        if (candB2.z > 0.5) { vec3 Oc = at3(vec2( 1.0,  1.0)); oEdgeOk.z = float(distSqY(nE, Oc) >= SQ255(XBRZ_JUNC4) && min(distSqY(Oc, nF), distSqY(Oc, nH)) >= SQ255(XBRZ_MINC)); }
+        if (candB2.w > 0.5) { vec3 Oc = at3(vec2(-1.0,  1.0)); oEdgeOk.w = float(distSqY(nE, Oc) >= SQ255(XBRZ_JUNC4) && min(distSqY(Oc, nH), distSqY(Oc, nD)) >= SQ255(XBRZ_MINC)); }
+        candB = max(candB, candB2 * oEdgeOk);
+      }
+      if (dot(candB, vec4(1.0)) > 0.5)
+      {
+        vec4 cB = cut4(INFO_AT( 0.0, -1.0)), cD = cut4(INFO_AT(-1.0,  0.0));
+        vec4 cF = cut4(INFO_AT( 1.0,  0.0)), cH = cut4(INFO_AT( 0.0,  1.0));
+        vec4 edgeCut = vec4(max(cB.z, cD.z), max(cB.w, cF.w), max(cF.x, cH.x), max(cH.y, cD.y));
+        drop = max(drop, candB * (1.0 - edgeCut));
+      }
+      res *= 1.0 - drop;
+      if (nE.x <= 0.20)
+      {
+        vec4 wallCand = nb1 * (1.0 - drop) * (1.0 - oR);
+        if (dot(wallCand, vec4(1.0)) > 0.5)
+        {
+          vec4 secM = FLAG(res, 8.0);
+          vec4 wDrop = vec4(0.0);
+          for (int k = 0; k < 4; k++)
+          {
+            vec2 c = k == 0 ? vec2(-1.0, -1.0) : k == 1 ? vec2(1.0, -1.0) : k == 2 ? vec2(1.0, 1.0) : vec2(-1.0, 1.0);
+            vec4 m = vtxCorner(c);
+            if (dot(wallCand, m) < 0.5) continue;
+            bool s1 = dot(secM, m) > 0.5;
+            bool pIsV = (k == 0 || k == 2) ? s1 : !s1;
+            vec2 pOff = pIsV ? vec2(0.0, c.y) : vec2(c.x, 0.0);
+            vec2 qOff = pIsV ? vec2(c.x, 0.0) : vec2(0.0, c.y);
+            float aw = dot(res, vtxCorner(pOff - qOff));
+            if (BLEND(aw) < 0.5 || FLAG(aw, 4.0) < 0.5) continue;
+            vec3 Pc = cardColor(pOff), Qc = cardColor(qOff);
+            if (Pc.x >= Qc.x - 0.15 || Qc.x < nE.x + 0.30) continue;
+            if (!withinY255(nE, cardColor(-pOff), XBRZ_SAME_M)) continue;
+            vec4 oppM = vtxCorner(-c);
+            if (BLEND(dot(infoAt(qOff), oppM)) > 0.5) continue;
+            if (dot(cut4(infoAt(pOff)), vec4(1.0)) > 0.5) continue;
+            if (!withinY255(Qc, at3(c), XBRZ_SAME_M) || !withinY255(Qc, at3(qOff - pOff), XBRZ_SAME_M)) continue;
+            if (withinY255(Pc, at3(pOff - qOff), XBRZ_SAME_M)) continue;
+            wDrop += m;
+          }
+          res *= 1.0 - min(wDrop, vec4(1.0));
+        }
+      }
+    }
+  }
+  // Rule 26c: keep dark low-chroma outlines from leaking a lighter off-ramp color across a > 100 YCbCr flat wall
+  if (nE.x <= 0.30 && dot(nE.yz, nE.yz) < SQ255(50.0))
+  {
+    vec4 cand26c = cut4(res) * FLAG(res, 4.0) * vec4(greaterThan(pairSq, vec4(SQ255(100.0))));
+    if (dot(cand26c, vec4(1.0)) > 0.5)
+    {
+      vec4 secM = FLAG(res, 8.0);
+      vec4 sq26c = vec4(0.0);
+      for (int k = 0; k < 4; k++)
+      {
+        vec2 c = k == 0 ? vec2(-1.0, -1.0) : k == 1 ? vec2(1.0, -1.0) : k == 2 ? vec2(1.0, 1.0) : vec2(-1.0, 1.0);
+        vec4 m = vtxCorner(c);
+        if (dot(cand26c, m) < 0.5) continue;
+        bool s1 = dot(secM, m) > 0.5;
+        bool pIsV = (k == 0 || k == 2) ? s1 : !s1;
+        vec2 pOff = pIsV ? vec2(0.0, c.y) : vec2(c.x, 0.0);
+        vec2 qOff = pIsV ? vec2(c.x, 0.0) : vec2(0.0, c.y);
+        vec3 Pc = cardColor(pOff);
+        if (Pc.x < nE.x + 0.10) continue;
+        vec4 oppM = vtxCorner(-c);
+        if (BLEND(dot(infoAt(c), oppM)) > 0.5) continue;
+        vec4 rQc = infoAt(qOff);
+        if (BLEND(dot(rQc, oppM)) < 0.5 || FLAG(dot(rQc, oppM), 4.0) < 0.5) continue;
+        vec4 rPc = infoAt(pOff);
+        if (dot(cut4(rPc) * FLAG(rPc, 4.0), vec4(1.0)) > 0.5) continue;
+        vec3 Qc = cardColor(qOff);
+        vec3 Oc = at3(c);
+        if (distSqY(Qc, Oc) >= SQ255(XBRZ_SAME_M)) continue;
+        if (!withinY255(nE, at3(qOff - pOff), XBRZ_SAME_M)) continue;
+        vec3 eqV = Qc - nE;
+        float tP = clamp(dot(Pc - nE, eqV) / max(dot(eqV, eqV), SAFE_EPS), 0.0, 1.0);
+        vec3 perpV = Pc - (nE + tP * eqV);
+        if (dot(perpV, perpV) < SQ255(24.0)) continue;
+        if (distSqY(Pc, at3(vec2(c.x, -c.y))) < SQ255(XBRZ_JUNC4) || distSqY(Pc, at3(vec2(-c.x, c.y))) < SQ255(XBRZ_JUNC4)) continue;
+        if (withinY255(Pc, at3(2.0 * pOff), XBRZ_SAME_M) || withinY255(Pc, at3(pOff - qOff), XBRZ_SAME_M)) continue;
+        if (!withinY255(Qc, at3(2.0 * qOff), XBRZ_SAME_M)) continue;
+        sq26c += m;
+      }
+      res *= 1.0 - min(sq26c, vec4(1.0));
     }
   }
   // rule 27
@@ -960,6 +1063,74 @@ void main()
           if (sh > 0.5) dropS += m; else dropT += m;
         }
         res -= 16.0 * dropS + 64.0 * dropT;
+      }
+    }
+    // 48b. unpartnered 2:1 slope colliding along its long edge with a 45-degree third-color line
+    {
+      vec4 shM = FLAG(res, 16.0), stM = FLAG(res, 64.0);
+      vec4 cw48b = vec4(equal(BLEND(res), vec4(1.0))) * FLAG(res, 4.0) * abs(shM - stM)
+                 * vec4(equal(FLAG(res, 32.0) + FLAG(res, 128.0), vec4(0.0)));
+      if (dot(cw48b, vec4(1.0)) > 0.5)
+      {
+        vec4 dropS = vec4(0.0), dropT = vec4(0.0);
+        for (int k = 0; k < 4; k++)
+        {
+          vec2 c = k == 0 ? vec2(-1.0, -1.0) : k == 1 ? vec2(1.0, -1.0) : k == 2 ? vec2(1.0, 1.0) : vec2(-1.0, 1.0);
+          vec4 m = vtxCorner(c);
+          if (dot(cw48b, m) < 0.5) continue;
+          bool sh = dot(shM, m) > 0.5;
+          bool sIsV = (k == 0 || k == 2) ? sh : !sh;
+          vec2 sOff = sIsV ? vec2(0.0, c.y) : vec2(c.x, 0.0);
+          vec2 tOff = sIsV ? vec2(c.x, 0.0) : vec2(0.0, c.y);
+          vec4 oppM = vtxCorner(-c);
+          vec4 rS = infoAt(sOff);
+          float sw = dot(rS, oppM);
+          if (BLEND(sw) < 0.5 || dot(isLine45(rS), oppM) < 0.5 || (FLAG(sw, 8.0) > 0.5) == sh) continue;
+          float tw = dot(infoAt(tOff), oppM);
+          bool ePaintsT = ((dot(FLAG(res, 8.0), m) > 0.5) != sh) || (dot(pairSq, m) < SQ255(XBRZ_SAME_M));
+          if (ePaintsT && BLEND(tw) > 0.5 && FLAG(tw, 4.0) > 0.5 && (FLAG(tw, 16.0) > 0.5) == sh && (FLAG(tw, 64.0) > 0.5) != sh) continue;
+          float mw = dot(infoAt(-tOff), m);
+          if (BLEND(mw) > 0.5 && FLAG(mw, 4.0) > 0.5 && (FLAG(mw, 16.0) > 0.5) == sh && (FLAG(mw, 64.0) > 0.5) != sh) continue;
+          vec3 Fc = at3(sOff - tOff);
+          if (min(min(distSqY(Fc, cardColor(sOff)), distSqY(Fc, cardColor(tOff))), distSqY(Fc, nE)) < SQ255(XBRZ_JUNC4)) continue;
+          if (sh) dropS += m; else dropT += m;
+        }
+        res -= 16.0 * dropS + 64.0 * dropT;
+      }
+    }
+    // 48c. bright phantom wedge cut into a turning dark 2:1 outline whose long side already cuts Pc's touching corner
+    {
+      vec4 sumSq = vec4(sDSq + sBSq, sBSq + sFSq, sFSq + sHSq, sHSq + sDSq);
+      vec4 cw48c = cut4(res) * (1.0 - FLAG(res, 16.0)) * (1.0 - FLAG(res, 64.0))
+                 * vec4(greaterThanEqual(pairSq, vec4(SQ255(XBRZ_JUNC4))))
+                 * vec4(greaterThan(pairSq, sumSq));
+      if (dot(cw48c, vec4(1.0)) > 0.5)
+      {
+        vec4 secM = FLAG(res, 8.0);
+        vec4 sq48c = vec4(0.0);
+        for (int k = 0; k < 4; k++)
+        {
+          vec2 c = k == 0 ? vec2(-1.0, -1.0) : k == 1 ? vec2(1.0, -1.0) : k == 2 ? vec2(1.0, 1.0) : vec2(-1.0, 1.0);
+          vec4 m = vtxCorner(c);
+          if (dot(cw48c, m) < 0.5) continue;
+          bool s1 = dot(secM, m) > 0.5;
+          bool pIsV = (k == 0 || k == 2) ? s1 : !s1;
+          vec2 pOff = pIsV ? vec2(0.0, c.y) : vec2(c.x, 0.0);
+          vec2 qOff = pIsV ? vec2(c.x, 0.0) : vec2(0.0, c.y);
+          vec3 Pc = cardColor(pOff), Qc = cardColor(qOff);
+          if (Qc.x > 0.25 || Qc.x >= nE.x - 0.05 || Pc.x <= nE.x + 0.05) continue;
+          vec4 oppM = vtxCorner(-c);
+          if (BLEND(dot(infoAt(c), oppM)) > 0.5) continue;
+          vec4 rP = infoAt(pOff);
+          float pw = dot(rP, m);
+          if (BLEND(pw) < 0.5 || FLAG(pw, 4.0) < 0.5 || BLEND(dot(rP, oppM)) > 0.5) continue;
+          bool p21 = s1 ? (FLAG(pw, 64.0) > 0.5 && FLAG(pw, 16.0) < 0.5) : (FLAG(pw, 16.0) > 0.5 && FLAG(pw, 64.0) < 0.5);
+          if (!p21) continue;
+          if (BLEND(dot(infoAt(qOff), oppM)) < 0.5) continue;
+          if (distSqY(Qc, at3(c)) >= SQ255(XBRZ_SAME_M)) continue;
+          sq48c += m;
+        }
+        res *= 1.0 - min(sq48c, vec4(1.0));
       }
     }
   }
