@@ -81,7 +81,9 @@
 //    along a 45-degree diagonal in the same color (the tip of Goku's nose).
 // 10. Pixel closed between outlines: a pixel closed in a straight row between two pixels of a
 //     near-black outline that also wraps the corner, like the brown brow between the black lines of
-//     Link's eye, is not pulled toward E by a line through the outline; that corner stays square.
+//     Link's eye (excluding dark-outline antialiasing pixels whose luma sits in the bottom 22% of
+//     the gap between the outline and E), is not pulled toward E by a line through the outline;
+//     that corner stays square.
 // 11. Lines in a larger window: a corner that rule 1 left square is still cut as in xBRZ where it lies
 //     on a straight line (45 degrees or 2:1, with regular steps) between two stripes that run on for
 //     5 pixels or more, one of them 1 pixel wide against a strong contour, like the inner side of an
@@ -234,8 +236,11 @@
 //     decided: in a clean line between two colors (the corner's two neighbors within XBRZ_MATCH_WRAP, the same
 //     two pixels of both neighbors along the cut within XBRZ_MATCH_LINE) whose neighbors on both sides along
 //     the cut are cut, so the line has no gap, or where the pixel diagonal to E across the corner's point cuts
-//     the facing corner with a 45-degree line and pass 0 drew E's corner with no line, so the two cuts meet.
-//     Only where E differs from one of the corner's two neighbors by more than XBRZ_MATCH_EDGE.
+//     the facing corner with a 45-degree line, pass 0 drew E's corner with no line, and the corner's two
+//     neighbors are closer to each other than the farther of them is to E, so the two cuts meet without
+//     creating foreign-color slivers. Only where E differs from one of the corner's two neighbors by more than
+//     XBRZ_MATCH_EDGE. Conversely, an orphaned plain bevel (no line) at a 4-color junction (> XBRZ_MATCH_EDGE)
+//     whose diagonally facing corner was cut in pass 0 and removed by the resolve pass stays square too.
 // 27. A bar at a vertex: where two arms of an outline end a knight's move apart and a bar of another color
 //     (three pixels or more) comes down to the gap pixel between them, pass 0 cuts the gap pixel's corner
 //     along a line in the bar's color, so the bar runs on past the vertex as a spike. The corner becomes a
@@ -337,9 +342,11 @@
 //     and past both ends while the run ends on both sides in one other color, the corner is cut again (if the
 //     mirror corner of the run's other pixel is cut), so the cap ends round on both sides, like the top of
 //     a wizard's hair under his hood.
-// 44. The end of a dark 1-pixel stroke: where E ends a stroke 1 pixel wide and the 7 pixels around that end
-//     are XBRZ_END44 or more from it and lighter, E's two corners at the end are cut, so a dark mark ends
-//     round at both ends, like a pupil under a white eyelid (Isaac's eye) or the end of a font's shadow.
+// 44. The end of a dark 1-pixel stroke: where a dark, low-chroma E (luma <= 0.35, chroma < 50) ends a stroke
+//     1 pixel wide and the 7 pixels around that end are XBRZ_END44 or more from it and strictly lighter
+//     (luma >= E.x + 0.15), E's two corners at the end are cut, so a dark mark ends round at both ends, like a
+//     pupil under a white eyelid (Isaac's eye) or the end of a font's shadow, without chipping HUD bars or bright
+//     strokes.
 //     Not a corner past which E's color goes on by a knight's move, where the pixel diagonal to E cuts its
 //     corner toward it: the stroke turns there as an outline (rule 37), so it leaves no tip of the other color
 //     (the flame of a fire horse).
@@ -376,10 +383,12 @@
 //     pixel within 100 YCbCr, preventing foreign-color leaks) and its end corner at 45 degrees in the nearer
 //     neighbor, so the stroke is an even bar with a straight end (a light stroke on the boy's shoulder in Final
 //     Fantasy Tactics Advance). The end stays as it is where the stroke runs on into a region on its own side of
-//     the sides' shades (a dark stroke into an outline) or into one region that holds both pixels at the end corner
-//     (a dark line that meets a white branch), and no corner is cut where a neighbor already draws the stroke's
-//     color across it. A neighbor's corner at the point where a side cut actually paints that neighbor is not cut
-//     in the color from the stroke's other side, so that color does not wrap around the bar's end.
+//     the sides' shades (a dark stroke into an outline), into one region that holds both pixels at the end corner
+//     (a dark line that meets a white branch), or where one of two contrasting flanks (>= 100 YCbCr apart) wraps
+//     directly into an end neighbor across a foreign background (preserving curved icons like Fireball), and no
+//     corner is cut where a neighbor already draws the stroke's color across it. A neighbor's corner at the point
+//     where a side cut actually paints that neighbor is not cut in the color from the stroke's other side, so
+//     that color does not wrap around the bar's end.
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9, 11 and
 // 13 to 49 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
@@ -1199,7 +1208,8 @@ vec4 closedPixel(vec4 res, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 
   vec3 Px = sc.x > 0.5 ? B : D, Py = sc.y > 0.5 ? F : B, Pz = sc.z > 0.5 ? H : F, Pw = sc.w > 0.5 ? D : H;
   vec4 lQ = vec4(A.x, C.x, I.x, G.x);
   vec4 lP = vec4(Px.x, Py.x, Pz.x, Pw.x);
-  vec4 dark = vec4(lessThan(lQ + XBRZ_BLACK_GAP, lP)) * vec4(lessThan(lQ + XBRZ_BLACK_GAP, vec4(E.x))) * vec4(lessThan(lQ, vec4(XBRZ_BLACK)));
+  vec4 dark = vec4(lessThan(lQ + XBRZ_BLACK_GAP, lP)) * vec4(lessThan(lQ + XBRZ_BLACK_GAP, vec4(E.x)))
+            * vec4(lessThan(lQ, vec4(XBRZ_BLACK))) * vec4(greaterThan(lP - lQ, 0.22 * (vec4(E.x) - lQ)));
   vec4 closed = dark * line;
   if (dot(closed, vec4(1.0)) <= 0.0)
     return res;

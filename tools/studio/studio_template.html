@@ -1,0 +1,2802 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>xBRZ Crisp Studio v4</title>
+<style>
+  :root {
+    --bg: #0b0e14;
+    --surface: #131822;
+    --surface-2: #1a2130;
+    --surface-3: #222b3d;
+    --border: #283246;
+    --border-strong: #394763;
+    --fg: #e8eef7;
+    --muted: #8b99b0;
+    --stage: #06080c;
+
+    --gold: #f0b429;
+    --gold-bg: rgba(240, 180, 41, 0.14);
+    --gold-border: rgba(240, 180, 41, 0.45);
+    --accent: #4c8dff;
+    --accent-bg: rgba(76, 141, 255, 0.16);
+
+    --c-orig: #b88cff;
+    --c-xbrz: #58a6ff;
+    --c-old: #ff8672;
+    --c-new: #3fd278;
+    --c-diff: #ff5ca8;
+    --c-pin: #ff3b5c;
+
+    --font-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
+    --radius: 8px;
+    --radius-sm: 6px;
+    --tap: 36px;
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-l: env(safe-area-inset-left, 0px);
+    --safe-r: env(safe-area-inset-right, 0px);
+    --safe-t: env(safe-area-inset-top, 0px);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    height: 100vh;
+    width: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    background: var(--bg);
+    color: var(--fg);
+    font: 13.5px/1.4 var(--font-ui);
+    color-scheme: dark;
+  }
+  @supports (height: 100dvh) {
+    html, body { height: 100dvh; }
+  }
+  [hidden] { display: none !important; }
+
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    padding-top: var(--safe-t);
+    padding-left: var(--safe-l);
+    padding-right: var(--safe-r);
+  }
+
+  button, input, textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  button {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--fg);
+    padding: 6px 10px;
+    min-height: 32px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    white-space: nowrap;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, transform 0.08s ease;
+  }
+  button:hover { border-color: var(--border-strong); background: var(--surface-3); }
+  button:active { transform: translateY(0.5px); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button[disabled] { opacity: 0.45; pointer-events: none; }
+
+  /* Header */
+  .topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 7px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    z-index: 20;
+    flex-shrink: 0;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: -0.01em;
+    margin-right: 4px;
+  }
+  .brand-mark {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, #f0b429, #ff6b4a);
+    color: #0b0e14;
+    font: 800 12px/1 var(--font-mono);
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+  }
+  .brand-ver {
+    font: 600 10.5px/1 var(--font-mono);
+    color: var(--gold);
+    background: var(--gold-bg);
+    border: 1px solid var(--gold-border);
+    border-radius: 999px;
+    padding: 3px 7px;
+  }
+
+  .tabs {
+    display: inline-flex;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2px;
+    gap: 2px;
+  }
+  .tabs button {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    min-height: 28px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .tabs button:hover { color: var(--fg); background: rgba(255,255,255,0.04); }
+  .tabs button.active { background: var(--accent); color: #fff; }
+  .tabs button.tab-gs.active { background: #a87105; color: #fff; box-shadow: inset 0 0 0 1px rgba(240,180,41,0.55); }
+  .tab-cnt {
+    font: 600 10.5px/1 var(--font-mono);
+    opacity: 0.82;
+    background: rgba(0,0,0,0.22);
+    padding: 2px 5px;
+    border-radius: 999px;
+  }
+
+  .top-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .icon-btn { padding: 6px 9px; min-width: 34px; }
+  .btn-pin-toggle.active {
+    background: rgba(255, 59, 92, 0.22);
+    border-color: var(--c-pin);
+    color: #ffd3dc;
+    box-shadow: 0 0 0 1px rgba(255, 59, 92, 0.35);
+  }
+  .btn-drawer-toggle {
+    position: relative;
+  }
+  .btn-drawer-toggle.active {
+    background: var(--accent-bg);
+    border-color: var(--accent);
+    color: #d6e6ff;
+  }
+  .pin-count-pill {
+    font: 700 11px/1 var(--font-mono);
+    background: var(--c-pin);
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 999px;
+    min-width: 18px;
+    text-align: center;
+  }
+  .pin-count-pill.zero {
+    background: var(--surface-3);
+    color: var(--muted);
+  }
+
+  /* Scene Strip */
+  .scene-strip {
+    background: #0e121a;
+    border-bottom: 1px solid var(--border);
+    padding: 6px 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+    flex-shrink: 0;
+  }
+  .scene-strip::-webkit-scrollbar { height: 5px; }
+  .scene-strip::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 99px; }
+
+  .scene-chip {
+    flex-shrink: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 5px 11px;
+    min-height: 30px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    gap: 6px;
+  }
+  .scene-chip:hover { color: var(--fg); border-color: var(--border-strong); }
+  .scene-chip.is-gs { border-color: rgba(240, 180, 41, 0.32); }
+  .scene-chip.active {
+    background: var(--accent);
+    border-color: #7ab0ff;
+    color: #fff;
+    font-weight: 600;
+  }
+  .scene-chip.is-gs.active {
+    background: #9f6b06;
+    border-color: var(--gold);
+    color: #fff;
+  }
+  .chip-badge {
+    font: 600 10px/1 var(--font-mono);
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.1);
+    color: inherit;
+  }
+  .chip-dpx {
+    font: 600 10px/1 var(--font-mono);
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(255, 92, 168, 0.16);
+    color: #ff99c8;
+  }
+  .scene-chip.active .chip-dpx {
+    background: rgba(0, 0, 0, 0.28);
+    color: #fff;
+  }
+  .chip-dpx.zero {
+    background: rgba(255,255,255,0.06);
+    color: var(--muted);
+  }
+  .chip-pindot {
+    font: 700 10px/1 var(--font-mono);
+    background: var(--c-pin);
+    color: #fff;
+    padding: 2px 5px;
+    border-radius: 999px;
+  }
+
+  /* Info + AutoSpots Subbar */
+  .subbar {
+    background: #10151f;
+    border-bottom: 1px solid var(--border);
+    padding: 5px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-height: 32px;
+    flex-shrink: 0;
+  }
+  .scene-note {
+    font-size: 12px;
+    color: #c7d2e4;
+    flex: 1 1 240px;
+    min-width: 0;
+  }
+  .scene-note strong { color: var(--fg); font-weight: 600; }
+  .scene-meta {
+    font: 500 11px/1 var(--font-mono);
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .autospots {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+  .autospot-btn {
+    min-height: 26px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    background: var(--gold-bg);
+    border-color: var(--gold-border);
+    color: #ffd875;
+  }
+  .autospot-btn:hover {
+    background: rgba(240, 180, 41, 0.26);
+    border-color: var(--gold);
+    color: #fff;
+  }
+
+  /* Main Workspace */
+  .workspace {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stage-col {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    background: var(--stage);
+  }
+
+  /* Interactive Canvas Stage */
+  .stage {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    background:
+      radial-gradient(circle at 50% 45%, #101622 0%, #07090e 75%);
+    cursor: pointer;
+  }
+  .stage.is-dragging { cursor: grabbing !important; }
+  .stage.is-pinmode { cursor: crosshair !important; }
+
+  #stage-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    image-rendering: pixelated;
+  }
+
+  #pin-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .pin-marker {
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: auto;
+    transform: translate(-50%, -50%);
+    z-index: 4;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    min-height: 0;
+  }
+  .pin-marker:hover { background: transparent; }
+  .pin-marker:active { transform: translate(-50%, -50%); }
+
+  .pin-ring {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2.5px solid var(--c-pin);
+    box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.85), inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+    transition: transform 0.14s ease, border-color 0.14s ease;
+  }
+  .pin-marker.selected .pin-ring {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.9), 0 0 14px rgba(240, 180, 41, 0.85);
+    transform: scale(1.16);
+  }
+  .pin-num {
+    position: absolute;
+    top: -11px;
+    right: -12px;
+    min-width: 19px;
+    height: 19px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--c-pin);
+    color: #fff;
+    font: 800 11px/19px var(--font-mono);
+    text-align: center;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.85), 0 0 0 1.5px #0b0e14;
+  }
+  .pin-marker.selected .pin-num {
+    background: var(--gold);
+    color: #0b0e14;
+  }
+
+  /* Floating Stage HUDs */
+  .hud-top {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .status-pill {
+    pointer-events: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(11, 14, 20, 0.86);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    padding: 5px 12px 5px 9px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+    transition: transform 0.12s ease, border-color 0.15s ease;
+    cursor: pointer;
+  }
+  .status-pill.flash {
+    transform: scale(1.04);
+    border-color: rgba(255, 255, 255, 0.55);
+  }
+  .status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .status-name {
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: -0.01em;
+  }
+  .status-hint {
+    font-size: 11.5px;
+    color: var(--muted);
+    padding-left: 8px;
+    border-left: 1px solid var(--border);
+  }
+  .status-pill.pin-active {
+    border-color: var(--c-pin);
+    background: rgba(40, 12, 20, 0.9);
+  }
+  .status-pill.pin-active .status-hint {
+    color: #ffb0be;
+  }
+
+  .coord-hud {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(11, 14, 20, 0.84);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 5px 11px;
+    font: 600 11.5px/1 var(--font-mono);
+    color: #c8d4e8;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    white-space: nowrap;
+  }
+  .coord-hud .dim { color: var(--muted); font-weight: 500; }
+
+  .empty-state {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    text-align: center;
+    padding: 24px;
+    color: var(--muted);
+    pointer-events: none;
+  }
+  .empty-state strong { color: var(--fg); display: block; font-size: 15px; margin-bottom: 6px; }
+
+  /* Control Dock (below canvas) */
+  .dock {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 8px 12px calc(8px + var(--safe-b));
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    z-index: 15;
+    flex-shrink: 0;
+  }
+
+  .dock-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .layer-pills {
+    display: inline-flex;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2px;
+    gap: 2px;
+  }
+  .layer-btn {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    min-height: 30px;
+    padding: 4px 9px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    gap: 5px;
+  }
+  .layer-btn:hover { color: var(--fg); background: rgba(255,255,255,0.05); }
+  .layer-btn.active {
+    background: var(--surface-3);
+    color: #fff;
+    box-shadow: inset 0 0 0 1px var(--border-strong);
+  }
+  .layer-btn[data-layer="orig"].active { background: rgba(184, 140, 255, 0.22); box-shadow: inset 0 0 0 1px var(--c-orig); }
+  .layer-btn[data-layer="xbrz"].active { background: rgba(88, 166, 255, 0.22); box-shadow: inset 0 0 0 1px var(--c-xbrz); }
+  .layer-btn[data-layer="old"].active  { background: rgba(255, 134, 114, 0.22); box-shadow: inset 0 0 0 1px var(--c-old); }
+  .layer-btn[data-layer="new"].active  { background: rgba(63, 210, 120, 0.22); box-shadow: inset 0 0 0 1px var(--c-new); }
+  .layer-btn[data-layer="diff"].active { background: rgba(255, 92, 168, 0.22); box-shadow: inset 0 0 0 1px var(--c-diff); }
+
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .kbd {
+    font: 600 10px/1 var(--font-mono);
+    opacity: 0.55;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.08);
+  }
+
+  .pair-chip {
+    min-height: 32px;
+    padding: 4px 9px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 999px;
+    color: var(--muted);
+    background: var(--bg);
+  }
+  .pair-chip.active {
+    background: var(--accent-bg);
+    border-color: var(--accent);
+    color: #dbeaff;
+  }
+
+  .btn-hold {
+    background: rgba(240, 180, 41, 0.14);
+    border-color: rgba(240, 180, 41, 0.5);
+    color: #ffd66b;
+    font-weight: 700;
+    touch-action: none;
+    -webkit-touch-callout: none;
+  }
+  .btn-hold:hover { background: rgba(240, 180, 41, 0.22); border-color: var(--gold); }
+  .btn-hold.holding {
+    background: var(--gold);
+    border-color: var(--gold);
+    color: #0b0e14;
+  }
+
+  .dock-right {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .btn-grid.active {
+    background: var(--accent-bg);
+    border-color: var(--accent);
+    color: #dbeaff;
+  }
+  .zoom-val {
+    font: 600 11.5px/1 var(--font-mono);
+    color: var(--muted);
+    min-width: 46px;
+    text-align: center;
+  }
+
+  /* Pins Drawer (Desktop Sidebar >= 860px) */
+  .sheet-scrim {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.56);
+    z-index: 40;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  .sheet-scrim.open { display: block; opacity: 1; }
+
+  .pins-panel {
+    width: 328px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    z-index: 45;
+    transition: width 0.2s ease, opacity 0.18s ease, transform 0.22s ease;
+  }
+  .pins-panel.collapsed {
+    width: 0;
+    border-left: 0;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .sheet-handle-wrap {
+    display: none;
+    justify-content: center;
+    padding: 8px 0 4px;
+    cursor: grab;
+    touch-action: none;
+  }
+  .sheet-handle {
+    width: 38px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--border-strong);
+  }
+
+  .pins-head {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .pins-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .pins-title {
+    font-weight: 700;
+    font-size: 13.5px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .pins-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn-copy {
+    background: #1b65d6;
+    border-color: #4c8dff;
+    color: #fff;
+    font-weight: 600;
+  }
+  .btn-copy:hover { background: #2674eb; border-color: #7ab0ff; }
+  .btn-png {
+    background: #1d3528;
+    border-color: rgba(63, 210, 120, 0.55);
+    color: #93f0b6;
+    font-weight: 600;
+  }
+  .btn-png:hover { background: #244734; border-color: var(--c-new); color: #fff; }
+  .btn-clear {
+    font-size: 11.5px;
+    min-height: 28px;
+    padding: 3px 8px;
+    color: var(--muted);
+  }
+  .btn-clear.confirming {
+    background: rgba(255, 59, 92, 0.24);
+    border-color: var(--c-pin);
+    color: #ffd3dc;
+    font-weight: 700;
+  }
+
+  .pins-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 8px 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  .pins-empty {
+    padding: 24px 14px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.55;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+    background: rgba(255,255,255,0.015);
+  }
+  .pins-empty strong { color: var(--fg); display: block; margin-bottom: 5px; }
+
+  .pin-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 9px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: border-color 0.14s ease, background 0.14s ease;
+  }
+  .pin-card:hover { border-color: var(--border-strong); }
+  .pin-card.selected {
+    border-color: var(--gold);
+    background: rgba(240, 180, 41, 0.08);
+  }
+  .pin-card.other-scene {
+    opacity: 0.86;
+  }
+  .pin-card-top {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+  }
+  .pin-badge {
+    min-width: 24px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--c-pin);
+    color: #fff;
+    font: 800 11.5px/22px var(--font-mono);
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .pin-card.selected .pin-badge {
+    background: var(--gold);
+    color: #0b0e14;
+  }
+  .pin-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .pin-scene {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--fg);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pin-coords {
+    font: 600 11px/1.2 var(--font-mono);
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .pin-coords .cur-tag {
+    color: var(--c-new);
+    font-size: 10px;
+  }
+  .pin-del {
+    min-height: 26px;
+    min-width: 26px;
+    padding: 0;
+    border-radius: 6px;
+    background: transparent;
+    border-color: transparent;
+    color: var(--muted);
+    font-size: 15px;
+  }
+  .pin-del:hover {
+    background: rgba(255, 59, 92, 0.18);
+    border-color: rgba(255, 59, 92, 0.4);
+    color: #ff9eb0;
+  }
+  .pin-note-input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+    color: var(--fg);
+  }
+  .pin-note-input::placeholder { color: #647189; }
+  .pin-note-input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 72px;
+    transform: translate(-50%, 14px);
+    background: rgba(18, 24, 36, 0.96);
+    border: 1px solid var(--border-strong);
+    color: #fff;
+    padding: 8px 15px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 600;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 90;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    max-width: calc(100vw - 24px);
+    text-align: center;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  /* Modals (Copy Fallback & Help) */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.68);
+    display: none;
+    place-items: center;
+    padding: 16px;
+    z-index: 100;
+  }
+  .modal-backdrop.open { display: grid; }
+  .modal {
+    width: 100%;
+    max-width: 480px;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .modal-head h3 { font-size: 15px; font-weight: 700; }
+  .modal textarea {
+    width: 100%;
+    min-height: 150px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    font: 12.5px/1.5 var(--font-mono);
+    color: var(--fg);
+    resize: vertical;
+  }
+  .help-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 7px 14px;
+    font-size: 12.5px;
+    align-items: center;
+  }
+  .help-key {
+    font: 700 11.5px/1 var(--font-mono);
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    padding: 4px 7px;
+    border-radius: 5px;
+    text-align: center;
+    color: #dbeaff;
+  }
+
+  /* Responsive Mobile (< 860px) */
+  @media (max-width: 859px) {
+    .topbar { padding: 6px 8px; gap: 6px; }
+    .brand-title { display: none; }
+    .brand-ver { display: none; }
+    .tabs button { padding: 5px 8px; font-size: 12px; min-height: 36px; }
+    button { min-height: 40px; }
+    .scene-strip { padding: 6px 8px; }
+    .scene-chip { min-height: 34px; padding: 5px 10px; }
+    .subbar { padding: 5px 8px; gap: 5px; }
+    .scene-note { font-size: 11.5px; }
+    .scene-meta { display: none; }
+    .autospot-btn { min-height: 30px; }
+
+    .status-hint { display: none; }
+    .kbd { display: none; }
+    .coord-hud { font-size: 11px; padding: 4px 9px; }
+
+    .dock {
+      padding: 6px 8px calc(6px + var(--safe-b));
+      gap: 6px;
+      overflow-x: auto;
+      flex-wrap: nowrap;
+      scrollbar-width: none;
+    }
+    .dock::-webkit-scrollbar { display: none; }
+    .dock-group, .dock-right { flex-wrap: nowrap; flex-shrink: 0; }
+    .layer-btn { min-height: 38px; padding: 4px 9px; font-size: 12px; }
+    .pair-chip { min-height: 40px; font-size: 12px; }
+    .btn-hold { min-height: 40px; }
+    .zoom-val { min-width: 38px; }
+
+    /* Mobile Bottom Sheet for Pins */
+    .pins-panel {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      width: 100% !important;
+      max-height: 70dvh;
+      height: auto;
+      border-left: 0;
+      border-top: 1px solid var(--border-strong);
+      border-radius: 16px 16px 0 0;
+      padding-bottom: var(--safe-b);
+      box-shadow: 0 -10px 36px rgba(0, 0, 0, 0.65);
+      transform: translateY(0);
+      opacity: 1 !important;
+    }
+    .pins-panel.collapsed {
+      width: 100% !important;
+      transform: translateY(105%);
+      pointer-events: none;
+    }
+    .sheet-handle-wrap { display: flex; }
+    .pins-list { max-height: 44dvh; }
+    .toast { bottom: 84px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">xB</span>
+      <span class="brand-title">xBRZ Crisp Studio</span>
+      <span class="brand-ver">v4</span>
+    </div>
+
+    <div class="tabs" role="tablist" aria-label="Filtro de cenas">
+      <button type="button" id="tab-gs" class="tab-gs active" data-filter="gs" role="tab" aria-selected="true">☀️ Golden Sun <span class="tab-cnt" id="cnt-gs">0</span></button>
+      <button type="button" id="tab-other" data-filter="other" role="tab" aria-selected="false">🕹️ Outros Consoles <span class="tab-cnt" id="cnt-other">0</span></button>
+      <button type="button" id="tab-all" data-filter="all" role="tab" aria-selected="false">Todas <span class="tab-cnt" id="cnt-all">0</span></button>
+    </div>
+
+    <div class="top-right">
+      <button type="button" id="btn-prev" class="icon-btn" title="Cena anterior (←)">◀</button>
+      <button type="button" id="btn-next" class="icon-btn" title="Próxima cena (→)">▶</button>
+      <button type="button" id="btn-pin-mode" class="btn-pin-toggle" title="Ativar modo marcar spots (P) — ou Alt+Clique / Botão Direito a qualquer momento">📍 <span class="lbl-pin-mode">Marcar Spots</span></button>
+      <button type="button" id="btn-drawer" class="btn-drawer-toggle active" title="Abrir/fechar painel de Spots marcados">
+        Spots <span class="pin-count-pill zero" id="pin-count">0</span>
+      </button>
+      <button type="button" id="btn-help" class="icon-btn" title="Atalhos de teclado">?</button>
+    </div>
+  </header>
+
+  <nav class="scene-strip" id="scene-strip" aria-label="Cenas"></nav>
+
+  <div class="subbar" id="subbar">
+    <div class="scene-note" id="scene-note"></div>
+    <div class="autospots" id="autospots"></div>
+    <div class="scene-meta" id="scene-meta"></div>
+  </div>
+
+  <main class="workspace">
+    <div class="stage-col">
+      <div class="stage" id="stage" aria-label="Área de comparação de pixels">
+        <canvas id="stage-canvas"></canvas>
+        <div id="pin-layer"></div>
+
+        <div class="hud-top">
+          <div class="status-pill" id="status-pill" title="Clique na imagem (ou Tab) para alternar instantaneamente">
+            <span class="status-dot" id="status-dot"></span>
+            <span class="status-name" id="status-name">Crisp Novo</span>
+            <span class="status-hint" id="status-hint">Clique p/ alternar ↔ v3.6</span>
+          </div>
+          <div class="coord-hud" id="coord-hud">
+            <span id="coord-xy">1× —</span>
+            <span class="dim" id="coord-zoom">100%</span>
+          </div>
+        </div>
+
+        <div class="empty-state" id="empty-state" hidden>
+          <div>
+            <strong>Nenhuma cena carregada</strong>
+            <span>Injete os dados em <code>STUDIO_DATA</code> para começar a inspeção.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="dock" aria-label="Controles de visualização">
+        <div class="dock-group">
+          <div class="layer-pills" id="layer-pills" role="group" aria-label="Camada ativa">
+            <button type="button" class="layer-btn" data-layer="orig" title="Original 1× (Tecla 1)"><span class="dot" style="background:var(--c-orig)"></span>Orig 1×<span class="kbd">1</span></button>
+            <button type="button" class="layer-btn" data-layer="xbrz" title="xBRZ 1.9 Original (Tecla 2)"><span class="dot" style="background:var(--c-xbrz)"></span>xBRZ 1.9<span class="kbd">2</span></button>
+            <button type="button" class="layer-btn" data-layer="old" title="Crisp v3.6 Antes (Tecla 3)"><span class="dot" style="background:var(--c-old)"></span>v3.6<span class="kbd">3</span></button>
+            <button type="button" class="layer-btn active" data-layer="new" title="Crisp Novo Depois (Tecla 4)"><span class="dot" style="background:var(--c-new)"></span>Novo<span class="kbd">4</span></button>
+            <button type="button" class="layer-btn" data-layer="diff" title="Mapa de diferenças (Tecla 5)"><span class="dot" style="background:var(--c-diff)"></span>Diff<span class="kbd">5</span></button>
+          </div>
+        </div>
+
+        <button type="button" id="btn-hold-orig" class="btn-hold" title="Segure este botão ou a tecla Espaço para espiar o Original 1×">👁 Orig 1×</button>
+
+        <div class="dock-group" id="pair-presets" role="group" aria-label="Pares rápidos A/B">
+          <button type="button" class="pair-chip active" data-a="old" data-b="new" title="Alternar entre v3.6 e Novo ao clicar na imagem">v3.6 ↔ Novo</button>
+          <button type="button" class="pair-chip" data-a="xbrz" data-b="new" title="Alternar entre xBRZ 1.9 e Novo ao clicar na imagem">xBRZ ↔ Novo</button>
+          <button type="button" class="pair-chip" data-a="orig" data-b="new" title="Alternar entre Original 1× e Novo ao clicar na imagem">Orig ↔ Novo</button>
+        </div>
+
+        <div class="dock-right">
+          <button type="button" id="btn-grid" class="btn-grid" title="Grade de pixels 1× nativos (G)"># 1×</button>
+          <button type="button" id="btn-zoom-out" class="icon-btn" title="Afastar (-)">−</button>
+          <span class="zoom-val" id="zoom-val">100%</span>
+          <button type="button" id="btn-zoom-in" class="icon-btn" title="Aproximar (+)">+</button>
+          <button type="button" id="btn-fit" title="Ajustar à tela (0)">Fit</button>
+          <button type="button" id="btn-1to1" title="Escala 1:1 (6× real)">1:1</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sheet-scrim" id="sheet-scrim"></div>
+
+    <aside class="pins-panel" id="pins-panel" aria-label="Spots marcados">
+      <div class="sheet-handle-wrap" id="sheet-handle" title="Arraste para baixo para fechar">
+        <div class="sheet-handle"></div>
+      </div>
+
+      <div class="pins-head">
+        <div class="pins-title-row">
+          <div class="pins-title">📍 Spots Marcados <span class="pin-count-pill zero" id="panel-pin-count">0</span></div>
+          <div style="display:flex;gap:5px;align-items:center;">
+            <button type="button" id="btn-clear-pins" class="btn-clear" title="Remover todos os spots">Limpar</button>
+            <button type="button" id="btn-close-panel" class="icon-btn" style="min-height:28px;min-width:28px;padding:0;" title="Fechar painel">✕</button>
+          </div>
+        </div>
+        <div class="pins-actions">
+          <button type="button" id="btn-copy-spots" class="btn-copy" title="Copiar lista de spots formatada para colar no chat">📋 Copiar Spots</button>
+          <button type="button" id="btn-export-png" class="btn-png" title="Baixar PNG da cena atual com os círculos numerados">📸 Baixar PNG</button>
+        </div>
+      </div>
+
+      <div class="pins-list" id="pins-list"></div>
+    </aside>
+  </main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<div class="modal-backdrop" id="copy-modal" role="dialog" aria-modal="true" aria-labelledby="copy-modal-title">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="copy-modal-title">📋 Copiar Spots Marcados</h3>
+      <button type="button" id="btn-close-copy" class="icon-btn">✕</button>
+    </div>
+    <p style="font-size:12.5px;color:var(--muted);">A área de transferência automática foi bloqueada pelo navegador. Selecione e copie o texto abaixo (<code>Ctrl+C</code> / <code>Cmd+C</code>):</p>
+    <textarea id="copy-textarea" readonly></textarea>
+    <div style="display:flex;justify-content:flex-end;gap:8px;">
+      <button type="button" id="btn-select-copy" class="btn-copy">Selecionar tudo</button>
+      <button type="button" id="btn-close-copy-2">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="help-modal" role="dialog" aria-modal="true" aria-labelledby="help-modal-title">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="help-modal-title">⌨️ Atalhos &amp; Gestos</h3>
+      <button type="button" id="btn-close-help" class="icon-btn">✕</button>
+    </div>
+    <div class="help-grid">
+      <span class="help-key">Clique / Toque</span><span>Alterna instantaneamente no lugar entre o par A ↔ B</span>
+      <span class="help-key">Arrastar</span><span>Mover a imagem (pan) sem alternar</span>
+      <span class="help-key">Scroll / Pinça</span><span>Zoom suave centrado no cursor / dedos</span>
+      <span class="help-key">Tab</span><span>Alterna o par A ↔ B</span>
+      <span class="help-key">Segurar Espaço</span><span>Espia o Original 1× (também tecla O)</span>
+      <span class="help-key">1 · 2 · 3 · 4 · 5</span><span>Orig 1× · xBRZ 1.9 · v3.6 · Novo · Diff</span>
+      <span class="help-key">P</span><span>Liga/desliga modo 📍 Marcar Spots</span>
+      <span class="help-key">Alt+Clique / Dir.</span><span>Marca um spot na hora sem sair da comparação</span>
+      <span class="help-key">G</span><span>Mostra/oculta grade de pixels 1× nativos</span>
+      <span class="help-key">+ / − / 0</span><span>Zoom +, Zoom −, Ajustar à tela (Fit)</span>
+      <span class="help-key">← / →</span><span>Cena anterior / Próxima cena</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const STUDIO_DATA = /*__STUDIO_DATA__*/[];
+
+(function () {
+  "use strict";
+
+  const STORAGE_KEY = "xbrz_crisp_studio_v4_pins";
+  const DRAG_THRESHOLD = 6;
+
+  const LAYERS = {
+    orig: { label: "Original 1×", short: "Orig 1×", color: "#b88cff" },
+    xbrz: { label: "xBRZ 1.9",    short: "xBRZ 1.9", color: "#58a6ff" },
+    old:  { label: "Crisp v3.6 (Antes)", short: "v3.6", color: "#ff8672" },
+    new:  { label: "Crisp Novo (Depois)", short: "Novo", color: "#3fd278" },
+    diff: { label: "Mapa Diff",   short: "Diff",    color: "#ff5ca8" }
+  };
+
+  // Normalize incoming items cleanly
+  const ITEMS = (Array.isArray(STUDIO_DATA) ? STUDIO_DATA : []).map(function (raw, idx) {
+    const ox = Number.isFinite(raw.ox) ? raw.ox : 0;
+    const oy = Number.isFinite(raw.oy) ? raw.oy : 0;
+    const w1 = Math.max(1, Number(raw.w1) || 1);
+    const h1 = Math.max(1, Number(raw.h1) || 1);
+    const sceneId = raw.sceneId || raw.id || ("scene_" + idx);
+    const id = raw.id || (sceneId + "_" + idx);
+    return {
+      idx: idx,
+      id: String(id),
+      cat: raw.cat === "gs" ? "gs" : "other",
+      sceneId: String(sceneId),
+      title: raw.title || sceneId,
+      badge: raw.badge || "",
+      note: raw.note || "",
+      ox: ox,
+      oy: oy,
+      w1: w1,
+      h1: h1,
+      w6: w1 * 6,
+      h6: h1 * 6,
+      dpx: Number.isFinite(raw.dpx) ? raw.dpx : 0,
+      autoSpots: Array.isArray(raw.autoSpots) ? raw.autoSpots : [],
+      orig: raw.orig || "",
+      xbrz: raw.xbrz || "",
+      old: raw.old || "",
+      new: raw.new || "",
+      diff: raw.diff || ""
+    };
+  });
+
+  // State
+  const state = {
+    filter: "gs",
+    itemIdx: 0,
+    activeLayer: "new",
+    pairA: "old",
+    pairB: "new",
+    holdingOrig: false,
+    pinMode: false,
+    showGrid: false,
+    drawerOpen: window.innerWidth >= 860,
+    scale: 1,
+    panX: 0,
+    panY: 0,
+    hoverPixel: null, // { lx, ly, gx, gy }
+    selectedPinUid: null,
+    pulseTarget: null, // { lx, ly, startTime }
+    pins: [],
+    clearConfirmTimer: null
+  };
+
+  // Image cache per itemIdx -> { orig, xbrz, old, new, diff }
+  const imgCache = new Map();
+
+  // DOM helpers
+  const $ = function (id) { return document.getElementById(id); };
+  const stageEl = $("stage");
+  const canvas = $("stage-canvas");
+  const ctx = canvas.getContext("2d", { alpha: false });
+  const pinLayerEl = $("pin-layer");
+  const sceneStripEl = $("scene-strip");
+  const sceneNoteEl = $("scene-note");
+  const sceneMetaEl = $("scene-meta");
+  const autoSpotsEl = $("autospots");
+  const statusPillEl = $("status-pill");
+  const statusDotEl = $("status-dot");
+  const statusNameEl = $("status-name");
+  const statusHintEl = $("status-hint");
+  const coordXyEl = $("coord-xy");
+  const coordZoomEl = $("coord-zoom");
+  const zoomValEl = $("zoom-val");
+  const pinsPanelEl = $("pins-panel");
+  const sheetScrimEl = $("sheet-scrim");
+  const pinsListEl = $("pins-list");
+  const pinCountEl = $("pin-count");
+  const panelPinCountEl = $("panel-pin-count");
+  const btnDrawerEl = $("btn-drawer");
+  const btnPinModeEl = $("btn-pin-mode");
+  const btnGridEl = $("btn-grid");
+  const btnHoldOrigEl = $("btn-hold-orig");
+  const btnClearPinsEl = $("btn-clear-pins");
+  const emptyStateEl = $("empty-state");
+  const toastEl = $("toast");
+  const copyModalEl = $("copy-modal");
+  const copyTextareaEl = $("copy-textarea");
+  const helpModalEl = $("help-modal");
+
+  // Camera animation state
+  let animRaf = 0;
+  let pulseRaf = 0;
+  let toastTimer = 0;
+  let stageW = 1, stageH = 1, dpr = 1;
+
+  function isMobile() {
+    return window.innerWidth < 860;
+  }
+
+  function currentItem() {
+    return ITEMS[state.itemIdx] || null;
+  }
+
+  function displayedLayer() {
+    if (state.holdingOrig) return "orig";
+    return state.activeLayer;
+  }
+
+  function visibleItems() {
+    if (state.filter === "all") return ITEMS;
+    return ITEMS.filter(function (it) { return it.cat === state.filter; });
+  }
+
+  function showToast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      toastEl.classList.remove("show");
+    }, 2200);
+  }
+
+  // Persistence
+  function loadPins() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      state.pins = parsed.filter(function (p) {
+        return p && typeof p.sceneId === "string" && Number.isFinite(p.x) && Number.isFinite(p.y);
+      }).map(function (p, i) {
+        return {
+          uid: p.uid || ("pin_" + Date.now() + "_" + i),
+          itemId: p.itemId || "",
+          sceneId: p.sceneId,
+          sceneTitle: p.sceneTitle || p.sceneId,
+          x: Math.round(p.x),
+          y: Math.round(p.y),
+          lx: Number.isFinite(p.lx) ? Math.round(p.lx) : 0,
+          ly: Number.isFinite(p.ly) ? Math.round(p.ly) : 0,
+          note: typeof p.note === "string" ? p.note : ""
+        };
+      });
+    } catch (_e) {
+      state.pins = [];
+    }
+  }
+
+  function savePins() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.pins));
+    } catch (_e) {
+      // Ignore storage quota or private mode restrictions
+    }
+  }
+
+  // Resolve pin's local coordinates on a given item (also handles cross-crop scenes with same sceneId)
+  function pinLocalCoordsOnItem(pin, item) {
+    if (!item) return null;
+    if (pin.itemId === item.id) {
+      const lx = pin.x - item.ox;
+      const ly = pin.y - item.oy;
+      if (lx >= 0 && lx < item.w1 && ly >= 0 && ly < item.h1) return { lx: lx, ly: ly };
+      if (pin.lx >= 0 && pin.lx < item.w1 && pin.ly >= 0 && pin.ly < item.h1) return { lx: pin.lx, ly: pin.ly };
+      return null;
+    }
+    if (pin.sceneId === item.sceneId) {
+      const lx = pin.x - item.ox;
+      const ly = pin.y - item.oy;
+      if (lx >= 0 && lx < item.w1 && ly >= 0 && ly < item.h1) return { lx: lx, ly: ly };
+    }
+    return null;
+  }
+
+  function pinsForItem(item) {
+    if (!item) return [];
+    const out = [];
+    for (let i = 0; i < state.pins.length; i++) {
+      const pin = state.pins[i];
+      const loc = pinLocalCoordsOnItem(pin, item);
+      if (loc) out.push({ pin: pin, num: i + 1, lx: loc.lx, ly: loc.ly });
+    }
+    return out;
+  }
+
+  // Image Preloading
+  function ensureItemImages(item) {
+    if (!item) return null;
+    let entry = imgCache.get(item.id);
+    if (entry) return entry;
+    entry = {};
+    imgCache.set(item.id, entry);
+    ["orig", "xbrz", "old", "new", "diff"].forEach(function (k) {
+      const uri = item[k];
+      if (!uri) return;
+      const im = new Image();
+      im.decoding = "sync";
+      entry[k] = im;
+      im.onload = function () {
+        if (currentItem() && currentItem().id === item.id) {
+          drawStage();
+        }
+      };
+      im.src = uri;
+    });
+    return entry;
+  }
+
+  // Coordinate conversions
+  function screenToWorld(sx, sy) {
+    return {
+      wx: (sx - state.panX) / state.scale,
+      wy: (sy - state.panY) / state.scale
+    };
+  }
+
+  function worldToScreen(wx, wy) {
+    return {
+      sx: wx * state.scale + state.panX,
+      sy: wy * state.scale + state.panY
+    };
+  }
+
+  function screenToNativePixel(sx, sy) {
+    const item = currentItem();
+    if (!item) return null;
+    const w = screenToWorld(sx, sy);
+    const lx = Math.floor(w.wx / 6);
+    const ly = Math.floor(w.wy / 6);
+    if (lx < 0 || ly < 0 || lx >= item.w1 || ly >= item.h1) return null;
+    return {
+      lx: lx,
+      ly: ly,
+      gx: item.ox + lx,
+      gy: item.oy + ly
+    };
+  }
+
+  function computeFitScale(item) {
+    if (!item) return 1;
+    const pad = isMobile() ? 20 : 44;
+    const availW = Math.max(60, stageW - pad * 2);
+    const availH = Math.max(60, stageH - pad * 2);
+    return Math.min(availW / item.w6, availH / item.h6);
+  }
+
+  function clampScale(s, item) {
+    const fit = computeFitScale(item);
+    const minS = Math.min(0.25, fit * 0.5);
+    return Math.max(minS, Math.min(24, s));
+  }
+
+  function stopAnim() {
+    if (animRaf) {
+      cancelAnimationFrame(animRaf);
+      animRaf = 0;
+    }
+  }
+
+  function fitView(animate) {
+    const item = currentItem();
+    if (!item) return;
+    const s = clampScale(computeFitScale(item), item);
+    const px = (stageW - item.w6 * s) * 0.5;
+    const py = (stageH - item.h6 * s) * 0.5;
+    if (animate) {
+      animateCamera(s, px, py);
+    } else {
+      stopAnim();
+      state.scale = s;
+      state.panX = px;
+      state.panY = py;
+      updateZoomUI();
+      drawStage();
+      renderStagePins();
+    }
+  }
+
+  function setScaleAround(newScale, anchorSx, anchorSy) {
+    const item = currentItem();
+    if (!item) return;
+    stopAnim();
+    const clamped = clampScale(newScale, item);
+    const w = screenToWorld(anchorSx, anchorSy);
+    state.scale = clamped;
+    state.panX = anchorSx - w.wx * clamped;
+    state.panY = anchorSy - w.wy * clamped;
+    updateZoomUI();
+    drawStage();
+    renderStagePins();
+  }
+
+  function zoomStep(factor) {
+    setScaleAround(state.scale * factor, stageW * 0.5, stageH * 0.5);
+  }
+
+  function setOneToOne() {
+    const item = currentItem();
+    if (!item) return;
+    const targetScale = 1;
+    const px = (stageW - item.w6 * targetScale) * 0.5;
+    const py = (stageH - item.h6 * targetScale) * 0.5;
+    animateCamera(targetScale, px, py);
+  }
+
+  function animateCamera(targetScale, targetPanX, targetPanY) {
+    stopAnim();
+    const startScale = state.scale;
+    const startPanX = state.panX;
+    const startPanY = state.panY;
+    const t0 = performance.now();
+    const dur = 240;
+
+    function tick(now) {
+      const u = Math.min(1, (now - t0) / dur);
+      const ease = 1 - Math.pow(1 - u, 3);
+      state.scale = startScale + (targetScale - startScale) * ease;
+      state.panX = startPanX + (targetPanX - startPanX) * ease;
+      state.panY = startPanY + (targetPanY - startPanY) * ease;
+      updateZoomUI();
+      drawStage();
+      renderStagePins();
+      if (u < 1) {
+        animRaf = requestAnimationFrame(tick);
+      } else {
+        animRaf = 0;
+      }
+    }
+    animRaf = requestAnimationFrame(tick);
+  }
+
+  function focusNativePixel(lx, ly, showPulse) {
+    const item = currentItem();
+    if (!item) return;
+    const clx = Math.max(0, Math.min(item.w1 - 1, lx));
+    const cly = Math.max(0, Math.min(item.h1 - 1, ly));
+    const fit = computeFitScale(item);
+    // Zoom in comfortably so 1 native pixel is ~36-48 CSS px, without zooming out if already closer
+    const ideal = Math.max(fit * 2.4, 5.5);
+    const targetScale = clampScale(Math.max(state.scale, Math.min(10, ideal)), item);
+    const wx = (clx + 0.5) * 6;
+    const wy = (cly + 0.5) * 6;
+    const targetPanX = stageW * 0.5 - wx * targetScale;
+    const targetPanY = stageH * 0.5 - wy * targetScale;
+    animateCamera(targetScale, targetPanX, targetPanY);
+
+    if (showPulse) {
+      state.pulseTarget = { lx: clx, ly: cly, startTime: performance.now() };
+      runPulseLoop();
+    }
+  }
+
+  function runPulseLoop() {
+    if (pulseRaf) cancelAnimationFrame(pulseRaf);
+    function step(now) {
+      if (!state.pulseTarget) { pulseRaf = 0; return; }
+      if (now - state.pulseTarget.startTime > 1200) {
+        state.pulseTarget = null;
+        drawStage();
+        pulseRaf = 0;
+        return;
+      }
+      drawStage();
+      pulseRaf = requestAnimationFrame(step);
+    }
+    pulseRaf = requestAnimationFrame(step);
+  }
+
+  // Canvas Resize & Render
+  function resizeCanvas(preserveCenter) {
+    const rect = stageEl.getBoundingClientRect();
+    const newW = Math.max(1, rect.width);
+    const newH = Math.max(1, rect.height);
+    const newDpr = Math.min(window.devicePixelRatio || 1, 3);
+
+    let centerWorld = null;
+    if (preserveCenter && stageW > 1 && stageH > 1 && currentItem()) {
+      centerWorld = screenToWorld(stageW * 0.5, stageH * 0.5);
+    }
+
+    stageW = newW;
+    stageH = newH;
+    dpr = newDpr;
+
+    const bw = Math.round(stageW * dpr);
+    const bh = Math.round(stageH * dpr);
+    if (canvas.width !== bw || canvas.height !== bh) {
+      canvas.width = bw;
+      canvas.height = bh;
+    }
+
+    if (centerWorld) {
+      state.panX = stageW * 0.5 - centerWorld.wx * state.scale;
+      state.panY = stageH * 0.5 - centerWorld.wy * state.scale;
+    }
+    drawStage();
+    renderStagePins();
+  }
+
+  function drawStage() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = "#06080c";
+    ctx.fillRect(0, 0, stageW, stageH);
+
+    const item = currentItem();
+    if (!item) return;
+
+    const entry = ensureItemImages(item);
+    const layerKey = displayedLayer();
+    const img = (entry && entry[layerKey]) || (entry && entry.new) || (entry && entry.orig);
+
+    const dx = state.panX;
+    const dy = state.panY;
+    const dw = item.w6 * state.scale;
+    const dh = item.h6 * state.scale;
+
+    // Subtle dark frame behind image
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(Math.floor(dx) - 1, Math.floor(dy) - 1, Math.ceil(dw) + 2, Math.ceil(dh) + 2);
+
+    if (img && img.complete && img.naturalWidth > 0) {
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, dx, dy, dw, dh);
+    }
+
+    // Crisp subtle image border
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.14)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(Math.floor(dx) + 0.5, Math.floor(dy) + 0.5, Math.round(dw) - 1, Math.round(dh) - 1);
+
+    // Optional 1x native pixel grid
+    const pxStep = 6 * state.scale;
+    if (state.showGrid && pxStep >= 5) {
+      const alpha = pxStep < 9 ? 0.14 : (pxStep < 18 ? 0.22 : 0.28);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(dx, dy, dw, dh);
+      ctx.clip();
+
+      const xStart = Math.max(0, Math.floor((0 - dx) / pxStep));
+      const xEnd = Math.min(item.w1, Math.ceil((stageW - dx) / pxStep));
+      const yStart = Math.max(0, Math.floor((0 - dy) / pxStep));
+      const yEnd = Math.min(item.h1, Math.ceil((stageH - dy) / pxStep));
+
+      ctx.beginPath();
+      for (let gx = xStart; gx <= xEnd; gx++) {
+        const sx = Math.round(dx + gx * pxStep) + 0.5;
+        ctx.moveTo(sx, Math.max(0, dy));
+        ctx.lineTo(sx, Math.min(stageH, dy + dh));
+      }
+      for (let gy = yStart; gy <= yEnd; gy++) {
+        const sy = Math.round(dy + gy * pxStep) + 0.5;
+        ctx.moveTo(Math.max(0, dx), sy);
+        ctx.lineTo(Math.min(stageW, dx + dw), sy);
+      }
+      ctx.strokeStyle = "rgba(255, 255, 255, " + alpha + ")";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Crisp pixel boxes for pins belonging to current scene
+    const scenePins = pinsForItem(item);
+    for (let i = 0; i < scenePins.length; i++) {
+      const sp = scenePins[i];
+      const rx = dx + sp.lx * pxStep;
+      const ry = dy + sp.ly * pxStep;
+      const isSel = sp.pin.uid === state.selectedPinUid;
+      if (pxStep >= 5) {
+        ctx.save();
+        ctx.strokeStyle = isSel ? "rgba(240, 180, 41, 0.95)" : "rgba(255, 59, 92, 0.9)";
+        ctx.lineWidth = isSel ? 2 : 1.5;
+        ctx.strokeRect(rx + 0.5, ry + 0.5, Math.max(2, pxStep - 1), Math.max(2, pxStep - 1));
+        ctx.restore();
+      }
+    }
+
+    // Hover 1x pixel reticle (always crisp in Pin Mode, or subtly when zoomed in)
+    if (state.hoverPixel && (state.pinMode || pxStep >= 14)) {
+      const hp = state.hoverPixel;
+      const rx = dx + hp.lx * pxStep;
+      const ry = dy + hp.ly * pxStep;
+      ctx.save();
+      ctx.strokeStyle = state.pinMode ? "rgba(255, 59, 92, 0.95)" : "rgba(255, 255, 255, 0.42)";
+      ctx.lineWidth = state.pinMode ? 2 : 1;
+      ctx.strokeRect(Math.round(rx) + 0.5, Math.round(ry) + 0.5, Math.max(2, Math.round(pxStep) - 1), Math.max(2, Math.round(pxStep) - 1));
+      if (state.pinMode) {
+        ctx.fillStyle = "rgba(255, 59, 92, 0.16)";
+        ctx.fillRect(rx, ry, pxStep, pxStep);
+      }
+      ctx.restore();
+    }
+
+    // AutoSpot / Jump focus pulse
+    if (state.pulseTarget) {
+      const elapsed = performance.now() - state.pulseTarget.startTime;
+      const t = Math.min(1, elapsed / 1200);
+      const cx = dx + (state.pulseTarget.lx + 0.5) * pxStep;
+      const cy = dy + (state.pulseTarget.ly + 0.5) * pxStep;
+      const r = 10 + t * 34;
+      const op = (1 - t) * 0.95;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(240, 180, 41, " + op.toFixed(3) + ")";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      ctx.strokeStyle = "rgba(240, 180, 41, " + Math.min(1, (1 - t) * 1.4).toFixed(3) + ")";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(
+        dx + state.pulseTarget.lx * pxStep,
+        dy + state.pulseTarget.ly * pxStep,
+        Math.max(4, pxStep),
+        Math.max(4, pxStep)
+      );
+      ctx.restore();
+    }
+  }
+
+  // Interactive crisp DOM pin markers positioned over the canvas
+  function renderStagePins() {
+    const item = currentItem();
+    pinLayerEl.innerHTML = "";
+    if (!item) return;
+
+    const scenePins = pinsForItem(item);
+    const pxStep = 6 * state.scale;
+    const ringSize = Math.max(20, Math.min(44, Math.round(pxStep * 1.15)));
+
+    for (let i = 0; i < scenePins.length; i++) {
+      const sp = scenePins[i];
+      const pos = worldToScreen((sp.lx + 0.5) * 6, (sp.ly + 0.5) * 6);
+      if (pos.sx < -50 || pos.sy < -50 || pos.sx > stageW + 50 || pos.sy > stageH + 50) continue;
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "pin-marker" + (sp.pin.uid === state.selectedPinUid ? " selected" : "");
+      btn.style.left = pos.sx.toFixed(1) + "px";
+      btn.style.top = pos.sy.toFixed(1) + "px";
+      btn.title = "#" + sp.num + " (" + sp.pin.x + ", " + sp.pin.y + ")" + (sp.pin.note ? " — " + sp.pin.note : "");
+
+      const ring = document.createElement("span");
+      ring.className = "pin-ring";
+      ring.style.width = ringSize + "px";
+      ring.style.height = ringSize + "px";
+
+      const badge = document.createElement("span");
+      badge.className = "pin-num";
+      badge.textContent = String(sp.num);
+
+      btn.appendChild(ring);
+      btn.appendChild(badge);
+
+      btn.addEventListener("pointerdown", function (e) {
+        e.stopPropagation();
+      });
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        selectPin(sp.pin.uid, true);
+      });
+      pinLayerEl.appendChild(btn);
+    }
+  }
+
+  // UI Updates
+  function updateZoomUI() {
+    const pct = Math.round(state.scale * 100) + "%";
+    zoomValEl.textContent = pct;
+    coordZoomEl.textContent = pct;
+  }
+
+  function updateCoordHUD() {
+    if (state.hoverPixel) {
+      coordXyEl.textContent = "1× (" + state.hoverPixel.gx + ", " + state.hoverPixel.gy + ")";
+    } else {
+      const item = currentItem();
+      coordXyEl.textContent = item ? (item.w1 + "×" + item.h1 + " nativo") : "1× —";
+    }
+  }
+
+  function updateStatusHUD(flash) {
+    const k = displayedLayer();
+    const meta = LAYERS[k] || LAYERS.new;
+    statusDotEl.style.background = meta.color;
+
+    if (state.holdingOrig) {
+      statusNameEl.textContent = "👁 Original 1×";
+      statusHintEl.textContent = "solte para voltar";
+      statusPillEl.classList.remove("pin-active");
+    } else if (state.pinMode) {
+      statusNameEl.textContent = meta.short;
+      statusHintEl.textContent = "📍 Clique no pixel para marcar";
+      statusPillEl.classList.add("pin-active");
+    } else {
+      statusNameEl.textContent = meta.label;
+      const other = (k === state.pairA) ? state.pairB : state.pairA;
+      statusHintEl.textContent = "Clique ↔ " + (LAYERS[other] ? LAYERS[other].short : "");
+      statusPillEl.classList.remove("pin-active");
+    }
+
+    if (flash) {
+      statusPillEl.classList.remove("flash");
+      void statusPillEl.offsetWidth;
+      statusPillEl.classList.add("flash");
+      setTimeout(function () { statusPillEl.classList.remove("flash"); }, 150);
+    }
+  }
+
+  function updateLayerButtons() {
+    const cur = displayedLayer();
+    const btns = $("layer-pills").querySelectorAll("button");
+    btns.forEach(function (b) {
+      const active = b.dataset.layer === cur;
+      b.classList.toggle("active", active);
+      b.setAttribute("aria-pressed", String(active));
+    });
+
+    const pbtns = $("pair-presets").querySelectorAll("button");
+    pbtns.forEach(function (b) {
+      const active = b.dataset.a === state.pairA && b.dataset.b === state.pairB;
+      b.classList.toggle("active", active);
+      b.setAttribute("aria-pressed", String(active));
+    });
+  }
+
+  function updateFilterTabs() {
+    const gsCnt = ITEMS.filter(function (it) { return it.cat === "gs"; }).length;
+    const otherCnt = ITEMS.length - gsCnt;
+    $("cnt-gs").textContent = String(gsCnt);
+    $("cnt-other").textContent = String(otherCnt);
+    $("cnt-all").textContent = String(ITEMS.length);
+
+    ["gs", "other", "all"].forEach(function (f) {
+      const btn = $("tab-" + f);
+      const active = state.filter === f;
+      btn.classList.toggle("active", active);
+      btn.setAttribute("aria-selected", String(active));
+    });
+  }
+
+  function renderSceneStrip() {
+    const list = visibleItems();
+    sceneStripEl.innerHTML = "";
+    const cur = currentItem();
+
+    for (let i = 0; i < list.length; i++) {
+      const it = list[i];
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "scene-chip" + (it.cat === "gs" ? " is-gs" : "") + (cur && cur.idx === it.idx ? " active" : "");
+
+      const t = document.createElement("span");
+      t.textContent = it.title;
+      btn.appendChild(t);
+
+      if (it.badge) {
+        const b = document.createElement("span");
+        b.className = "chip-badge";
+        b.textContent = it.badge;
+        btn.appendChild(b);
+      }
+
+      const d = document.createElement("span");
+      d.className = "chip-dpx" + (it.dpx === 0 ? " zero" : "");
+      d.textContent = it.dpx > 0 ? (it.dpx + " px") : "0 px";
+      btn.appendChild(d);
+
+      const pinCnt = pinsForItem(it).length;
+      if (pinCnt > 0) {
+        const pc = document.createElement("span");
+        pc.className = "chip-pindot";
+        pc.textContent = "📍" + pinCnt;
+        btn.appendChild(pc);
+      }
+
+      btn.addEventListener("click", function () {
+        selectScene(it.idx, true);
+      });
+      sceneStripEl.appendChild(btn);
+
+      if (cur && cur.idx === it.idx) {
+        requestAnimationFrame(function () {
+          btn.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+        });
+      }
+    }
+  }
+
+  function renderSubbar() {
+    const item = currentItem();
+    if (!item) {
+      sceneNoteEl.textContent = "";
+      sceneMetaEl.textContent = "";
+      autoSpotsEl.innerHTML = "";
+      return;
+    }
+
+    sceneNoteEl.innerHTML = "";
+    const strong = document.createElement("strong");
+    strong.textContent = item.sceneId;
+    sceneNoteEl.appendChild(strong);
+    if (item.note) {
+      sceneNoteEl.appendChild(document.createTextNode(" — " + item.note));
+    }
+
+    const originTxt = (item.ox || item.oy) ? (" · origem (" + item.ox + "," + item.oy + ")") : "";
+    sceneMetaEl.textContent = item.w1 + "×" + item.h1 + " (6×: " + item.w6 + "×" + item.h6 + ")" + originTxt + " · diff " + item.dpx + " px";
+
+    autoSpotsEl.innerHTML = "";
+    if (item.autoSpots && item.autoSpots.length > 0) {
+      item.autoSpots.forEach(function (spot) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "autospot-btn";
+        const sx = Number(spot.x) || 0;
+        const sy = Number(spot.y) || 0;
+        btn.textContent = "🎯 " + (spot.label || ("(" + sx + ", " + sy + ")"));
+        btn.title = "Ir para pixel nativo (" + sx + ", " + sy + ")";
+        btn.addEventListener("click", function () {
+          // Support both global (ox+lx) and crop-local coordinates cleanly
+          const isGlobal = sx >= item.ox && sx < item.ox + item.w1 && sy >= item.oy && sy < item.oy + item.h1;
+          const lx = isGlobal ? (sx - item.ox) : Math.max(0, Math.min(item.w1 - 1, sx));
+          const ly = isGlobal ? (sy - item.oy) : Math.max(0, Math.min(item.h1 - 1, sy));
+          focusNativePixel(lx, ly, true);
+        });
+        autoSpotsEl.appendChild(btn);
+      });
+    }
+  }
+
+  // Flip & Layer Actions
+  function setLayer(layerKey, flash) {
+    if (!LAYERS[layerKey]) return;
+    state.activeLayer = layerKey;
+    updateLayerButtons();
+    updateStatusHUD(!!flash);
+    drawStage();
+  }
+
+  function flipPair() {
+    if (state.holdingOrig) return;
+    const next = (state.activeLayer === state.pairB) ? state.pairA : state.pairB;
+    setLayer(next, true);
+  }
+
+  function setPairPreset(a, b) {
+    const samePair = state.pairA === a && state.pairB === b;
+    state.pairA = a;
+    state.pairB = b;
+    if (samePair) {
+      flipPair();
+    } else {
+      // Give immediate visual feedback when changing pair
+      const target = (state.activeLayer === b) ? a : b;
+      setLayer(target, true);
+    }
+  }
+
+  function setHoldOrig(on) {
+    if (state.holdingOrig === on) return;
+    state.holdingOrig = on;
+    btnHoldOrigEl.classList.toggle("holding", on);
+    btnHoldOrigEl.setAttribute("aria-pressed", String(on));
+    updateLayerButtons();
+    updateStatusHUD(false);
+    drawStage();
+  }
+
+  function setPinMode(on) {
+    state.pinMode = !!on;
+    btnPinModeEl.classList.toggle("active", state.pinMode);
+    btnPinModeEl.setAttribute("aria-pressed", String(state.pinMode));
+    stageEl.classList.toggle("is-pinmode", state.pinMode);
+    updateStatusHUD(false);
+    drawStage();
+  }
+
+  function setGrid(on) {
+    state.showGrid = !!on;
+    btnGridEl.classList.toggle("active", state.showGrid);
+    btnGridEl.setAttribute("aria-pressed", String(state.showGrid));
+    drawStage();
+  }
+
+  function setDrawerOpen(open) {
+    state.drawerOpen = !!open;
+    pinsPanelEl.classList.toggle("collapsed", !state.drawerOpen);
+    btnDrawerEl.classList.toggle("active", state.drawerOpen);
+    btnDrawerEl.setAttribute("aria-expanded", String(state.drawerOpen));
+    sheetScrimEl.classList.toggle("open", state.drawerOpen && isMobile());
+    if (!isMobile()) {
+      // Wait for flex width transition then sync canvas cleanly
+      setTimeout(function () { resizeCanvas(true); }, 210);
+    }
+  }
+
+  // Scene Selection
+  function selectScene(idx, doFit) {
+    if (idx < 0 || idx >= ITEMS.length) return;
+    state.itemIdx = idx;
+    state.hoverPixel = null;
+    state.pulseTarget = null;
+    const item = currentItem();
+    ensureItemImages(item);
+    renderSceneStrip();
+    renderSubbar();
+    renderPinsPanel();
+    updateCoordHUD();
+    updateStatusHUD(false);
+    if (doFit) {
+      fitView(false);
+    } else {
+      drawStage();
+      renderStagePins();
+    }
+  }
+
+  function setFilter(f) {
+    state.filter = f;
+    updateFilterTabs();
+    const list = visibleItems();
+    const cur = currentItem();
+    if (list.length > 0 && (!cur || !list.some(function (it) { return it.idx === cur.idx; }))) {
+      selectScene(list[0].idx, true);
+    } else {
+      renderSceneStrip();
+    }
+  }
+
+  function stepScene(delta) {
+    const list = visibleItems();
+    if (list.length === 0) return;
+    const cur = currentItem();
+    let pos = list.findIndex(function (it) { return cur && it.idx === cur.idx; });
+    if (pos < 0) pos = 0;
+    const nextPos = (pos + delta + list.length) % list.length;
+    selectScene(list[nextPos].idx, true);
+  }
+
+  // Pin Management
+  function addPinAt(lx, ly) {
+    const item = currentItem();
+    if (!item) return;
+    const gx = item.ox + lx;
+    const gy = item.oy + ly;
+
+    // Check if pin already exists at exact same native coord in same scene
+    for (let i = 0; i < state.pins.length; i++) {
+      const p = state.pins[i];
+      if (p.sceneId === item.sceneId && p.x === gx && p.y === gy) {
+        state.selectedPinUid = p.uid;
+        renderPinsPanel();
+        renderStagePins();
+        drawStage();
+        showToast("Spot #" + (i + 1) + " já marcado em (" + gx + ", " + gy + ")");
+        return;
+      }
+    }
+
+    const pin = {
+      uid: "p_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 6),
+      itemId: item.id,
+      sceneId: item.sceneId,
+      sceneTitle: item.title,
+      x: gx,
+      y: gy,
+      lx: lx,
+      ly: ly,
+      note: ""
+    };
+    state.pins.push(pin);
+    state.selectedPinUid = pin.uid;
+    savePins();
+    renderPinsPanel();
+    renderSceneStrip();
+    renderStagePins();
+    drawStage();
+    showToast("📍 Spot #" + state.pins.length + " marcado em (" + gx + ", " + gy + ")");
+
+    if (!isMobile() && !state.drawerOpen) {
+      setDrawerOpen(true);
+    }
+  }
+
+  function deletePin(uid) {
+    const idx = state.pins.findIndex(function (p) { return p.uid === uid; });
+    if (idx < 0) return;
+    state.pins.splice(idx, 1);
+    if (state.selectedPinUid === uid) state.selectedPinUid = null;
+    savePins();
+    renderPinsPanel();
+    renderSceneStrip();
+    renderStagePins();
+    drawStage();
+  }
+
+  function clearAllPins() {
+    if (state.pins.length === 0) return;
+    if (!btnClearPinsEl.classList.contains("confirming")) {
+      btnClearPinsEl.classList.add("confirming");
+      btnClearPinsEl.textContent = "Confirmar?";
+      clearTimeout(state.clearConfirmTimer);
+      state.clearConfirmTimer = setTimeout(function () {
+        btnClearPinsEl.classList.remove("confirming");
+        btnClearPinsEl.textContent = "Limpar";
+      }, 2800);
+      return;
+    }
+    clearTimeout(state.clearConfirmTimer);
+    btnClearPinsEl.classList.remove("confirming");
+    btnClearPinsEl.textContent = "Limpar";
+    state.pins = [];
+    state.selectedPinUid = null;
+    savePins();
+    renderPinsPanel();
+    renderSceneStrip();
+    renderStagePins();
+    drawStage();
+    showToast("Todos os spots foram limpos");
+  }
+
+  function findItemForPin(pin) {
+    // 1. Exact itemId match
+    let found = ITEMS.find(function (it) { return it.id === pin.itemId; });
+    if (found) return found;
+    // 2. Any item of same sceneId containing (pin.x, pin.y)
+    found = ITEMS.find(function (it) {
+      return it.sceneId === pin.sceneId &&
+        pin.x >= it.ox && pin.x < it.ox + it.w1 &&
+        pin.y >= it.oy && pin.y < it.oy + it.h1;
+    });
+    if (found) return found;
+    // 3. Fallback to first item with same sceneId
+    return ITEMS.find(function (it) { return it.sceneId === pin.sceneId; }) || null;
+  }
+
+  function selectPin(uid, openDrawerIfDesktop) {
+    const pin = state.pins.find(function (p) { return p.uid === uid; });
+    if (!pin) return;
+    state.selectedPinUid = uid;
+
+    const cur = currentItem();
+    let targetItem = cur;
+    let loc = pinLocalCoordsOnItem(pin, cur);
+    if (!loc) {
+      targetItem = findItemForPin(pin);
+      if (targetItem) {
+        if (state.filter !== "all" && targetItem.cat !== state.filter) {
+          state.filter = "all";
+          updateFilterTabs();
+        }
+        selectScene(targetItem.idx, true);
+        loc = pinLocalCoordsOnItem(pin, targetItem) || { lx: pin.lx, ly: pin.ly };
+      }
+    }
+
+    if (loc) {
+      focusNativePixel(loc.lx, loc.ly, true);
+    }
+
+    if (openDrawerIfDesktop && !isMobile() && !state.drawerOpen) {
+      setDrawerOpen(true);
+    }
+
+    renderPinsPanel();
+    renderStagePins();
+    drawStage();
+
+    // Scroll pin card into view in drawer
+    const card = pinsListEl.querySelector('[data-uid="' + uid + '"]');
+    if (card) {
+      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }
+
+  function renderPinsPanel() {
+    const total = state.pins.length;
+    pinCountEl.textContent = String(total);
+    panelPinCountEl.textContent = String(total);
+    pinCountEl.classList.toggle("zero", total === 0);
+    panelPinCountEl.classList.toggle("zero", total === 0);
+
+    pinsListEl.innerHTML = "";
+    if (total === 0) {
+      const empty = document.createElement("div");
+      empty.className = "pins-empty";
+      empty.innerHTML =
+        "<strong>Nenhum spot marcado ainda</strong>" +
+        "Ative <b>📍 Marcar Spots</b> (tecla <code>P</code>) ou use <b>Alt+Clique</b> / <b>Botão Direito</b> sobre qualquer pixel defeituoso para numerá-lo e enviar no chat.";
+      pinsListEl.appendChild(empty);
+      return;
+    }
+
+    const cur = currentItem();
+    for (let i = 0; i < state.pins.length; i++) {
+      const pin = state.pins[i];
+      const num = i + 1;
+      const onCurrent = !!(cur && pinLocalCoordsOnItem(pin, cur));
+
+      const card = document.createElement("div");
+      card.className = "pin-card" + (pin.uid === state.selectedPinUid ? " selected" : "") + (onCurrent ? "" : " other-scene");
+      card.dataset.uid = pin.uid;
+
+      const top = document.createElement("div");
+      top.className = "pin-card-top";
+      top.title = "Clique para centralizar e dar zoom neste pixel";
+
+      const badge = document.createElement("span");
+      badge.className = "pin-badge";
+      badge.textContent = "#" + num;
+
+      const info = document.createElement("div");
+      info.className = "pin-info";
+
+      const sceneEl = document.createElement("div");
+      sceneEl.className = "pin-scene";
+      sceneEl.textContent = pin.sceneTitle || pin.sceneId;
+
+      const coordEl = document.createElement("div");
+      coordEl.className = "pin-coords";
+      coordEl.textContent = "[" + pin.sceneId + "] (" + pin.x + ", " + pin.y + ")";
+      if (onCurrent) {
+        const tag = document.createElement("span");
+        tag.className = "cur-tag";
+        tag.textContent = "● cena atual";
+        coordEl.appendChild(tag);
+      }
+
+      info.appendChild(sceneEl);
+      info.appendChild(coordEl);
+
+      const delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "pin-del";
+      delBtn.title = "Remover spot #" + num;
+      delBtn.textContent = "×";
+      delBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        deletePin(pin.uid);
+      });
+
+      top.appendChild(badge);
+      top.appendChild(info);
+      top.appendChild(delBtn);
+
+      top.addEventListener("click", function () {
+        selectPin(pin.uid, false);
+        if (isMobile()) setDrawerOpen(false);
+      });
+
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "pin-note-input";
+      input.placeholder = "Nota opcional (ex: lasca azul no olho)...";
+      input.value = pin.note || "";
+      input.addEventListener("input", function () {
+        pin.note = input.value;
+        savePins();
+      });
+      input.addEventListener("focus", function () {
+        state.selectedPinUid = pin.uid;
+      });
+
+      card.appendChild(top);
+      card.appendChild(input);
+      pinsListEl.appendChild(card);
+    }
+  }
+
+  // Copy Spots to Clipboard (Portuguese chat-ready text + resilient fallback)
+  function formatSpotsText() {
+    if (state.pins.length === 0) return "";
+    const lines = ["Spots marcados (" + state.pins.length + "):"];
+    for (let i = 0; i < state.pins.length; i++) {
+      const p = state.pins[i];
+      const note = (p.note || "").trim();
+      lines.push(
+        "- #" + (i + 1) + " [" + p.sceneId + "] (" + p.x + ", " + p.y + ")" + (note ? " — " + note : "")
+      );
+    }
+    return lines.join("\n");
+  }
+
+  function openCopyFallbackModal(text) {
+    copyTextareaEl.value = text;
+    copyModalEl.classList.add("open");
+    setTimeout(function () {
+      copyTextareaEl.focus();
+      copyTextareaEl.select();
+    }, 30);
+  }
+
+  function copySpotsToClipboard() {
+    if (state.pins.length === 0) {
+      showToast("Nenhum spot marcado — ative 📍 Marcar Spots ou Alt+Clique");
+      return;
+    }
+    const text = formatSpotsText();
+
+    function tryLegacyCopy() {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.top = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        if (ok) {
+          showToast("📋 " + state.pins.length + " spot(s) copiados para colar no chat!");
+        } else {
+          openCopyFallbackModal(text);
+        }
+      } catch (_err) {
+        openCopyFallbackModal(text);
+      }
+    }
+
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      navigator.clipboard.writeText(text).then(function () {
+        showToast("📋 " + state.pins.length + " spot(s) copiados para colar no chat!");
+      }).catch(function () {
+        tryLegacyCopy();
+      });
+    } else {
+      tryLegacyCopy();
+    }
+  }
+
+  // Export Annotated PNG (current scene at full 6x + crisp numbered red circles + footer metadata)
+  function exportAnnotatedPng() {
+    const item = currentItem();
+    if (!item) {
+      showToast("Nenhuma cena carregada");
+      return;
+    }
+
+    const entry = ensureItemImages(item);
+    const layerKey = displayedLayer();
+    const img = (entry && entry[layerKey]) || (entry && entry.new) || (entry && entry.orig);
+    if (!img || !img.complete || img.naturalWidth === 0) {
+      showToast("Aguarde a imagem carregar...");
+      return;
+    }
+
+    const W = item.w6;
+    const H = item.h6;
+    const scenePins = pinsForItem(item);
+
+    // Ensure comfortable canvas size even for tiny micro-crops (upscale cleanly if W < 360)
+    const expScale = W < 360 ? Math.ceil(360 / W) : 1;
+    const drawW = W * expScale;
+    const drawH = H * expScale;
+    const footerH = Math.max(36, Math.round(drawW * 0.036));
+
+    const off = document.createElement("canvas");
+    off.width = drawW;
+    off.height = drawH + footerH;
+    const octx = off.getContext("2d");
+
+    // Draw shader image nearest-neighbor (exact pixels!)
+    octx.fillStyle = "#0b0e14";
+    octx.fillRect(0, 0, off.width, off.height);
+    octx.imageSmoothingEnabled = false;
+    octx.drawImage(img, 0, 0, drawW, drawH);
+
+    // Draw numbered red circles for pins in this scene
+    octx.imageSmoothingEnabled = true;
+    const pxUnit = 6 * expScale;
+    const minDim = Math.min(drawW, drawH);
+    const radius = Math.max(12, Math.min(28, Math.round(minDim * 0.034)));
+    const strokeW = Math.max(2.5, Math.min(4.5, radius * 0.16));
+    const badgeR = Math.max(10, Math.round(radius * 0.62));
+    const fontSize = Math.max(11, Math.round(badgeR * 1.18));
+
+    for (let i = 0; i < scenePins.length; i++) {
+      const sp = scenePins[i];
+      const cx = (sp.lx + 0.5) * pxUnit;
+      const cy = (sp.ly + 0.5) * pxUnit;
+
+      // Exact native pixel square
+      octx.strokeStyle = "rgba(255, 46, 76, 0.85)";
+      octx.lineWidth = Math.max(1.2, expScale);
+      octx.strokeRect(sp.lx * pxUnit + 0.5, sp.ly * pxUnit + 0.5, pxUnit - 1, pxUnit - 1);
+
+      // Dark outer halo for contrast on bright pixels
+      octx.beginPath();
+      octx.arc(cx, cy, radius, 0, Math.PI * 2);
+      octx.strokeStyle = "rgba(0, 0, 0, 0.85)";
+      octx.lineWidth = strokeW + 3;
+      octx.stroke();
+
+      // Bright red circle
+      octx.beginPath();
+      octx.arc(cx, cy, radius, 0, Math.PI * 2);
+      octx.strokeStyle = "#ff2e4c";
+      octx.lineWidth = strokeW;
+      octx.stroke();
+
+      // Numbered badge positioned cleanly inside image bounds
+      let bx = cx + radius * 0.78;
+      let by = cy - radius * 0.78;
+      if (bx + badgeR + 2 > drawW) bx = cx - radius * 0.78;
+      if (by - badgeR - 2 < 0) by = cy + radius * 0.78;
+      bx = Math.max(badgeR + 2, Math.min(drawW - badgeR - 2, bx));
+      by = Math.max(badgeR + 2, Math.min(drawH - badgeR - 2, by));
+
+      octx.beginPath();
+      octx.arc(bx, by, badgeR + 1.5, 0, Math.PI * 2);
+      octx.fillStyle = "#0b0e14";
+      octx.fill();
+
+      octx.beginPath();
+      octx.arc(bx, by, badgeR, 0, Math.PI * 2);
+      octx.fillStyle = "#ff2e4c";
+      octx.fill();
+
+      octx.fillStyle = "#ffffff";
+      octx.font = "800 " + fontSize + "px ui-monospace, Menlo, Consolas, monospace";
+      octx.textAlign = "center";
+      octx.textBaseline = "middle";
+      octx.fillText(String(sp.num), bx, by + 0.5);
+    }
+
+    // Sleek dark metadata footer (never obscures image pixels)
+    octx.fillStyle = "#111622";
+    octx.fillRect(0, drawH, drawW, footerH);
+    octx.fillStyle = "#283246";
+    octx.fillRect(0, drawH, drawW, 1);
+
+    const fFont = Math.max(11, Math.min(15, Math.round(footerH * 0.38)));
+    octx.font = "600 " + fFont + "px ui-monospace, Menlo, Consolas, monospace";
+    octx.textAlign = "left";
+    octx.textBaseline = "middle";
+    octx.fillStyle = "#e8eef7";
+
+    const layerName = LAYERS[layerKey] ? LAYERS[layerKey].label : layerKey;
+    const spotsSummary = scenePins.length > 0
+      ? scenePins.map(function (sp) { return "#" + sp.num + "(" + sp.pin.x + "," + sp.pin.y + ")"; }).join(" ")
+      : "sem spots nesta cena";
+    const footerTxt = item.sceneId + " · " + layerName + " · " + spotsSummary;
+    octx.fillText(footerTxt, 10, drawH + footerH * 0.5, drawW - 20);
+
+    const safeScene = item.sceneId.replace(/[^a-zA-Z0-9_-]+/g, "_");
+    const fname = "xbrz_crisp_" + safeScene + "_" + layerKey + (scenePins.length ? "_" + scenePins.length + "spots" : "") + ".png";
+
+    function triggerDownload(url, revoke) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fname;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      if (revoke) setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+      showToast("📸 PNG salvo: " + fname);
+    }
+
+    if (off.toBlob) {
+      off.toBlob(function (blob) {
+        if (blob) {
+          triggerDownload(URL.createObjectURL(blob), true);
+        } else {
+          triggerDownload(off.toDataURL("image/png"), false);
+        }
+      }, "image/png");
+    } else {
+      triggerDownload(off.toDataURL("image/png"), false);
+    }
+  }
+
+  // Stage Pointer / Touch / Wheel Gestures
+  const pointers = new Map();
+  let singleDown = null; // { id, x, y, panX, panY, moved, altKey }
+  let pinchPrev = null;  // { dist, mx, my }
+  let wasPinch = false;
+
+  function stageRelativePos(e) {
+    const r = stageEl.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+
+  function getPinchMetrics() {
+    const pts = Array.from(pointers.values());
+    const dx = pts[1].x - pts[0].x;
+    const dy = pts[1].y - pts[0].y;
+    return {
+      dist: Math.max(1, Math.hypot(dx, dy)),
+      mx: (pts[0].x + pts[1].x) * 0.5,
+      my: (pts[0].y + pts[1].y) * 0.5
+    };
+  }
+
+  stageEl.addEventListener("pointerdown", function (e) {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (e.target.closest(".hud-top")) return;
+    stopAnim();
+
+    const pos = stageRelativePos(e);
+    pointers.set(e.pointerId, pos);
+    try { stageEl.setPointerCapture(e.pointerId); } catch (_e) {}
+
+    if (pointers.size === 1) {
+      wasPinch = false;
+      pinchPrev = null;
+      singleDown = {
+        id: e.pointerId,
+        x: pos.x,
+        y: pos.y,
+        panX: state.panX,
+        panY: state.panY,
+        moved: false,
+        altKey: e.altKey
+      };
+    } else if (pointers.size === 2) {
+      wasPinch = true;
+      singleDown = null;
+      stageEl.classList.remove("is-dragging");
+      pinchPrev = getPinchMetrics();
+    }
+  });
+
+  stageEl.addEventListener("pointermove", function (e) {
+    const pos = stageRelativePos(e);
+
+    // Update live hover coordinate
+    const np = screenToNativePixel(pos.x, pos.y);
+    const prevHp = state.hoverPixel;
+    state.hoverPixel = np;
+    const changedPx = (!prevHp && np) || (prevHp && !np) || (prevHp && np && (prevHp.lx !== np.lx || prevHp.ly !== np.ly));
+    if (changedPx) {
+      updateCoordHUD();
+      if (state.pinMode || state.scale * 6 >= 14) drawStage();
+    }
+
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, pos);
+
+    if (pointers.size === 2 && pinchPrev) {
+      const cur = getPinchMetrics();
+      const item = currentItem();
+      if (item) {
+        const factor = cur.dist / pinchPrev.dist;
+        const nextScale = clampScale(state.scale * factor, item);
+        const w = screenToWorld(pinchPrev.mx, pinchPrev.my);
+        state.scale = nextScale;
+        state.panX = cur.mx - w.wx * nextScale;
+        state.panY = cur.my - w.wy * nextScale;
+        updateZoomUI();
+        drawStage();
+        renderStagePins();
+      }
+      pinchPrev = cur;
+      return;
+    }
+
+    if (pointers.size === 1 && singleDown && singleDown.id === e.pointerId) {
+      const dx = pos.x - singleDown.x;
+      const dy = pos.y - singleDown.y;
+      if (!singleDown.moved && Math.hypot(dx, dy) >= DRAG_THRESHOLD) {
+        singleDown.moved = true;
+        stageEl.classList.add("is-dragging");
+      }
+      if (singleDown.moved) {
+        state.panX = singleDown.panX + dx;
+        state.panY = singleDown.panY + dy;
+        drawStage();
+        renderStagePins();
+      }
+    }
+  });
+
+  function finishPointer(e, canceled) {
+    if (!pointers.has(e.pointerId)) return;
+    const pos = stageRelativePos(e);
+    pointers.delete(e.pointerId);
+
+    if (pointers.size === 1 && wasPinch) {
+      // Seamlessly hand off remaining finger to pan without jump
+      const remEntry = pointers.entries().next().value;
+      singleDown = {
+        id: remEntry[0],
+        x: remEntry[1].x,
+        y: remEntry[1].y,
+        panX: state.panX,
+        panY: state.panY,
+        moved: true,
+        altKey: false
+      };
+      pinchPrev = null;
+      return;
+    }
+
+    if (pointers.size === 0) {
+      stageEl.classList.remove("is-dragging");
+      if (!canceled && !wasPinch && singleDown && singleDown.id === e.pointerId && !singleDown.moved) {
+        if (state.pinMode || singleDown.altKey || e.altKey) {
+          const np = screenToNativePixel(pos.x, pos.y);
+          if (np) {
+            addPinAt(np.lx, np.ly);
+          } else {
+            showToast("Clique dentro da imagem para marcar um spot");
+          }
+        } else {
+          flipPair();
+        }
+      }
+      singleDown = null;
+      pinchPrev = null;
+      wasPinch = false;
+    }
+  }
+
+  stageEl.addEventListener("pointerup", function (e) { finishPointer(e, false); });
+  stageEl.addEventListener("pointercancel", function (e) { finishPointer(e, true); });
+  stageEl.addEventListener("pointerleave", function () {
+    if (pointers.size === 0) {
+      state.hoverPixel = null;
+      updateCoordHUD();
+      drawStage();
+    }
+  });
+
+  // Right-click drops a pin immediately on Desktop without leaving Compare mode
+  stageEl.addEventListener("contextmenu", function (e) {
+    e.preventDefault();
+    if (e.target.closest(".hud-top")) return;
+    const pos = stageRelativePos(e);
+    const np = screenToNativePixel(pos.x, pos.y);
+    if (np) addPinAt(np.lx, np.ly);
+  });
+
+  // Smooth cursor-centered wheel zoom
+  stageEl.addEventListener("wheel", function (e) {
+    e.preventDefault();
+    const pos = stageRelativePos(e);
+    const delta = Math.max(-180, Math.min(180, e.deltaY));
+    const factor = Math.exp(-delta * 0.0022);
+    setScaleAround(state.scale * factor, pos.x, pos.y);
+  }, { passive: false });
+
+  // Mobile Bottom Sheet Swipe-Down Gesture
+  (function initSheetSwipe() {
+    const handle = $("sheet-handle");
+    let startY = null;
+    let curDy = 0;
+
+    handle.addEventListener("pointerdown", function (e) {
+      if (!isMobile()) return;
+      startY = e.clientY;
+      curDy = 0;
+      pinsPanelEl.style.transition = "none";
+      try { handle.setPointerCapture(e.pointerId); } catch (_e) {}
+    });
+    handle.addEventListener("pointermove", function (e) {
+      if (startY === null) return;
+      curDy = Math.max(0, e.clientY - startY);
+      pinsPanelEl.style.transform = "translateY(" + curDy + "px)";
+    });
+    function endSwipe() {
+      if (startY === null) return;
+      pinsPanelEl.style.transition = "";
+      pinsPanelEl.style.transform = "";
+      if (curDy > 70) {
+        setDrawerOpen(false);
+      }
+      startY = null;
+      curDy = 0;
+    }
+    handle.addEventListener("pointerup", endSwipe);
+    handle.addEventListener("pointercancel", endSwipe);
+  })();
+
+  // Wire Controls
+  ["tab-gs", "tab-other", "tab-all"].forEach(function (id) {
+    $(id).addEventListener("click", function () {
+      setFilter($(id).dataset.filter);
+    });
+  });
+
+  $("btn-prev").addEventListener("click", function () { stepScene(-1); });
+  $("btn-next").addEventListener("click", function () { stepScene(1); });
+  btnPinModeEl.addEventListener("click", function () { setPinMode(!state.pinMode); });
+  btnDrawerEl.addEventListener("click", function () { setDrawerOpen(!state.drawerOpen); });
+  $("btn-close-panel").addEventListener("click", function () { setDrawerOpen(false); });
+  sheetScrimEl.addEventListener("click", function () { setDrawerOpen(false); });
+
+  statusPillEl.addEventListener("click", function (e) {
+    e.stopPropagation();
+    if (state.pinMode) {
+      setPinMode(false);
+    } else {
+      flipPair();
+    }
+  });
+
+  $("layer-pills").addEventListener("click", function (e) {
+    const btn = e.target.closest("button[data-layer]");
+    if (btn) setLayer(btn.dataset.layer, true);
+  });
+
+  $("pair-presets").addEventListener("click", function (e) {
+    const btn = e.target.closest("button[data-a]");
+    if (btn) setPairPreset(btn.dataset.a, btn.dataset.b);
+  });
+
+  // Hold Orig 1x Button
+  btnHoldOrigEl.addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    try { btnHoldOrigEl.setPointerCapture(e.pointerId); } catch (_e) {}
+    setHoldOrig(true);
+  });
+  ["pointerup", "pointercancel", "lostpointercapture"].forEach(function (ev) {
+    btnHoldOrigEl.addEventListener(ev, function () { setHoldOrig(false); });
+  });
+  btnHoldOrigEl.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+  btnGridEl.addEventListener("click", function () { setGrid(!state.showGrid); });
+  $("btn-zoom-in").addEventListener("click", function () { zoomStep(1.4); });
+  $("btn-zoom-out").addEventListener("click", function () { zoomStep(1 / 1.4); });
+  $("btn-fit").addEventListener("click", function () { fitView(true); });
+  $("btn-1to1").addEventListener("click", function () { setOneToOne(); });
+
+  $("btn-copy-spots").addEventListener("click", copySpotsToClipboard);
+  $("btn-export-png").addEventListener("click", exportAnnotatedPng);
+  btnClearPinsEl.addEventListener("click", clearAllPins);
+
+  // Modals
+  $("btn-close-copy").addEventListener("click", function () { copyModalEl.classList.remove("open"); });
+  $("btn-close-copy-2").addEventListener("click", function () { copyModalEl.classList.remove("open"); });
+  $("btn-select-copy").addEventListener("click", function () {
+    copyTextareaEl.focus();
+    copyTextareaEl.select();
+    try { document.execCommand("copy"); showToast("Texto selecionado/copiado"); } catch (_e) {}
+  });
+  copyModalEl.addEventListener("click", function (e) {
+    if (e.target === copyModalEl) copyModalEl.classList.remove("open");
+  });
+
+  $("btn-help").addEventListener("click", function () { helpModalEl.classList.add("open"); });
+  $("btn-close-help").addEventListener("click", function () { helpModalEl.classList.remove("open"); });
+  helpModalEl.addEventListener("click", function (e) {
+    if (e.target === helpModalEl) helpModalEl.classList.remove("open");
+  });
+
+  // Keyboard Shortcuts
+  function isTypingTarget(el) {
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Alt") {
+      stageEl.classList.add("is-pinmode");
+      return;
+    }
+    if (e.key === "Escape") {
+      if (copyModalEl.classList.contains("open")) { copyModalEl.classList.remove("open"); return; }
+      if (helpModalEl.classList.contains("open")) { helpModalEl.classList.remove("open"); return; }
+      if (state.pinMode) { setPinMode(false); return; }
+      if (isMobile() && state.drawerOpen) { setDrawerOpen(false); return; }
+      return;
+    }
+
+    if (isTypingTarget(e.target) || e.ctrlKey || e.metaKey) return;
+
+    if (e.key === " " || e.key === "o" || e.key === "O") {
+      e.preventDefault();
+      if (!e.repeat) setHoldOrig(true);
+      return;
+    }
+    if (e.key === "Tab") {
+      e.preventDefault();
+      flipPair();
+      return;
+    }
+    if (e.key === "1") { setLayer("orig", true); return; }
+    if (e.key === "2") { setLayer("xbrz", true); return; }
+    if (e.key === "3") { setLayer("old", true); return; }
+    if (e.key === "4") { setLayer("new", true); return; }
+    if (e.key === "5") { setLayer("diff", true); return; }
+    if (e.key === "p" || e.key === "P") { setPinMode(!state.pinMode); return; }
+    if (e.key === "g" || e.key === "G") { setGrid(!state.showGrid); return; }
+    if (e.key === "+" || e.key === "=") { zoomStep(1.35); return; }
+    if (e.key === "-") { zoomStep(1 / 1.35); return; }
+    if (e.key === "0") { fitView(true); return; }
+    if (e.key === "ArrowLeft" || e.key === "[") { e.preventDefault(); stepScene(-1); return; }
+    if (e.key === "ArrowRight" || e.key === "]") { e.preventDefault(); stepScene(1); return; }
+  });
+
+  document.addEventListener("keyup", function (e) {
+    if (e.key === "Alt" && !state.pinMode) {
+      stageEl.classList.remove("is-pinmode");
+    }
+    if (e.key === " " || e.key === "o" || e.key === "O") {
+      setHoldOrig(false);
+    }
+  });
+
+  window.addEventListener("blur", function () {
+    setHoldOrig(false);
+    if (!state.pinMode) stageEl.classList.remove("is-pinmode");
+    pointers.clear();
+    singleDown = null;
+    pinchPrev = null;
+    stageEl.classList.remove("is-dragging");
+  });
+
+  // ResizeObserver for crisp layout sync
+  if (typeof ResizeObserver !== "undefined") {
+    const ro = new ResizeObserver(function () {
+      resizeCanvas(true);
+      sheetScrimEl.classList.toggle("open", state.drawerOpen && isMobile());
+    });
+    ro.observe(stageEl);
+  }
+  window.addEventListener("resize", function () {
+    resizeCanvas(true);
+    sheetScrimEl.classList.toggle("open", state.drawerOpen && isMobile());
+  });
+
+  // Init
+  loadPins();
+  setDrawerOpen(!isMobile());
+  updateFilterTabs();
+  updateLayerButtons();
+  renderPinsPanel();
+
+  // Default to Golden Sun tab if available, otherwise All
+  const hasGs = ITEMS.some(function (it) { return it.cat === "gs"; });
+  if (!hasGs && ITEMS.length > 0) {
+    state.filter = "all";
+    updateFilterTabs();
+  }
+
+  resizeCanvas(false);
+
+  if (ITEMS.length === 0) {
+    emptyStateEl.hidden = false;
+    updateStatusHUD(false);
+    updateCoordHUD();
+  } else {
+    emptyStateEl.hidden = true;
+    const firstList = visibleItems();
+    selectScene(firstList.length > 0 ? firstList[0].idx : 0, true);
+  }
+})();
+</script>
+</body>
+</html>

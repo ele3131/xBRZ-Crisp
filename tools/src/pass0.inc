@@ -647,7 +647,8 @@ vec4 closedPixel(vec4 res, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 
   vec3 Px = sc.x > 0.5 ? B : D, Py = sc.y > 0.5 ? F : B, Pz = sc.z > 0.5 ? H : F, Pw = sc.w > 0.5 ? D : H;
   vec4 lQ = vec4(A.x, C.x, I.x, G.x);
   vec4 lP = vec4(Px.x, Py.x, Pz.x, Pw.x);
-  vec4 dark = vec4(lessThan(lQ + XBRZ_BLACK_GAP, lP)) * vec4(lessThan(lQ + XBRZ_BLACK_GAP, vec4(E.x))) * vec4(lessThan(lQ, vec4(XBRZ_BLACK)));
+  vec4 dark = vec4(lessThan(lQ + XBRZ_BLACK_GAP, lP)) * vec4(lessThan(lQ + XBRZ_BLACK_GAP, vec4(E.x)))
+            * vec4(lessThan(lQ, vec4(XBRZ_BLACK))) * vec4(greaterThan(lP - lQ, 0.22 * (vec4(E.x) - lQ)));
   vec4 closed = dark * line;
   if (dot(closed, vec4(1.0)) <= 0.0)
     return res;

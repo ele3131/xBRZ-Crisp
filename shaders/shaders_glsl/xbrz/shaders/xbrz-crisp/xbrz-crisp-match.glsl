@@ -525,7 +525,7 @@ vec4 domes43(vec4 lost)
 float far44(vec3 E, float lE, vec2 o)
 {
   vec3 q = at3(o);
-  return float(distSqY(E, q) >= SQ255(XBRZ_END44) && q.x >= lE);
+  return float(distSqY(E, q) >= SQ255(XBRZ_END44) && q.x >= lE + 0.15);
 }
 
 vec4 strokeEnd44(vec4 res)
@@ -538,7 +538,8 @@ vec4 strokeEnd44(vec4 res)
   vec2 u = vec2(v.y, v.x);
   vec3 E = nE;
   float lE = E.x;
-  if (cardColor(-v).x < lE || cardColor(u).x < lE || cardColor(-u).x < lE)
+  if (lE > 0.35 || dot(E.yz, E.yz) >= SQ255(50.0)
+      || cardColor(-v).x < lE + 0.15 || cardColor(u).x < lE + 0.15 || cardColor(-u).x < lE + 0.15)
     return res;
   if (far44(E, lE, v + u) < 0.5 || far44(E, lE, v - u) < 0.5 || far44(E, lE, u - v) < 0.5 || far44(E, lE, -u - v) < 0.5)
     return res;
@@ -777,7 +778,8 @@ void main()
   vec4 lost = aW0 * (1.0 - cut4(res));
   if (dot(lost, vec4(1.0)) > 0.0)
   {
-    vec4 lostStrong = lost * vec4(greaterThan(max(vec4(sBSq, sBSq, sFSq, sHSq), vec4(sDSq, sFSq, sHSq, sDSq)), vec4(SQ255(XBRZ_MATCH_EDGE))));
+    vec4 maxCornerSq = max(vec4(sBSq, sBSq, sFSq, sHSq), vec4(sDSq, sFSq, sHSq, sDSq));
+    vec4 lostStrong = lost * vec4(greaterThan(maxCornerSq, vec4(SQ255(XBRZ_MATCH_EDGE))));
     vec4 fix = vec4(0.0);
     if (dot(lostStrong, vec4(1.0)) > 0.0)
     {
@@ -793,7 +795,8 @@ void main()
 
       vec4 part = vec4(cut4(rA).z, cut4(rC).w, cut4(rI).x, cut4(rG).y);
       vec4 l45 = vec4(isLine45(rA).z, isLine45(rC).w, isLine45(rI).x, isLine45(rG).y);
-      fix = max(needGap * wrapN, lostStrong * part * l45 * (1.0 - FLAG(w0, 4.0)));
+      vec4 pairCloser = vec4(lessThan(pairSq, maxCornerSq));
+      fix = max(needGap * wrapN, lostStrong * pairCloser * part * l45 * (1.0 - FLAG(w0, 4.0)));
     }
     vec4 far43 = vec4(greaterThanEqual(min(vec4(sDSq, sFSq, sFSq, sDSq), vec4(sBSq, sBSq, sHSq, sHSq)), vec4(SQ255(XBRZ_MINC))))
                * vec4(lessThan(min(vec4(sFSq, sDSq, sDSq, sFSq), vec4(sHSq, sHSq, sBSq, sBSq)), vec4(SQ255(XBRZ_SAME_M))))
@@ -804,6 +807,18 @@ void main()
       vec4 noR9 = 1.0 - FLAG(w0, 32.0);
       vec4 back = 1.0 + 4.0 * FLAG(w0, 4.0) + 8.0 * FLAG(w0, 8.0) + noR9 * (16.0 * FLAG(w0, 16.0) + 64.0 * FLAG(w0, 64.0));
       res = mix(res, back, fix);
+    }
+  }
+  // Rule 26b: drop orphaned non-line b1 bevels at 4-color junctions (> 40 YCbCr) whose facing corner was cut in pass 0 and removed by resolve
+  {
+    vec4 nb1 = vec4(equal(BLEND(res), vec4(1.0))) * (1.0 - FLAG(res, 4.0)) * vec4(greaterThan(pairSq, vec4(SQ255(XBRZ_MATCH_EDGE))));
+    if (dot(nb1, vec4(1.0)) > 0.5)
+    {
+      vec4 oW0 = vec4(activeW0(W0_AT(-1.0, -1.0)).z, activeW0(W0_AT( 1.0, -1.0)).w,
+                      activeW0(W0_AT( 1.0,  1.0)).x, activeW0(W0_AT(-1.0,  1.0)).y);
+      vec4 oR  = vec4(cut4(INFO_AT(-1.0, -1.0)).z, cut4(INFO_AT( 1.0, -1.0)).w,
+                      cut4(INFO_AT( 1.0,  1.0)).x, cut4(INFO_AT(-1.0,  1.0)).y);
+      res *= 1.0 - nb1 * oW0 * (1.0 - oR);
     }
   }
   // rule 27
@@ -971,7 +986,9 @@ void main()
         if (!plug && ok1 && BLEND(dot(res, m1)) < 0.5 && !goesOn(s1)) res = mix(res, vec4(s1.x * s1.y > 0.0 ? 5.0 : 13.0), m1);
         if (!plug && ok2 && BLEND(dot(res, m2)) < 0.5 && !goesOn(s2)) res = mix(res, vec4(s2.x * s2.y > 0.0 ? 13.0 : 5.0), m2);
         float lE = E.x, lA = cE.x, lS = 0.5 * (C1.x + C2.x);
-        if ((BLEND(dot(res, me)) < 0.5 || FLAG(dot(res, me), 4.0) < 0.5) && (lA - lS) * (lE - lS) <= 0.0 && !goesOn(e))
+        bool wrap49 = distSqY(C1, C2) >= SQ255(100.0) && dot(pairSq, me) >= SQ255(XBRZ_BAR49)
+                   && (withinY255(R1, C2, XBRZ_SAME_M) || withinY255(R2, C1, XBRZ_SAME_M));
+        if (!wrap49 && (BLEND(dot(res, me)) < 0.5 || FLAG(dot(res, me), 4.0) < 0.5) && (lA - lS) * (lE - lS) <= 0.0 && !goesOn(e))
         {
           float hSq = e.x > 0.0 ? sFSq : sDSq, vSq = e.y > 0.0 ? sHSq : sBSq;
           bool hz = e.x * e.y > 0.0;
