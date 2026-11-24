@@ -6,7 +6,6 @@
   <p><b>Pixel-faithful edge smoothing for RetroArch — smooth outlines and typography without melting checkerboards, textures, or faces.</b></p>
   <p>
     <img src="https://img.shields.io/badge/RetroArch-GLSL%20%26%20Slang-238636?style=flat-square" alt="RetroArch GLSL & Slang">
-    <img src="https://img.shields.io/badge/Compared%20vs-Zenju%20xBRZ%201.9-1f6feb?style=flat-square" alt="Compared vs Zenju xBRZ 1.9">
     <img src="https://img.shields.io/badge/Pipeline-5%20Passes%20(50%20Rules)-6e7681?style=flat-square" alt="5-Pass Pipeline (50 Rules)">
     <img src="https://img.shields.io/badge/Verified-100%20Scenes%20%C2%B7%20D4%200%2F0%2F0-8957e5?style=flat-square" alt="100-Scene Suite & D4 Symmetry">
     <img src="https://img.shields.io/badge/License-GPLv3-d29922?style=flat-square" alt="GPLv3">
