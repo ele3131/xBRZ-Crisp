@@ -314,6 +314,27 @@ bool meshFlankStroke46(vec2 coord, vec3 oS, vec3 oOpp, vec3 oD1, vec3 oD2, vec3 
   vec2 pe1 = pS + vec2(-dS.y, dS.x), pe2 = pS - vec2(-dS.y, dS.x);
   return distSqY(PY(pe1.x, pe1.y), oS) <= tolSq || distSqY(PY(pe2.x, pe2.y), oS) <= tolSq;
 }
+bool meshQuad46(vec2 coord, float ox, float oy, vec3 pM, float tolSq, float gapSq, bool flip)
+{
+  vec3 q00 = PY(ox, oy), q10 = PY(ox + 1.0, oy), q01 = PY(ox, oy + 1.0), q11 = PY(ox + 1.0, oy + 1.0);
+  if (!flip)
+    return distSqY(q00, pM) <= tolSq && distSqY(q11, pM) <= tolSq
+        && distSqY(q10, pM) >= gapSq && distSqY(q01, pM) >= gapSq;
+  return distSqY(q10, pM) <= tolSq && distSqY(q01, pM) <= tolSq
+      && distSqY(q00, pM) >= gapSq && distSqY(q11, pM) >= gapSq;
+}
+bool meshCornerOk46(vec2 coord, vec2 p, bool hA, bool hB, bool wA, bool wB, vec3 mA, vec3 mB, vec3 pM, float tolSq, float gapSq, bool isMeshSlot, bool strictNonMesh)
+{
+  if (hA && hB)
+  {
+    if (isMeshSlot) return distSqY(PY(p.x, p.y), pM) <= tolSq;
+    return !strictNonMesh || distSqY(PY(p.x, p.y), pM) >= gapSq;
+  }
+  if (wA && hB) return eq(PY(p.x, p.y), mA);
+  if (wB && hA) return eq(PY(p.x, p.y), mB);
+  if (wA && wB && eq(mA, mB)) return eq(PY(p.x, p.y), mA);
+  return true;
+}
 bool meshParity46(vec2 coord, vec3 cA, vec3 cB, vec3 oA, vec3 oB, float tolSq, float gapSq,
                   vec3 mH1, vec3 oH1, vec3 mH2, vec3 oH2, vec3 mV1, vec3 oV1, vec3 mV2, vec3 oV2,
                   vec2 pmH1, vec2 poH1, vec2 pmH2, vec2 poH2, vec2 pmV1, vec2 poV1, vec2 pmV2, vec2 poV2,
@@ -325,15 +346,14 @@ bool meshParity46(vec2 coord, vec3 cA, vec3 cB, vec3 oA, vec3 oB, float tolSq, f
   if (!hH1 && !hH2) return false;
   bool hV1 = distSqY(mV1, pM) <= tolSq && distSqY(oV1, pM) >= gapSq;
   bool hV2 = distSqY(mV2, pM) <= tolSq && distSqY(oV2, pM) >= gapSq;
-  // Zero-fetch early-out: every valid case has >= 3 mesh sides (hCnt >= 3).
-  // Moreover, when hX is true, distSqY(mX,pM)<=tolSq and distSqY(oX,pM)>=gapSq > tolSq, so eq(mX,oX) is false => wX is false.
-  int hCnt = int(hH1) + int(hH2) + int(hV1) + int(hV2);
-  if (hCnt < 3) return false;
+  if (!hV1 && !hV2) return false;
+  // Zero-fetch early-out: every side must be either mesh (h*) or a solid wall (w*).
   bool wH1 = !hH1 && meshWall46(mH1, oH1, pM, oA, oB, tolSq, gapSq);
   bool wH2 = !hH2 && meshWall46(mH2, oH2, pM, oA, oB, tolSq, gapSq);
+  if (!(hH1 || wH1) || !(hH2 || wH2)) return false;
   bool wV1 = !hV1 && meshWall46(mV1, oV1, pM, oA, oB, tolSq, gapSq);
   bool wV2 = !hV2 && meshWall46(mV2, oV2, pM, oA, oB, tolSq, gapSq);
-  if (hCnt == 3 && !(wH1 || wH2 || wV1 || wV2)) return false;
+  if (!(hV1 || wV1) || !(hV2 || wV2)) return false;
   bool bH1 = false, bH2 = false, bV1 = false, bV2 = false;
   bool eH1 = false, eH2 = false, eV1 = false, eV2 = false;
   if (hH1) { vec3 qm = PY(pmH1.x, pmH1.y), qo = PY(poH1.x, poH1.y); bH1 = distSqY(qm, pM) <= tolSq && distSqY(qo, pM) >= gapSq; eH1 = bH1 || meshWall46(qm, qo, pM, oA, oB, tolSq, gapSq); }
@@ -343,7 +363,21 @@ bool meshParity46(vec2 coord, vec3 cA, vec3 cB, vec3 oA, vec3 oB, float tolSq, f
   if (hV1) { vec3 qm = PY(pmV1.x, pmV1.y), qo = PY(poV1.x, poV1.y); bV1 = distSqY(qm, pM) <= tolSq && distSqY(qo, pM) >= gapSq; eV1 = bV1 || meshWall46(qm, qo, pM, oA, oB, tolSq, gapSq); }
   if (hV2) { vec3 qm = PY(pmV2.x, pmV2.y), qo = PY(poV2.x, poV2.y); bV2 = distSqY(qm, pM) <= tolSq && distSqY(qo, pM) >= gapSq; eV2 = bV2 || meshWall46(qm, qo, pM, oA, oB, tolSq, gapSq); }
   bool spanV = (eV1 && eV2) || (bV1 && wV2) || (bV2 && wV1);
-  if (!((bH1 && bH2 && spanV) || (bV1 && bV2 && spanH)))
+  if (!spanV) return false;
+  bool wide = (bH1 && bH2) || (bV1 && bV2);
+  if (!wide)
+  {
+    if (!((bH1 || bH2) && (bV1 || bV2))) return false;
+    float qx = bH1 ? (pmH1.x < 0.0 ? -2.0 : 2.0) : (pmH2.x < 0.0 ? -2.0 : 2.0);
+    float qy = bV1 ? -2.0 : 2.0;
+    if (!meshQuad46(coord, qx, qy, pM, tolSq, gapSq, pmH1.x > 0.0)) return false;
+  }
+  vec2 pm11 = vec2(pmH1.x > 0.0 ? 2.0 : -1.0, -1.0);
+  vec2 pm22 = vec2(pmH2.x > 0.0 ? 2.0 : -1.0,  2.0);
+  if (!meshCornerOk46(coord, pm11, hH1, hV1, wH1, wV1, mH1, mV1, pM, tolSq, gapSq, true,  !wide)
+   || !meshCornerOk46(coord, pm22, hH2, hV2, wH2, wV2, mH2, mV2, pM, tolSq, gapSq, true,  !wide)
+   || !meshCornerOk46(coord, pcA,  hH2, hV1, wH2, wV1, mH2, mV1, pM, tolSq, gapSq, false, !wide)
+   || !meshCornerOk46(coord, pcB,  hH1, hV2, wH1, wV2, mH1, mV2, pM, tolSq, gapSq, false, !wide))
     return false;
   if (distSqY(oA, oB) <= tolSq)
   {
@@ -417,20 +451,61 @@ bool chkEdgeSoft2x4(vec2 coord, vec3 a0, vec3 b0, vec3 a1, vec3 b1, vec3 a2, vec
   if (minEdgeSq < SQ255(72.0) || min(dA01Sq, dB01Sq) > mTolSq) return false;
   float mGapSq = max(SQ255(72.0), 4.0 * mTolSq);
   float dwA = distSqY(w, pA), dwB = distSqY(w, pB);
-  bool okA = dA01Sq <= mTolSq
-          && (dwA <= mTolSq || (dwA >= mGapSq && neq(w, b0) && neq(w, b1)))
-          && distSqY(a2, pA) <= mTolSq && distSqY(b2, pA) >= mGapSq;
-  bool okB = dB01Sq <= mTolSq
-          && (dwB <= mTolSq || (dwB >= mGapSq && neq(w, a0) && neq(w, a1)))
-          && distSqY(b2, pB) <= mTolSq && distSqY(a2, pB) >= mGapSq;
-  if (!okA && !okB) return false;
+  bool baseA = dA01Sq <= mTolSq && (dwA <= mTolSq || (dwA >= mGapSq && neq(w, b0) && neq(w, b1)));
+  bool baseB = dB01Sq <= mTolSq && (dwB <= mTolSq || (dwB >= mGapSq && neq(w, a0) && neq(w, a1)));
+  if (!baseA && !baseB) return false;
+  bool mA_P = distSqY(a2, pA) <= mTolSq, mA_M = distSqY(b2, pA) >= mGapSq;
+  bool mB_M = distSqY(b2, pB) <= mTolSq, mB_P = distSqY(a2, pB) >= mGapSq;
+  bool wM = eq(b2, w), wP = eq(a2, w);
+  bool candA = baseA && ((mA_P && mA_M) || (wM && mA_P) || (wP && mA_M));
+  bool candB = baseB && ((mB_M && mB_P) || (wM && mB_P) || (wP && mB_M));
+  if (!candA && !candB) return false;
   vec3 qOA = PY(oA.x, oA.y), qOB = PY(oB.x, oB.y);
-  okA = okA && distSqY(qOB, pA) >= mGapSq && !(dwA >= mGapSq && eq(w, b2) && eq(w, qOB)) && distSqY(qOA, pA) <= mTolSq;
-  okB = okB && distSqY(qOA, pB) >= mGapSq && !(dwB >= mGapSq && eq(w, a2) && eq(w, qOA)) && distSqY(qOB, pB) <= mTolSq;
-  if (!okA && !okB) return false;
+  bool perpM = wM && eq(qOA, w), perpP = wP && eq(qOB, w);
+  bool sideA_M = mA_M && distSqY(qOA, pA) <= mTolSq;
+  bool sideA_P = mA_P && distSqY(qOB, pA) >= mGapSq && !(dwA >= mGapSq && eq(w, b2) && eq(w, qOB));
+  bool sideB_M = mB_M && distSqY(qOA, pB) >= mGapSq && !(dwB >= mGapSq && eq(w, a2) && eq(w, qOA));
+  bool sideB_P = mB_P && distSqY(qOB, pB) <= mTolSq;
+  bool okA = baseA && sideA_M && sideA_P;
+  bool okB = baseB && sideB_M && sideB_P;
+  bool cA_M = !okA && baseA && perpM && sideA_P;
+  bool cA_P = !okA && baseA && perpP && sideA_M;
+  bool cB_M = !okB && baseB && perpM && sideB_P;
+  bool cB_P = !okB && baseB && perpP && sideB_M;
+  if (!(okA || okB || cA_M || cA_P || cB_M || cB_P)) return false;
   vec3 q3A = PY(p3A.x, p3A.y), q3B = PY(p3B.x, p3B.y);
-  return (okA && distSqY(q3A, pA) <= mTolSq && distSqY(q3B, pA) >= mGapSq)
-      || (okB && distSqY(q3B, pB) <= mTolSq && distSqY(q3A, pB) >= mGapSq);
+  bool r3A = distSqY(q3A, pA) <= mTolSq && distSqY(q3B, pA) >= mGapSq;
+  bool r3B = distSqY(q3B, pB) <= mTolSq && distSqY(q3A, pB) >= mGapSq;
+  if ((okA && r3A) || (okB && r3B)) return true;
+  vec2 t = p3B - p3A, n = p3A - (oA + t);
+  if ((cA_M && r3A) || (cB_M && r3B))
+  {
+    vec2 e1 = oB - n + t, e2 = oB + t, e3 = p3B + t, e4 = p3B + 2.0 * t;
+    vec3 q1 = PY(e1.x, e1.y), q2 = PY(e2.x, e2.y), q3 = PY(e3.x, e3.y), q4 = PY(e4.x, e4.y);
+    if (cA_M && r3A && distSqY(q1, pA) >= mGapSq && distSqY(q2, pA) <= mTolSq && distSqY(q3, pA) <= mTolSq && distSqY(q4, pA) >= mGapSq) return true;
+    if (cB_M && r3B && distSqY(q1, pB) <= mTolSq && distSqY(q2, pB) >= mGapSq && distSqY(q3, pB) >= mGapSq && distSqY(q4, pB) <= mTolSq) return true;
+  }
+  if ((cA_P && r3A) || (cB_P && r3B))
+  {
+    vec2 e1 = oA - n - t, e2 = oA - t, e3 = p3A - t, e4 = p3A - 2.0 * t;
+    vec3 q1 = PY(e1.x, e1.y), q2 = PY(e2.x, e2.y), q3 = PY(e3.x, e3.y), q4 = PY(e4.x, e4.y);
+    if (cA_P && r3A && distSqY(q1, pA) <= mTolSq && distSqY(q2, pA) >= mGapSq && distSqY(q3, pA) >= mGapSq && distSqY(q4, pA) <= mTolSq) return true;
+    if (cB_P && r3B && distSqY(q1, pB) >= mGapSq && distSqY(q2, pB) <= mTolSq && distSqY(q3, pB) <= mTolSq && distSqY(q4, pB) >= mGapSq) return true;
+  }
+  return false;
+}
+// 3-wall inner corner of a framed 50% mesh (3 pixels equal wall W, 1 odd corner O opens into a 3x3 alternating mesh).
+bool chkCornerMesh46(vec2 coord, vec3 W, vec3 O, vec3 m1, vec3 m2, vec3 w1, vec3 w2, float sx, float sy, float dx, float dy)
+{
+  float dOWSq = distSqY(O, W);
+  if (dOWSq < SQ255(72.0) || !eq(w1, W) || !eq(w2, W)) return false;
+  float mTolSq = min(SQ255(26.0), 0.08 * dOWSq);
+  if (distSqY(m1, W) > mTolSq || distSqY(m2, W) > mTolSq) return false;
+  float mGapSq = max(SQ255(72.0), 4.0 * mTolSq);
+  return distSqY(PY(sx + dx, sy + dy), W) >= mGapSq
+      && distSqY(PY(sx + 2.0 * dx, sy), W) >= mGapSq && distSqY(PY(sx + 2.0 * dx, sy + dy), W) <= mTolSq
+      && distSqY(PY(sx, sy + 2.0 * dy), W) >= mGapSq && distSqY(PY(sx + dx, sy + 2.0 * dy), W) <= mTolSq
+      && distSqY(PY(sx + 2.0 * dx, sy + 2.0 * dy), W) >= mGapSq;
 }
 // c) A 4-pixel solid wall column/row immediately adjacent to a confirmed 2x4 checker strip (exact, shaded, or 3-row 50% mesh).
 bool chkCapPerp46(vec2 coord, vec3 c1, vec3 c2, vec3 sA0, vec3 sB0, vec2 pA1, vec2 pB1, vec2 pf0, vec2 pf1)
@@ -510,6 +585,13 @@ bool checkerEdge46(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3
                           dA, dB))
         return true;
     }
+  }
+  if (eqGK != eqFJ && eqJK != eqFG)
+  {
+    if (eqFG && eqFJ && chkCornerMesh46(coord, kf, kk, kl, ko, kh, kn, 1.0, 1.0,  1.0,  1.0)) return true;
+    if (eqFG && eqGK && chkCornerMesh46(coord, kg, kj, ki, kn, ke, ko, 0.0, 1.0, -1.0,  1.0)) return true;
+    if (eqFJ && eqJK && chkCornerMesh46(coord, kj, kg, kh, kc, kl, kb, 1.0, 0.0,  1.0, -1.0)) return true;
+    if (eqGK && eqJK && chkCornerMesh46(coord, kk, kf, ke, kb, ki, kc, 0.0, 0.0, -1.0, -1.0)) return true;
   }
   return false;
 }

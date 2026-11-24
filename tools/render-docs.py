@@ -141,15 +141,21 @@ def draw_centered_pill(
     draw.text((tx, ty), text, font=font, fill=fg)
 
 
-def fit_nearest(img: Image.Image, target_w: int, target_h: int) -> Image.Image:
-    """Scale pixel art to exact target box with nearest-neighbor (aspect-preserving center crop if needed)."""
+def fit_image(img: Image.Image, target_w: int, target_h: int, smooth: bool = False) -> Image.Image:
+    """Scale image to exact target box (aspect-preserving center crop if needed).
+
+    Uses nearest-neighbor for raw 1x pixel art (smooth=False) and Lanczos for already-upscaled
+    6x anti-aliased renders (smooth=True) so fractional panel scaling does not introduce jagged
+    sawtooth steps along smooth diagonal contours.
+    """
     sw, sh = img.size
     if sw == target_w and sh == target_h:
         return img
     scale = max(target_w / sw, target_h / sh)
     nw = max(target_w, int(round(sw * scale)))
     nh = max(target_h, int(round(sh * scale)))
-    scaled = img.resize((nw, nh), Image.Resampling.NEAREST)
+    resample = Image.Resampling.LANCZOS if smooth else Image.Resampling.NEAREST
+    scaled = img.resize((nw, nh), resample)
     ox = (nw - target_w) // 2
     oy = (nh - target_h) // 2
     return scaled.crop((ox, oy, ox + target_w, oy + target_h))
@@ -164,8 +170,9 @@ def paste_framed(
     h: int,
     border_col: tuple[int, int, int],
     bw: int = 2,
+    smooth: bool = True,
 ) -> None:
-    fitted = fit_nearest(img, w - 2 * bw, h - 2 * bw)
+    fitted = fit_image(img, w - 2 * bw, h - 2 * bw, smooth=smooth)
     draw = ImageDraw.Draw(canvas)
     draw.rectangle([x, y, x + w - 1, y + h - 1], fill=border_col)
     canvas.paste(fitted, (x + bw, y + bw))
@@ -214,7 +221,7 @@ def render_banner(spec: dict, sources: dict, docs_renders: dict) -> np.ndarray:
     W, H = 1040, 392
     bg_src = docs_renders[(cfg["bg_scene"], "crisp20")]
     bx0, by0, bx1, by1 = cfg["bg_box_6x"]
-    bg_crop = fit_nearest(bg_src.crop((bx0, by0, bx1, by1)), W, H)
+    bg_crop = fit_image(bg_src.crop((bx0, by0, bx1, by1)), W, H, smooth=True)
 
     # Darken background smoothly with left-heavy readability gradient
     bg_arr = np.array(bg_crop, dtype=np.float32)
@@ -320,7 +327,7 @@ def render_hero_triptych(spec: dict, sources: dict) -> np.ndarray:
     ]
     for idx, (var, tag, bcol, pfill, pout, pfg, ccol) in enumerate(specs):
         x0 = pad + idx * (pw + gap)
-        paste_framed(im, src[var], x0, y0, pw, ph, bcol, bw=2)
+        paste_framed(im, src[var], x0, y0, pw, ph, bcol, bw=2, smooth=(var != "original"))
         draw_pill(draw, x0 + 10, y0 + 10, tag, f_tag, pfill, pout, pfg, px=9, py=4, radius=5)
         cap = cfg["captions"][idx]
         cw, _ = text_size(draw, cap, f_cap)
@@ -377,7 +384,7 @@ def render_strip(strip_cfg: dict, spec: dict, sources: dict) -> np.ndarray:
         y += row_meta_h
         for i, (var, bcol) in enumerate([("original", BORDER_SUBTLE), ("xbrzcpp", BORDER_RED), ("crisp20", BORDER_GREEN)]):
             x0 = pad + i * (pw + gap)
-            paste_framed(im, src[var], x0, y, pw, rh, bcol, bw=2)
+            paste_framed(im, src[var], x0, y, pw, rh, bcol, bw=2, smooth=(var != "original"))
         y += rh + row_gap
 
     return np.array(im, dtype=np.uint8)
@@ -456,7 +463,7 @@ def render_presets_strip(spec: dict, sources: dict) -> np.ndarray:
                 width=2,
             )
         draw_centered_pill(draw, x0, y_lbl, x0 + cw - 1, y_lbl + 26, col["label"], f_lbl, pfill, pout, pfg, radius=6)
-        paste_framed(im, src[col["variant"]], x0, y_img, cw, ph, bcol, bw=2)
+        paste_framed(im, src[col["variant"]], x0, y_img, cw, ph, bcol, bw=2, smooth=(col["variant"] != "original"))
         nw, _ = text_size(draw, col["note"], f_note)
         draw.text((x0 + (cw - nw) // 2, y_img + ph + 8), col["note"], font=f_note, fill=ncol)
 

@@ -350,14 +350,16 @@
 // 46. A checkerboard keeps its squares: a 2x2 checker of two colors (or a shaded/gradient checker and a
 //     high-contrast 1-parity 50% mesh transparency overlay) with three or more of the 2x2 blocks beside it
 //     (2 pixels left, right, above and below) matching its parity, or two orthogonal 2x2 blocks plus the
-//     diagonal 2x2 corner between them forming a solid 4x4 exact checkerboard, or forming a 2x6 axial
-//     checker strip bounded laterally by axis-aligned walls (including where one wall transitions to a
-//     foreign third color, or >= 4px wide along a full 6-pixel pure mesh axis), is not cut—except where a
-//     distinct 1-pixel 45-degree diagonal stroke crosses through the 50%
-//     mesh, so diagonal dividers stay smooth. Likewise a 1x4 solid wall immediately adjacent to a confirmed
-//     2x4 exact/shaded or 3-row 50% mesh strip (with any non-mesh wall distinct from the adjacent non-mesh
-//     pixels) keeps its squares, so checker dithering and 50% HUD mesh overlays stay square right up to
-//     their borders without affecting 1-pixel dotted lines, compact glyphs, sawtooth edges, or diagonal strokes.
+//     diagonal 2x2 corner between them forming a solid 4x4 exact checkerboard or framed 50% mesh quadrant
+//     (with consistent 4x4 mesh/wall corners so curved outlines and compact X glyphs stay smooth), or forming
+//     a 2x6 axial checker strip bounded laterally by axis-aligned walls (including where one wall transitions
+//     to a foreign third color, or >= 4px wide along a full 6-pixel pure mesh axis), is not cut—except where a
+//     distinct 1-pixel 45-degree diagonal stroke crosses through the 50% mesh, so diagonal dividers stay smooth.
+//     Likewise a 1x4 solid wall immediately adjacent to a confirmed 2x4 exact/shaded or 3-row 50% mesh strip
+//     (including against a perpendicular corner wall or at a 3-wall inner corner opening into a 3x3 alternating
+//     mesh, with any non-mesh wall distinct from the adjacent non-mesh pixels) keeps its squares, so checker
+//     dithering and 50% HUD mesh overlays stay square right up to their borders and corners without affecting
+//     1-pixel dotted lines, compact glyphs, sawtooth edges, or diagonal strokes.
 // 47. A notch in a straight stroke: where E's corner would be cut in the color of a lone pixel beside it
 //     that is a close shade of E, while E's color goes on straight past its other neighbor and diagonally
 //     past the lone pixel, and the color on E's far side is XBRZ_FAR47 or more away, the corner stays square,
