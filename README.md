@@ -56,22 +56,22 @@
   <img src="https://ele3131.github.io/xBRZ-Crisp/sheets/strip-3-faces.png" alt="Problem to solution strip 3: Minish Cap Link and NES Legend of Zelda Key and Bomb at 12x macro zoom" width="100%">
 </p>
 
-### 4. Sharp Text, Italic Drop Shadows & Game HUDs
+### 4. Clean Game HUDs, Health Bars & Frame Borders
 
-**Problem in xBRZ 1.9:** Stepped italic fonts wiggle unevenly, drop shadows bulge into lumpy blobs, health-bar tips round off, and ornate HUD frames dent at corners.  
-**Solution in xBRZ Crisp:** Regular multi-pixel steps draw straight with parallel drop shadows, stacked HP/MP bars end crisp and square, and frame borders stay ruler-straight.
+**Problem in xBRZ 1.9:** Stacked health-bar tips round off unevenly, ornate gold HUD frames dent at corners, and thin HUD digits pinch at tight strokes.  
+**Solution in xBRZ Crisp:** Stacked HP/MP bars end crisp and square, ornate frame borders stay ruler-straight, and HUD numbers stay clean and smooth.
 
 <p align="center">
-  <img src="https://ele3131.github.io/xBRZ-Crisp/sheets/strip-4-text-hud.png" alt="Problem to solution strip 4: Golden Sun italic menu text and Castlevania Aria of Sorrow full HUD" width="100%">
+  <img src="https://ele3131.github.io/xBRZ-Crisp/sheets/strip-4-text-hud.png" alt="Problem to solution strip 4: Castlevania Aria of Sorrow full HUD" width="100%">
 </p>
 
-### 5. Crisp Diagonals, Thin Strokes & 1px Details
+### 5. Crisp Dithered Backgrounds & Smooth Diagonal Silhouettes
 
-**Problem in xBRZ 1.9:** High-frequency rock dithering turns into chaotic soup and delicate 1px sparkle glints on small sprites break into crooked hooks.  
-**Solution in xBRZ Crisp:** Thin strokes, diagonal starfighter silhouettes, and 1px ear-tip highlights stay crisp without sacrificing xBRZ's signature curve smoothing.
+**Problem in xBRZ 1.9:** High-frequency rock dithering turns into chaotic soup while trying to smooth diagonal starfighters and clouds in the same scene.  
+**Solution in xBRZ Crisp:** Dithered rock canyons stay crisp and textured while diagonal starfighter silhouettes and clouds stay sleek and smooth.
 
 <p align="center">
-  <img src="https://ele3131.github.io/xBRZ-Crisp/sheets/strip-5-diagonals.png" alt="Problem to solution strip 5: Mega Drive Thunder Force IV and Game Boy Color Pokemon Crystal Hoppip" width="100%">
+  <img src="https://ele3131.github.io/xBRZ-Crisp/sheets/strip-5-diagonals.png" alt="Problem to solution strip 5: Mega Drive Thunder Force IV dithered rock canyon and starfighter" width="100%">
 </p>
 
 ---

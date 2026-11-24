@@ -14,7 +14,6 @@
     "tales_stone":     { "kind": "docs", "scene": "tales",      "box": [108, 66, 152, 102], "platform": "GBA", "game": "Tales of Phantasia" },
     "tales_banner":    { "kind": "docs", "scene": "tales",      "box": [ 90, 65, 170, 101], "platform": "GBA", "game": "Tales of Phantasia" },
     "mc_link":         { "kind": "docs", "scene": "mc_eu",      "box": [106, 54, 136,  84], "platform": "GBA", "game": "Zelda: The Minish Cap" },
-    "gs_italic_text":  { "kind": "docs", "scene": "gs_menu",    "box": [  4, 79,  98, 107], "platform": "GBA", "game": "Golden Sun (Menu)" },
     "cv_aria_hud":     { "kind": "docs", "scene": "cv_aria",    "box": [  0,  0, 108,  32], "platform": "GBA", "game": "Castlevania: Aria of Sorrow" },
     "dbz_sky":         { "kind": "docs", "scene": "dbz_title",  "box": [ 34,  0, 116,  46], "platform": "GBA", "game": "Dragon Ball Z: Buu's Fury" },
     "gs_presets":      { "kind": "docs", "scene": "gs_village", "box": [129, 65, 165, 101], "platform": "GBA", "game": "Golden Sun" }
@@ -78,19 +77,17 @@
     {
       "output": "strip-4-text-hud.png",
       "badge": "WIN #4",
-      "title": "Sharp Text, Italic Drop Shadows & Game HUDs",
+      "title": "Clean Game HUDs, Health Bars & Frame Borders",
       "rows": [
-        { "source": "gs_italic_text", "caption": "Stepped italic slopes run straight with clean parallel drop shadows" },
         { "source": "cv_aria_hud",    "caption": "Gold frame borders stay straight, health bars end square, and 280 stays smooth" }
       ]
     },
     {
       "output": "strip-5-diagonals.png",
       "badge": "WIN #5",
-      "title": "Crisp Diagonals, Thin Strokes & 1px Details",
+      "title": "Crisp Dithered Backgrounds & Smooth Diagonal Silhouettes",
       "rows": [
-        { "source": "tf4_ship",       "caption": "Dithered rock canyon stays crisp while starfighter diagonals and clouds stay sleek" },
-        { "source": "crystal_hoppip", "caption": "1px sparkle highlights, ear tips and thin outlines stay faithful without hooks" }
+        { "source": "tf4_ship",       "caption": "Dithered rock canyon stays crisp while starfighter diagonals and clouds stay sleek" }
       ]
     }
   ],
