@@ -1034,43 +1034,6 @@ void main()
         }
       }
 
-      // ---- 50. Drop shadow in a 1-pixel cavity ----
-      if (E.x > 0.12 && E.x < 0.72 && dot(isCut(blendResult), vec4(1.0)) > 1.5)
-      {
-        vec4 cut50 = isCut(blendResult);
-        vec4 lMinC = vec4(min(B.x, D.x), min(B.x, F.x), min(F.x, H.x), min(D.x, H.x));
-        vec4 lMaxC = vec4(max(B.x, D.x), max(B.x, F.x), max(F.x, H.x), max(D.x, H.x));
-        vec4 shCand = cut50 * vec4(lessThan(lMaxC, vec4(min(E.x - 0.12, 0.06))))
-                    * (cut50 * vec4(greaterThan(lMinC, vec4(max(E.x + 0.15, 0.85))))).zwxy;
-        if (any(greaterThan(shCand, vec4(0.5))))
-        {
-          vec4 lumaP = vec4(sec.x > 0.5 ? B.x : D.x, sec.y > 0.5 ? F.x : B.x, sec.z > 0.5 ? H.x : F.x, sec.w > 0.5 ? D.x : H.x);
-          float cB50 = dot(B.yz, B.yz), cD50 = dot(D.yz, D.yz), cF50 = dot(F.yz, F.yz), cH50 = dot(H.yz, H.yz);
-          vec4 shGray = vec4(lessThan(vec4(max(cB50, cD50), max(cB50, cF50), max(cF50, cH50), max(cD50, cH50)), vec4(SQ255(XBRZ_JUNC_GRAY))));
-          vec4 fgCut = vec4(greaterThan(lumaP, vec4(max(E.x + 0.22, 0.85))))
-                     * vec4(lessThanEqual(vec4(A.x, C.x, I.x, G.x), vec4(E.x + 0.15)));
-          vec4 shCut = shCand * shGray * vec4(sameF(E, A), sameF(E, C), sameF(E, I), sameF(E, G)) * fgCut.zwxy;
-          blendResult *= 1.0 - shCut;
-        }
-      }
-      else if (E.x <= 0.08 && anyCut(blendResult))
-      {
-        vec4 cut50 = isCut(blendResult);
-        vec4 lumaP = vec4(sec.x > 0.5 ? B.x : D.x, sec.y > 0.5 ? F.x : B.x, sec.z > 0.5 ? H.x : F.x, sec.w > 0.5 ? D.x : H.x);
-        vec4 midCut = cut50 * vec4(greaterThan(lumaP, vec4(0.14))) * vec4(lessThan(lumaP, vec4(0.65)))
-                    * vec4(lessThan(cand20, vec4(XBRZ_SAME)));
-        if (any(greaterThan(midCut, vec4(0.5))))
-        {
-          vec4 lMinOpp = vec4(min(F.x, H.x), min(D.x, H.x), min(B.x, D.x), min(B.x, F.x));
-          vec4 lMaxOpp = vec4(max(F.x, H.x), max(D.x, H.x), max(B.x, D.x), max(B.x, F.x));
-          vec4 oppBright = vec4(greaterThan(lMaxOpp, vec4(0.75))) * vec4(lessThan(lMinOpp, vec4(0.08)));
-          vec4 diagE = vec4(sameF(E, A), sameF(E, C), sameF(E, I), sameF(E, G));
-          vec4 diagE50 = max(diagE, max(diagE.yzwx, diagE.wxyz));
-          blendResult *= 1.0 - midCut * oppBright * (1.0 - diagE50);
-        }
-      }
-
-
       // ---- 15b. Strong exact-color 45-deg bridge kept when lonePixel broke it against a weaker/non-line opposite cut ----
       {
         vec4 cutB = isCut(blendResult);

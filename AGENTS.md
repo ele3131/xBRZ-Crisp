@@ -7,7 +7,7 @@ Read and follow **[`CLAUDE.md`](./CLAUDE.md)** as the single source of truth bef
 1. **Never edit `shaders/` directly** — edit `tools/src/*.inc` (or `tools/build-shaders.py`) and regenerate.
 2. **Never name a variable or parameter `P`** — `#define P(x,y)` is an active sampling macro; use `Pc` for center-pixel `vec3` values so RetroArch `rslc` (Vulkan/Slang) and mobile OpenGL ES drivers compile cleanly.
 3. **Use `distSqYCbCr` with pre-squared thresholds** for boolean color-distance checks, and never re-fetch texels already cached in local `vec3` variables.
-4. **Preserve `//#crisp{ ... //#crisp}` and `//#plain` markers** and keep rule numbers synced with `tools/src/header.inc` (Rules 1–50 on `main`).
+4. **Preserve `//#crisp{ ... //#crisp}` and `//#plain` markers** and keep rule numbers synced with `tools/src/header.inc` (Rules 1–49 on `main`).
 5. **Enforce `LP_NATIVE_VECTOR_WIDTH=128` for Mesa `llvmpipe`** — AVX-512 miscompiles `resolve.glsl` (`lab_kit.py` sets this automatically; export it in any standalone EGL/Mesa run).
 6. **Use the persistent 100-scene lab (`/home/antigravity/.gemini/xbrz_crisp_lab/lab_kit.py`)** for visual & symmetry checks: `diff100` (2 workers, cached), `pin-audit`, `hunt` (D4 `0/0/0`), and `build-cmp` (Mobile HTML Studio v3 with `Orig 1×` hold button + `node --check`).
 7. **Final-only latency benchmarks** — defer `lab_kit.py bench` (1 worker ONLY, idle CPU) until **after** all rule changes are finalized; never benchmark after each individual tweak.

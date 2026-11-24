@@ -383,16 +383,8 @@ precision highp int;
 //     (a dark line that meets a white branch), and no corner is cut where a neighbor already draws the stroke's
 //     color across it. A neighbor's corner at the point where a side cut actually paints that neighbor is not cut
 //     in the color from the stroke's other side, so that color does not wrap around the bar's end.
-// 50. Drop shadow in a 1-pixel cavity: where a mid-tone background pixel (0.12 < E.x < 0.72) is cut on
-//     opposite corners by both a high-brightness 1-pixel foreground stroke (Y > 0.85, outer diagonal not
-//     bright, like a HUD letter) and a near-black neutral 1-pixel drop shadow (Y < 0.06, chroma < XBRZ_JUNC_GRAY,
-//     with E's own background color reappearing diagonally across the shadow), the dark shadow bevel is
-//     suppressed so small glyph bowls stay open without breaking shaded 3-tone foliage or colored diagonals;
-//     likewise a near-black drop-shadow pixel (E.x <= 0.08) tucked against a bright 1-pixel stroke does not
-//     bevel its mid-tone background corner unless E continues diagonally along the cut as a curved dark outline
-//     or reappears across the corner (where the two corner neighbors form a 1-pixel diagonal stripe).
 // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9, 11 and
-// 13 to 50 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
+// 13 to 49 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
 //#crisp}
 //#plain // XBRZ_DIAG = 0 turns rules 2 to 7, 9, 10 and 13 off, and XBRZ_MINC = 0 turns rules 1, 3, 8, 9, 11
 //#plain // and 13 off, so with XBRZ_MINC at 0 only rules 2, 4 to 7 and 10 run.
