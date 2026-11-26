@@ -50,7 +50,6 @@ void main()
   MP vec4 haveSteepLine = vec4((iw >> 6u) & 1u);
 //#crisp{
   MP vec4 tip = 1.0 + XBRZ_TIPK * vec4(equal(blU, uvec4(3u)));
-  MP vec4 longL = vec4(((iw >> 5u) & 1u) | (((iw >> 7u) & 1u) << 1u));
 //#crisp}
 #else
   vec4 info = floor(rawInfo * 255.0 + 0.5);
@@ -69,38 +68,49 @@ void main()
   // Vectorized exact signed distance (pre-scaled by INV_SQRT2) for all 4 corners in canonical BR frame
   vec4 px = vec4(-pos.x, -pos.y,  pos.x,  pos.y);
   vec4 py = vec4(-pos.y,  pos.x,  pos.y, -pos.x);
-  vec4 kSh = scK.yzyz;
-  vec4 kSt = scK.zyzy;
 
   vec4 pSum = px + py;
 //#crisp{
-  vec4 dPlain = (pSum - INV_SQRT2 * tip) * scK.x;
+  vec4 d = (pSum - mix(INV_SQRT2 * tip, vec4(0.5), doLineBlend)) * scK.x;
 //#crisp}
-//#plain   vec4 dPlain = (pSum - INV_SQRT2) * scK.x;
-  vec4 dLine45 = (pSum - 0.5) * scK.x;
-  vec4 dSh = (px + 2.0 * py - 0.5) * kSh;
-  vec4 dSt = (2.0 * px + py - 0.5) * kSt;
-  vec4 d = mix(dPlain,
-               mix(mix(dLine45, dSh, haveShallowLine),
-                   mix(dSt, max(dSh, dSt), haveShallowLine),
-                   haveSteepLine),
-               doLineBlend);
+//#plain   vec4 d = (pSum - mix(vec4(INV_SQRT2), vec4(0.5), doLineBlend)) * scK.x;
+#if __VERSION__ >= 300
+  if (any(notEqual(iw & uvec4(80u), uvec4(0u))))
+#else
+  if (dot(doLineBlend * (haveShallowLine + haveSteepLine), vec4(1.0)) > 0.0)
+#endif
+  {
+    vec4 dSh = (px + 2.0 * py - 0.5) * scK.yzyz;
+    vec4 dSt = (2.0 * px + py - 0.5) * scK.zyzy;
+    vec4 dLine = mix(mix(d, dSh, haveShallowLine),
+                     mix(dSt, max(dSh, dSt), haveShallowLine),
+                     haveSteepLine);
+    d = mix(d, dLine, doLineBlend);
+  }
 
 //#crisp{
-  MP vec4 isLong = isCut * doLineBlend * vec4(greaterThan(longL, vec4(0.0)));
-  if (dot(isLong, vec4(1.0)) > 0.0)
+#if __VERSION__ >= 300
+  if (any(notEqual(iw & uvec4(160u), uvec4(0u))))
   {
-    float sx2 = scale.x * scale.x, sy2 = scale.y * scale.y;
-    vec4 shiftA = vec4(equal(blendResult, vec4(2.0)));
-    vec4 ox = (0.5 + shiftA) * haveShallowLine;
-    vec4 oy = (0.5 + shiftA) * (1.0 - haveShallowLine);
-    vec4 dx = 1.0 + haveShallowLine * (1.0 + longL);
-    vec4 dy = 1.0 + haveSteepLine * (1.0 + longL);
-    vec4 scX2 = vec4(sx2, sy2, sx2, sy2);
-    vec4 scY2 = vec4(sy2, sx2, sy2, sx2);
-    vec4 dLong = scArea * ((px - ox) * dy + (py - oy) * dx) * inversesqrt(dx * dx * scX2 + dy * dy * scY2);
-    d = mix(d, dLong, isLong);
+    MP vec4 longL = vec4(((iw >> 5u) & 1u) | (((iw >> 7u) & 1u) << 1u));
+#endif
+    MP vec4 isLong = isCut * doLineBlend * vec4(greaterThan(longL, vec4(0.0)));
+    if (dot(isLong, vec4(1.0)) > 0.0)
+    {
+      float sx2 = scale.x * scale.x, sy2 = scale.y * scale.y;
+      vec4 shiftA = vec4(equal(blendResult, vec4(2.0)));
+      vec4 ox = (0.5 + shiftA) * haveShallowLine;
+      vec4 oy = (0.5 + shiftA) * (1.0 - haveShallowLine);
+      vec4 dx = 1.0 + haveShallowLine * (1.0 + longL);
+      vec4 dy = 1.0 + haveSteepLine * (1.0 + longL);
+      vec4 scX2 = vec4(sx2, sy2, sx2, sy2);
+      vec4 scY2 = vec4(sy2, sx2, sy2, sx2);
+      vec4 dLong = scArea * ((px - ox) * dy + (py - oy) * dx) * inversesqrt(dx * dx * scX2 + dy * dy * scY2);
+      d = mix(d, dLong, isLong);
+    }
+#if __VERSION__ >= 300
   }
+#endif
 //#crisp}
 
   // Exact smoothstep(-INV_SQRT2, INV_SQRT2, d_raw): d is already multiplied by INV_SQRT2

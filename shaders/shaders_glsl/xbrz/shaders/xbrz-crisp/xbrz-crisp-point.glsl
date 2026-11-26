@@ -486,9 +486,9 @@ bool checkerShaded46(vec2 coord, vec3 kf, vec3 kg, vec3 kj, vec3 kk, float d0, f
   return false;
 }
 // Helper for 2x4 shaded or 3-row 1-parity 50% mesh checker strip beside an exact 1x4 solid wall (in-register checks first).
-bool chkEdgeSoft2x4(vec2 coord, vec3 a0, vec3 b0, vec3 a1, vec3 b1, vec3 a2, vec3 b2, vec2 oA, vec2 oB, vec2 p3A, vec2 p3B, vec3 w, float dA01Sq, float dB01Sq)
+bool chkEdgeSoft2x4(vec2 coord, vec3 a0, vec3 b0, vec3 a1, vec3 b1, vec3 a2, vec3 b2, vec2 oA, vec2 oB, vec2 p3A, vec2 p3B, vec3 w, float dA0B0Sq, float dA01Sq, float dB01Sq)
 {
-  float minEdgeSq = min(min(distSqY(a0, b0), distSqY(a0, b1)), min(distSqY(a1, b0), distSqY(a1, b1)));
+  float minEdgeSq = min(min(dA0B0Sq, distSqY(a0, b1)), min(distSqY(a1, b0), distSqY(a1, b1)));
   if (minEdgeSq < SQ255(35.0) || min(dA01Sq, dB01Sq) >= 0.18 * minEdgeSq) return false;
   vec3 pA = 0.5 * (a0 + a1), pB = 0.5 * (b0 + b1);
   if (max(dA01Sq, dB01Sq) < 0.18 * minEdgeSq)
@@ -546,9 +546,8 @@ bool chkEdgeSoft2x4(vec2 coord, vec3 a0, vec3 b0, vec3 a1, vec3 b1, vec3 a2, vec
   return false;
 }
 // 3-wall inner corner of a framed 50% mesh (3 pixels equal wall W, 1 odd corner O opens into a 3x3 alternating mesh).
-bool chkCornerMesh46(vec2 coord, vec3 W, vec3 O, vec3 m1, vec3 m2, vec3 w1, vec3 w2, float sx, float sy, float dx, float dy)
+bool chkCornerMesh46(vec2 coord, vec3 W, float dOWSq, vec3 m1, vec3 m2, vec3 w1, vec3 w2, float sx, float sy, float dx, float dy)
 {
-  float dOWSq = distSqY(O, W);
   if (dOWSq < SQ255(72.0) || !eq(w1, W) || !eq(w2, W)) return false;
   float mTolSq = min(SQ255(26.0), 0.08 * dOWSq);
   if (distSqY(m1, W) > mTolSq || distSqY(m2, W) > mTolSq) return false;
@@ -571,11 +570,9 @@ bool chkCapPerp46(vec2 coord, vec3 c1, vec3 c2, vec3 sA0, vec3 sB0, vec2 pA1, ve
   bool wB = (cB0 || wB0) && eq(sB0, sB1);
   return (cA && (cB || wB)) || (cB && wA);
 }
-bool chkEdgeDir46(vec2 coord, vec3 c1, vec3 c2, vec3 w, bool sameWall, vec3 wA, vec3 wB,
-                  vec3 a1, vec3 b1, vec3 a2, vec3 b2, vec2 oA, vec2 oB, vec2 p3A, vec2 p3B, float dA01Sq, float dB01Sq)
+bool chkEdgeDir46(vec2 coord, vec3 c1, vec3 c2, vec3 w, bool sameWall, vec3 wA, vec3 wB, bool eqWA, bool eqWB,
+                  vec3 a1, vec3 b1, vec3 a2, vec3 b2, vec2 oA, vec2 oB, vec2 p3A, vec2 p3B, float dC12Sq, float dA01Sq, float dB01Sq)
 {
-  bool eqWA = eq(wA, w), eqWB = eq(wB, w);
-  if (!eqWA && !eqWB) return false;
   bool cIn = eq(b1, c2) && eq(a1, c1);
   if (eqWA && eqWB)
   {
@@ -589,7 +586,7 @@ bool chkEdgeDir46(vec2 coord, vec3 c1, vec3 c2, vec3 w, bool sameWall, vec3 wA, 
       else if (chkCapPerp46(coord, c1, c2, b2, a2, oA, oB, p3A, p3B))
         return true;
     }
-    return chkEdgeSoft2x4(coord, c1, c2, a1, b1, a2, b2, oA, oB, p3A, p3B, w, dA01Sq, dB01Sq);
+    return chkEdgeSoft2x4(coord, c1, c2, a1, b1, a2, b2, oA, oB, p3A, p3B, w, dC12Sq, dA01Sq, dB01Sq);
   }
   if (!sameWall || !cIn) return false;
   vec3 wOth = eqWA ? wB : wA;
@@ -603,46 +600,50 @@ bool chkEdgeDir46(vec2 coord, vec3 c1, vec3 c2, vec3 w, bool sameWall, vec3 wA, 
   return eq(PY(oS.x, oS.y), cExp) && eq(PY(s1.x, s1.y), cExp) && eq(PY(s2.x, s2.y), w);
 }
 bool checkerEdge46(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3 kh, vec3 ki, vec3 kj, vec3 kk, vec3 kl, vec3 kn, vec3 ko,
-                   bool eqFG, bool eqFJ, bool eqJK, bool eqGK, vec4 jgSq, vec4 fkSq)
+                   bool eqFG, bool eqFJ, bool eqJK, bool eqGK, vec4 jgSq, vec4 fkSq, float dFkSq, float dJgSq)
 {
   if (eqGK != eqFJ)
   {
-    float dA = eqGK ? jgSq.x : fkSq.w, dB = eqGK ? fkSq.x : jgSq.w;
-    vec3 c1 = eqGK ? kf : kg, c2 = eqGK ? kj : kk;
-    if (min(dA, dB) <= 0.18 * distSqY(c1, c2))
+    vec3 w = eqGK ? kg : kf, wA = eqGK ? kc : kb, wB = eqGK ? ko : kn;
+    bool eqWA = eq(wA, w), eqWB = eq(wB, w);
+    if (eqWA || eqWB)
     {
-      vec3 w = eqGK ? kg : kf, wA = eqGK ? kc : kb, wB = eqGK ? ko : kn;
-      if ((eq(wA, w) || eq(wB, w))
-          && chkEdgeDir46(coord, c1, c2, w, eqFG || eqJK, wA, wB,
+      float dA = eqGK ? jgSq.x : fkSq.w, dB = eqGK ? fkSq.x : jgSq.w;
+      vec3 c1 = eqGK ? kf : kg, c2 = eqGK ? kj : kk;
+      float dC12Sq = distSqY(c1, c2);
+      if (min(dA, dB) <= 0.18 * dC12Sq
+          && chkEdgeDir46(coord, c1, c2, w, eqFG || eqJK, wA, wB, eqWA, eqWB,
                           eqGK ? ki : kl, eqGK ? ke : kh, eqGK ? kn : ko, eqGK ? kb : kc,
                           eqGK ? vec2(-1.0, -1.0) : vec2(2.0, -1.0), eqGK ? vec2(-1.0, 2.0) : vec2(2.0, 2.0),
                           eqGK ? vec2(-2.0,  0.0) : vec2(3.0,  0.0), eqGK ? vec2(-2.0, 1.0) : vec2(3.0, 1.0),
-                          dA, dB))
+                          dC12Sq, dA, dB))
         return true;
     }
   }
   if (eqJK != eqFG)
   {
-    float dA = eqJK ? jgSq.y : fkSq.y, dB = eqJK ? fkSq.z : jgSq.z;
-    vec3 c1 = eqJK ? kf : kj, c2 = eqJK ? kg : kk;
-    if (min(dA, dB) <= 0.18 * distSqY(c1, c2))
+    vec3 w = eqJK ? kj : kf, wA = eqJK ? ki : ke, wB = eqJK ? kl : kh;
+    bool eqWA = eq(wA, w), eqWB = eq(wB, w);
+    if (eqWA || eqWB)
     {
-      vec3 w = eqJK ? kj : kf, wA = eqJK ? ki : ke, wB = eqJK ? kl : kh;
-      if ((eq(wA, w) || eq(wB, w))
-          && chkEdgeDir46(coord, c1, c2, w, eqFJ || eqGK, wA, wB,
+      float dA = eqJK ? jgSq.y : fkSq.y, dB = eqJK ? fkSq.z : jgSq.z;
+      vec3 c1 = eqJK ? kf : kj, c2 = eqJK ? kg : kk;
+      float dC12Sq = distSqY(c1, c2);
+      if (min(dA, dB) <= 0.18 * dC12Sq
+          && chkEdgeDir46(coord, c1, c2, w, eqFJ || eqGK, wA, wB, eqWA, eqWB,
                           eqJK ? kc : ko, eqJK ? kb : kn, eqJK ? kh : kl, eqJK ? ke : ki,
                           eqJK ? vec2(-1.0, -1.0) : vec2(-1.0, 2.0), eqJK ? vec2(2.0, -1.0) : vec2(2.0, 2.0),
                           eqJK ? vec2( 0.0, -2.0) : vec2( 0.0, 3.0), eqJK ? vec2(1.0, -2.0) : vec2(1.0, 3.0),
-                          dA, dB))
+                          dC12Sq, dA, dB))
         return true;
     }
   }
   if (eqGK != eqFJ && eqJK != eqFG)
   {
-    if (eqFG && eqFJ && chkCornerMesh46(coord, kf, kk, kl, ko, kh, kn, 1.0, 1.0,  1.0,  1.0)) return true;
-    if (eqFG && eqGK && chkCornerMesh46(coord, kg, kj, ki, kn, ke, ko, 0.0, 1.0, -1.0,  1.0)) return true;
-    if (eqFJ && eqJK && chkCornerMesh46(coord, kj, kg, kh, kc, kl, kb, 1.0, 0.0,  1.0, -1.0)) return true;
-    if (eqGK && eqJK && chkCornerMesh46(coord, kk, kf, ke, kb, ki, kc, 0.0, 0.0, -1.0, -1.0)) return true;
+    if (eqFG && eqFJ && chkCornerMesh46(coord, kf, dFkSq, kl, ko, kh, kn, 1.0, 1.0,  1.0,  1.0)) return true;
+    if (eqFG && eqGK && chkCornerMesh46(coord, kg, dJgSq, ki, kn, ke, ko, 0.0, 1.0, -1.0,  1.0)) return true;
+    if (eqFJ && eqJK && chkCornerMesh46(coord, kj, dJgSq, kh, kc, kl, kb, 1.0, 0.0,  1.0, -1.0)) return true;
+    if (eqGK && eqJK && chkCornerMesh46(coord, kk, dFkSq, ke, kb, ki, kc, 0.0, 0.0, -1.0, -1.0)) return true;
   }
   return false;
 }
@@ -725,7 +726,7 @@ ivec4 pointBlend(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3 k
     {
       if (eqFG || eqJK || eqFJ || eqGK)
       {
-        if (checkerEdge46(coord, kb, kc, ke, kf, kg, kh, ki, kj, kk, kl, kn, ko, eqFG, eqFJ, eqJK, eqGK, jgSq, fkSq))
+        if (checkerEdge46(coord, kb, kc, ke, kf, kg, kh, ki, kj, kk, kl, kn, ko, eqFG, eqFJ, eqJK, eqGK, jgSq, fkSq, dFkSq, dJgSq))
           r = ivec4(BLEND_NONE);
       }
       else

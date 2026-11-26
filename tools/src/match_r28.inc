@@ -1,0 +1,82 @@
+// ============================================================================================
+// Match pass — Rule 28 post-resolve completion & Rule 28b
+// ============================================================================================
+// - catch crossing 2:1 color swaps missed in resolve when one side was R2-blocked,
+// - flip off-ramp 2:1 color when the neighbor across the shared edge draws the matching opposite 2:1 line in Q's color,
+// - 28b: unflip a Rule-18 dark 2:1 line (painting O along N, d(E,N) < min(60, d(E,O)), pair >= 40) back to N
+vec4 applyRule28Match(vec4 res, vec4 pairSq)
+{
+  vec4 sh28 = FLAG(res, BIT_SHALLOW), st28 = FLAG(res, BIT_STEEP), sec28 = FLAG(res, BIT_SEC);
+  vec4 base28 = cut4(res) * FLAG(res, BIT_LINE) * (1.0 - FLAG(res, BIT_LONG3)) * (1.0 - FLAG(res, BIT_LONG4));
+  vec4 p28 = base28 * mix(st28, sh28, sec28);
+  if (dot(p28, vec4(1.0)) > 0.5)
+  {
+    vec4 iB = INFO_AT(0.0, -1.0), iD = INFO_AT(-1.0, 0.0), iF = INFO_AT(1.0, 0.0), iH = INFO_AT(0.0, 1.0);
+    vec4 nW = mix(vec4(iD.z, iB.w, iF.x, iH.y), vec4(iB.z, iF.w, iH.x, iD.y), sec28);
+    vec4 pair28 = p28 * cut4(nW) * FLAG(nW, BIT_LINE) * (1.0 - FLAG(nW, BIT_LONG3)) * (1.0 - FLAG(nW, BIT_LONG4))
+                * vec4(equal(FLAG(nW, BIT_SEC), sec28)) * mix(FLAG(nW, BIT_STEEP), FLAG(nW, BIT_SHALLOW), sec28);
+    if (dot(pair28, vec4(1.0)) > 0.5)
+    {
+      vec3 nA = diagColor(vec2(-1.0, -1.0)), nC = diagColor(vec2(1.0, -1.0));
+      vec3 nG = diagColor(vec2(-1.0,  1.0)), nI = diagColor(vec2(1.0,  1.0));
+      float hE = holdOf28(nE, nA, nB, nC, nD, nF, nG, nH, nI), hB = 0.0, hD = 0.0, hF = 0.0, hH = 0.0;
+      if (pair28.x * sec28.x + pair28.y * (1.0 - sec28.y) > 0.5) hB = holdOfEdge28(nB, hE, nD, nF, nA, nC, nE, vec2(-1.,-2.), vec2( 0.,-2.), vec2( 1.,-2.));
+      if (pair28.x * (1.0 - sec28.x) + pair28.w * sec28.w > 0.5) hD = holdOfEdge28(nD, hE, nB, nH, nA, nE, nG, vec2(-2.,-1.), vec2(-2., 0.), vec2(-2., 1.));
+      if (pair28.y * sec28.y + pair28.z * (1.0 - sec28.z) > 0.5) hF = holdOfEdge28(nF, hE, nB, nH, nC, nE, nI, vec2( 2.,-1.), vec2( 2., 0.), vec2( 2., 1.));
+      if (pair28.z * sec28.z + pair28.w * (1.0 - sec28.w) > 0.5) hH = holdOfEdge28(nH, hE, nD, nF, nE, nG, nI, vec2(-1., 2.), vec2( 0., 2.), vec2( 1., 2.));
+      vec4 hN = mix(vec4(hD, hB, hF, hH), vec4(hB, hF, hH, hD), sec28);
+      res *= 1.0 - pair28 * whole28Mask(hE, hN, sec28, nE, nB, nD, nF, nH);
+    }
+    vec4 opp28 = p28 * abs(sh28 - st28)
+               * cut4(nW) * FLAG(nW, BIT_LINE) * (1.0 - FLAG(nW, BIT_LONG3)) * (1.0 - FLAG(nW, BIT_LONG4))
+               * abs(FLAG(nW, BIT_SHALLOW) - FLAG(nW, BIT_STEEP))
+               * vec4(notEqual(FLAG(nW, BIT_SEC), sec28)) * mix(FLAG(nW, BIT_STEEP), FLAG(nW, BIT_SHALLOW), sec28)
+               * vec4(greaterThanEqual(pairSq, vec4(mincSq)));
+    if (dot(opp28, vec4(1.0)) > 0.5)
+    {
+      vec4 flip28 = vec4(0.0);
+      for (int k = 0; k < 4; k++)
+      {
+        vec4 m = cornerMask(k);
+        if (dot(opp28, m) < 0.5) continue;
+        bool isSh = dot(sec28, m) > 0.5;
+        vec2 nbrOff, othOff;
+        slope21Offsets(k, isSh, nbrOff, othOff);
+        vec2 extOff = nbrOff - othOff;
+        if (withinY255(cardColor(othOff), diagColor(extOff), XBRZ_SAME_M)
+            && triGt(sideSq(nbrOff), dot(pairSq, m), 1.2 * 1.2, sideSq(othOff)))
+          flip28 += m * (isSh ? -BIT_SEC : BIT_SEC);
+      }
+      res += flip28;
+    }
+  }
+  vec4 sh18 = FLAG(res, BIT_SHALLOW), st18 = FLAG(res, BIT_STEEP), sec18 = FLAG(res, BIT_SEC);
+  vec4 dN18Sq = mix(vec4(sDSq, sBSq, sFSq, sHSq), vec4(sBSq, sFSq, sHSq, sDSq), sh18);
+  vec4 dO18Sq = mix(vec4(sBSq, sFSq, sHSq, sDSq), vec4(sDSq, sBSq, sFSq, sHSq), sh18);
+  vec4 u18 = cut4(res) * FLAG(res, BIT_LINE) * abs(sh18 - st18)
+           * (1.0 - FLAG(res, BIT_LONG3)) * (1.0 - FLAG(res, BIT_LONG4))
+           * mix(sh18, st18, sec18)
+           * vec4(greaterThanEqual(pairSq, vec4(SQ255(XBRZ_MATCH_EDGE))))
+           * vec4(lessThan(dN18Sq, vec4(SQ255(60.0))))
+           * vec4(lessThan(dN18Sq, dO18Sq - TIE_EPS));
+  if (dot(u18, vec4(1.0)) > 0.5)
+  {
+    vec4 unflip = vec4(0.0);
+    for (int k = 0; k < 4; k++)
+    {
+      vec4 m = cornerMask(k);
+      if (dot(u18, m) < 0.5) continue;
+      bool isSh = dot(sh18, m) > 0.5;
+      vec2 nbrOff, othOff;
+      slope21Offsets(k, isSh, nbrOff, othOff);
+      if (BLEND(dot(cardInfo(nbrOff), m.zwxy)) > 0.5) continue;
+      vec2 extOff = nbrOff - othOff;
+      if (!withinY255(cardColor(othOff), diagColor(extOff), XBRZ_SAME_M)) continue;
+      float xw = dot(diagInfo(extOff), vtxCorner(-extOff));
+      if (BLEND(xw) > 0.5 && FLAG(xw, BIT_LINE) > 0.5)
+        unflip += m * (isSh ? BIT_SEC : -BIT_SEC);
+    }
+    res += unflip;
+  }
+  return res;
+}

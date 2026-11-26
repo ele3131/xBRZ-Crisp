@@ -9,13 +9,15 @@ All 10 `.slang` and `.glsl` files under `shaders/` are **generated artifacts**. 
 Edit only the shared templates in `tools/src/` and the generator in `tools/build-shaders.py`:
 
 - `tools/src/license.inc` — GPLv3 / MIT license banner
-- `tools/src/header.inc` — Full numbered rule catalog (included in `pass0.inc` only)
+- `tools/src/header.inc` — Full numbered rule catalog, Pass-to-Rule Index, and Decision-Word Bit Layout (included in `pass0.inc` only)
 - `tools/src/header_short.inc` — Concise header for `resolve.inc`, `match.inc`, and `pass1.inc`
-- `tools/src/color.inc` — Rec. 2020 `LUMA_W`, `luma()`, `distSqYCbCr()`, `distYCbCr()`, `dist255()`, `SQ255()`, `within255()`, `withinEq255()`
-- `tools/src/point.inc` — Pass 0a (`point`): per-vertex 2x2 junction preprocessing
-- `tools/src/pass0.inc` — Pass 0b (`pass0`): per-texel corner detection and Crisp rules
-- `tools/src/resolve.inc` — Pass 0c (`resolve`): cross-neighbor corner resolution
-- `tools/src/match.inc` — Pass 0d (`match`): diagonal burr restoration (`xbrz-crisp` only)
+- `tools/src/color.inc` — Rec. 2020 `LUMA_W`, `toYCbCr()`, `luma()`, `distSqY()`, `distSqYCbCr()`, `distYCbCr()`, `dist255()`, `SQ255()`, `withinY255()`, `withinEqY255()`, `within255()`, `withinEq255()`
+- `tools/src/bits.inc` — Shared decision-word bit constants (`BIT_LINE`..`BIT_BLOCKED`, `BIT_LONG3`/`BIT_LONG4`) and word masks (`BLEND`, `FLAG`, `cut4`, `activeCutOf`, `cutNoWeak`, `drawsLine`, `drawsLine4`, `isLine45`, `wordPlain`, `wordLine45`)
+- `tools/src/hold28.inc` — Shared Rule 28 hold-score and tie-breaker helpers (`held28`, `holdOf28`, `holdOfEdge28`, `tie28`, `whole28Mask`) used by `resolve.inc` and `match.inc`
+- `tools/src/point.inc` + `tools/src/point_checker46.inc` — Pass 0a (`point`): per-vertex 2×2 junction preprocessing + Rules 31, 36, and 46 (checkerboards/50% meshes)
+- `tools/src/pass0.inc` — Pass 0b (`pass0`): per-texel corner detection and Crisp rules (Rules 1–11, 13, 15, 16, 18, 30, 32–35)
+- `tools/src/resolve.inc` + `tools/src/resolve_steps14.inc` + `tools/src/resolve_junc20.inc` — Pass 0c (`resolve`): cross-neighbor corner resolution (Rules 1 weak, 2 chain/meet, 9 2nd, 14–15b, 17, 19–25, 28, 29, 37)
+- `tools/src/match.inc` + `tools/src/match_geom.inc` + `tools/src/match_r26.inc` + `tools/src/match_r28.inc` + `tools/src/match_junctions.inc` + `tools/src/match_strokes.inc` — Pass 0d (`match`): post-resolve diagonal matching, junction guards, and stroke refinements (`xbrz-crisp` only; Rules 26–28b, 38–45, 47–49)
 - `tools/src/pass1.inc` — Pass 1 (`pass1`): output-scale corner rasterization
 
 After any shader or template change, run the build and verification scripts from the repository root:

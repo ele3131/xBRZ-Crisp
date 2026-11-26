@@ -20,7 +20,23 @@
 // decisions from those of its 4 points, the resolve pass, also once per game pixel, finishes the rules
 // that need the neighbours' decisions, and the output pass (pass 1) only draws the corners.
 //#crisp{
-// The match pass, between the resolve pass and pass 1, runs rules 26, 27, 38 to 45 and 47 to 49 (rule 46 runs in the point pass).
+// The match pass, between the resolve pass and pass 1, runs rules 26-28, 38-45 and 47-49 (rule 46 runs in the point pass).
+//
+// Pass-to-Rule Index:
+//   point   (point.inc, point_checker46.inc)           : xBRZ 2x2 preprocessing, Rules 31, 36, 46
+//   pass0   (pass0.inc)                                : xBRZ corner decisions, Rules 1-11, 13, 15, 16, 18, 30, 32-35
+//   resolve (resolve.inc, resolve_steps14/junc20.inc)  : Rules 1 (weak), 2 (chain/meet), 9 (2nd), 14-15b, 17, 19-25, 28, 29, 37
+//   match   (match.inc, match_r26/r28/junc/strokes.inc): Rules 26-28b, 38-45, 47-49
+//   pass1   (pass1.inc)                                : Output-scale corner rasterization (45-deg, 2:1, 3:1, 4:1, small/thin)
+//
+// Decision-Word Bit Layout (0..255 per corner channel: x=TL, y=TR, z=BR, w=BL):
+//   bits 0..1 (BLEND)  : 0 none | 1 normal | 2 dominant (pass0) or small tip / thin sliver (resolve+) | 3 weak (pass0 only)
+//   bit  2 (BIT_LINE)  :   4 = line blend (45-deg unless BIT_SHALLOW or BIT_STEEP is set)
+//   bit  3 (BIT_SEC)   :   8 = blend with second candidate neighbor (B, F, H, D instead of D, B, F, H)
+//   bit  4 (BIT_SHALLOW): 16 = shallow 2:1 (or 3:1 / 4:1 with BIT_LONG3 / BIT_LONG4)
+//   bit  5 (BIT_TONE)  :  32 = pass0: hue-weighted-only line (R9) | resolve+: BIT_LONG3 (3:1 slope)
+//   bit  6 (BIT_STEEP) :  64 = steep 2:1 (or 3:1 / 4:1 with BIT_LONG3 / BIT_LONG4)
+//   bit  7 (BIT_BLOCKED):128 = pass0: diagonal-limit blocked (R2) | resolve+: BIT_LONG4 (4:1 slope)
 //#crisp}
 //
 // 1. Minimum contrast (XBRZ_MINC): a corner whose two colors differ by less than XBRZ_MINC (x/255,
