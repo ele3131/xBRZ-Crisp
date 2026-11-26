@@ -304,11 +304,12 @@ bool meshWall46(vec3 w0, vec3 w1, vec3 pM, vec3 oA, vec3 oB, float tolSq, float 
   float dw = distSqY(w0, pM);
   return dw <= tolSq || (dw >= gapSq && neq(w0, oA) && neq(w0, oB));
 }
-bool meshFlankStroke46(vec2 coord, vec3 oS, vec3 oOpp, vec3 oD1, vec3 oD2, vec3 oN1, vec3 oN2, vec2 pcFar, float tolSq)
+bool meshFlankStroke46(vec2 coord, vec3 oS, vec3 oOpp, vec3 oD1, vec3 oD2, vec3 oN1, vec3 oN2, vec2 pcFar, inout vec3 qFar, inout bool haveFar, float tolSq)
 {
   if (distSqY(oD1, oS) > tolSq || distSqY(oD2, oS) > tolSq) return false;
   if (min(min(distSqY(oOpp, oS), distSqY(oN1, oS)), distSqY(oN2, oS)) < SQ255(54.0)) return false;
-  if (distSqY(PY(pcFar.x, pcFar.y), oS) < SQ255(54.0)) return false;
+  if (!haveFar) { qFar = PY(pcFar.x, pcFar.y); haveFar = true; }
+  if (distSqY(qFar, oS) < SQ255(54.0)) return false;
   vec2 pS = step(vec2(0.5), pcFar);
   vec2 dS = 2.0 * (pcFar - pS);
   vec2 pe1 = pS + vec2(-dS.y, dS.x), pe2 = pS - vec2(-dS.y, dS.x);
@@ -323,16 +324,18 @@ bool meshQuad46(vec2 coord, float ox, float oy, vec3 pM, float tolSq, float gapS
   return distSqY(q10, pM) <= tolSq && distSqY(q01, pM) <= tolSq
       && distSqY(q00, pM) >= gapSq && distSqY(q11, pM) >= gapSq;
 }
-bool meshCornerOk46(vec2 coord, vec2 p, bool hA, bool hB, bool wA, bool wB, vec3 mA, vec3 mB, vec3 pM, float tolSq, float gapSq, bool isMeshSlot, bool strictNonMesh)
+bool meshCornerOk46(vec2 coord, vec2 p, bool hA, bool hB, bool wA, bool wB, vec3 mA, vec3 mB, vec3 pM, float tolSq, float gapSq, bool isMeshSlot, bool strictNonMesh, inout vec3 qOut, inout bool haveOut)
 {
   if (hA && hB)
   {
-    if (isMeshSlot) return distSqY(PY(p.x, p.y), pM) <= tolSq;
-    return !strictNonMesh || distSqY(PY(p.x, p.y), pM) >= gapSq;
+    if (!isMeshSlot && !strictNonMesh) return true;
+    qOut = PY(p.x, p.y); haveOut = true;
+    if (isMeshSlot) return distSqY(qOut, pM) <= tolSq;
+    return distSqY(qOut, pM) >= gapSq;
   }
-  if (wA && hB) return eq(PY(p.x, p.y), mA);
-  if (wB && hA) return eq(PY(p.x, p.y), mB);
-  if (wA && wB && eq(mA, mB)) return eq(PY(p.x, p.y), mA);
+  if (wA && hB) { qOut = PY(p.x, p.y); haveOut = true; return eq(qOut, mA); }
+  if (wB && hA) { qOut = PY(p.x, p.y); haveOut = true; return eq(qOut, mB); }
+  if (wA && wB && eq(mA, mB)) { qOut = PY(p.x, p.y); haveOut = true; return eq(qOut, mA); }
   return true;
 }
 bool meshParity46(vec2 coord, vec3 cA, vec3 cB, vec3 oA, vec3 oB, float tolSq, float gapSq,
@@ -374,28 +377,34 @@ bool meshParity46(vec2 coord, vec3 cA, vec3 cB, vec3 oA, vec3 oB, float tolSq, f
   }
   vec2 pm11 = vec2(pmH1.x > 0.0 ? 2.0 : -1.0, -1.0);
   vec2 pm22 = vec2(pmH2.x > 0.0 ? 2.0 : -1.0,  2.0);
-  if (!meshCornerOk46(coord, pm11, hH1, hV1, wH1, wV1, mH1, mV1, pM, tolSq, gapSq, true,  !wide)
-   || !meshCornerOk46(coord, pm22, hH2, hV2, wH2, wV2, mH2, mV2, pM, tolSq, gapSq, true,  !wide)
-   || !meshCornerOk46(coord, pcA,  hH2, hV1, wH2, wV1, mH2, mV1, pM, tolSq, gapSq, false, !wide)
-   || !meshCornerOk46(coord, pcB,  hH1, hV2, wH1, wV2, mH1, mV2, pM, tolSq, gapSq, false, !wide))
+  vec3 qTmp = vec3(0.0), qA = vec3(0.0), qB = vec3(0.0);
+  bool haveTmp = false, haveA = false, haveB = false;
+  if (!meshCornerOk46(coord, pm11, hH1, hV1, wH1, wV1, mH1, mV1, pM, tolSq, gapSq, true,  !wide, qTmp, haveTmp)
+   || !meshCornerOk46(coord, pm22, hH2, hV2, wH2, wV2, mH2, mV2, pM, tolSq, gapSq, true,  !wide, qTmp, haveTmp)
+   || !meshCornerOk46(coord, pcA,  hH2, hV1, wH2, wV1, mH2, mV1, pM, tolSq, gapSq, false, !wide, qA,   haveA)
+   || !meshCornerOk46(coord, pcB,  hH1, hV2, wH1, wV2, mH1, mV2, pM, tolSq, gapSq, false, !wide, qB,   haveB))
     return false;
   if (distSqY(oA, oB) <= tolSq)
   {
     vec3 pO = 0.5 * (oA + oB);
-    if (min(min(distSqY(oH1, pO), distSqY(oH2, pO)), min(distSqY(oV1, pO), distSqY(oV2, pO))) >= SQ255(54.0)
-        && (distSqY(PY(pcA.x, pcA.y), pO) <= tolSq || distSqY(PY(pcB.x, pcB.y), pO) <= tolSq))
-      return false;
+    if (min(min(distSqY(oH1, pO), distSqY(oH2, pO)), min(distSqY(oV1, pO), distSqY(oV2, pO))) >= SQ255(54.0))
+    {
+      if (!haveA) { qA = PY(pcA.x, pcA.y); haveA = true; }
+      if (distSqY(qA, pO) <= tolSq) return false;
+      if (!haveB) { qB = PY(pcB.x, pcB.y); haveB = true; }
+      if (distSqY(qB, pO) <= tolSq) return false;
+    }
   }
-  if (meshFlankStroke46(coord, oA, oB, oH2, oV1, oH1, oV2, pcA, tolSq)
-   || meshFlankStroke46(coord, oB, oA, oH1, oV2, oH2, oV1, pcB, tolSq))
+  if (meshFlankStroke46(coord, oA, oB, oH2, oV1, oH1, oV2, pcA, qA, haveA, tolSq)
+   || meshFlankStroke46(coord, oB, oA, oH1, oV2, oH2, oV1, pcB, qB, haveB, tolSq))
     return false;
   return true;
 }
 // d) Shaded / gradient 2D checkerboards and high-contrast 1-parity 50% mesh-transparency overlays.
-bool checkerShaded46(vec2 coord, vec3 kf, vec3 kg, vec3 kj, vec3 kk, float d0, float d1,
+bool checkerShaded46(vec2 coord, vec3 kf, vec3 kg, vec3 kj, vec3 kk, float d0, float d1, float dFG, float dFJ,
                      vec3 kb, vec3 kc, vec3 ke, vec3 kh, vec3 ki, vec3 kl, vec3 kn, vec3 ko)
 {
-  float minEdgeSq = min(min(distSqY(kf, kg), distSqY(kf, kj)), min(distSqY(kk, kg), distSqY(kk, kj)));
+  float minEdgeSq = min(min(dFG, dFJ), min(distSqY(kk, kg), distSqY(kk, kj)));
   if (minEdgeSq < SQ255(30.0) || min(d0, d1) >= 0.18 * minEdgeSq) return false;
   if (max(d0, d1) < 0.18 * minEdgeSq)
   {
@@ -677,10 +686,18 @@ ivec4 pointBlend(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3 k
         if (checkerEdge46(coord, kb, kc, ke, kf, kg, kh, ki, kj, kk, kl, kn, ko, eqFG, eqFJ, eqJK, eqGK, jgSq, fkSq))
           r = ivec4(BLEND_NONE);
       }
-      else if ((isChecker && checker46(coord, kf, kg, kb, kc, ke, kh, ki, kl, kn, ko))
-               || (min(dFkSq, dJgSq) < 0.18 * min(distSqY(kf, kg), distSqY(kf, kj))
-                   && checkerShaded46(coord, kf, kg, kj, kk, dFkSq, dJgSq, kb, kc, ke, kh, ki, kl, kn, ko)))
-        r = ivec4(BLEND_NONE);
+      else
+      {
+        if (isChecker && checker46(coord, kf, kg, kb, kc, ke, kh, ki, kl, kn, ko))
+          r = ivec4(BLEND_NONE);
+        else
+        {
+          float dFG = distSqY(kf, kg), dFJ = distSqY(kf, kj);
+          if (min(dFkSq, dJgSq) < 0.18 * min(dFG, dFJ)
+              && checkerShaded46(coord, kf, kg, kj, kk, dFkSq, dJgSq, dFG, dFJ, kb, kc, ke, kh, ki, kl, kn, ko))
+            r = ivec4(BLEND_NONE);
+        }
+      }
     }
   }
 //#crisp}

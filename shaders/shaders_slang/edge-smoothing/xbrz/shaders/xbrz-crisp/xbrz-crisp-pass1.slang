@@ -221,13 +221,18 @@ void main()
   // xBRZ: drawing the corners (0, 90, 180, 270 degrees); neighbor color is fetched only when ratio > 0
   // ============================================================================================
 //#crisp{
-  MP float sumR = ratios.x + ratios.y + ratios.z + ratios.w;
+  MP float sumR = dot(ratios, vec4(1.0));
+  MP vec4 om = 1.0 - ratios;
+  MP float keepE = (om.x * om.y) * (om.z * om.w);
+  MP float wF = ratios.z * (1.0 - secondPix.z) + ratios.y * secondPix.y;
+  MP float wH = ratios.z * secondPix.z         + ratios.w * (1.0 - secondPix.w);
+  MP float wB = ratios.y * (1.0 - secondPix.y) + ratios.x * secondPix.x;
+  MP float wD = ratios.x * (1.0 - secondPix.x) + ratios.w * secondPix.w;
   MP vec3 accCol = vec3(0.0);
-  MP float keepE = 1.0;
-  if (ratios.z > 0.0) { vec2 bo = secondPix.z > 0.0 ? vec2( 0., 1.) : vec2( 1., 0.); accCol += ratios.z * P(bo.x, bo.y); keepE *= 1.0 - ratios.z; }
-  if (ratios.y > 0.0) { vec2 bo = secondPix.y > 0.0 ? vec2( 1., 0.) : vec2( 0.,-1.); accCol += ratios.y * P(bo.x, bo.y); keepE *= 1.0 - ratios.y; }
-  if (ratios.x > 0.0) { vec2 bo = secondPix.x > 0.0 ? vec2( 0.,-1.) : vec2(-1., 0.); accCol += ratios.x * P(bo.x, bo.y); keepE *= 1.0 - ratios.x; }
-  if (ratios.w > 0.0) { vec2 bo = secondPix.w > 0.0 ? vec2(-1., 0.) : vec2( 0., 1.); accCol += ratios.w * P(bo.x, bo.y); keepE *= 1.0 - ratios.w; }
+  if (wF > 0.0) accCol += wF * P( 1., 0.);
+  if (wH > 0.0) accCol += wH * P( 0., 1.);
+  if (wB > 0.0) accCol += wB * P( 0.,-1.);
+  if (wD > 0.0) accCol += wD * P(-1., 0.);
   MP vec3 res = accCol / sumR;
   if (keepE > 1e-4) res = mix(P_CENTER, res, 1.0 - keepE);
   FRAG_OUT = vec4(res, 1.0);

@@ -1130,10 +1130,29 @@
 </div>
 
 <script>
+window.addEventListener("error", function (ev) {
+  var b = document.getElementById("empty-state");
+  if (b) {
+    b.hidden = false;
+    b.innerHTML = "<div><strong>Erro ao carregar comparador</strong><span>" + String(ev.message || ev) + "</span></div>";
+  }
+});
+</script>
+<script>
 const STUDIO_DATA = /*__STUDIO_DATA__*/[];
-
+window.__STUDIO_DATA_OK = true;
+</script>
+<script>
 (function () {
   "use strict";
+  if (!window.__STUDIO_DATA_OK || typeof STUDIO_DATA === "undefined") {
+    var b = document.getElementById("empty-state");
+    if (b) {
+      b.hidden = false;
+      b.innerHTML = "<div><strong>Arquivo HTML incompleto / truncado no download</strong><span>Tente baixar novamente ou abrir em outro navegador.</span></div>";
+    }
+    return;
+  }
 
   const STORAGE_KEY = "xbrz_crisp_studio_v4_pins";
   const DRAG_THRESHOLD = 6;
@@ -1172,7 +1191,9 @@ const STUDIO_DATA = /*__STUDIO_DATA__*/[];
       autoSpots: Array.isArray(raw.autoSpots) ? raw.autoSpots : [],
       orig: raw.orig || "",
       xbrz: raw.xbrz || "",
+      xbrzPatch: raw.xbrzPatch || "",
       old: raw.old || "",
+      oldPatch: raw.oldPatch || "",
       new: raw.new || "",
       diff: raw.diff || ""
     };
@@ -1333,24 +1354,109 @@ const STUDIO_DATA = /*__STUDIO_DATA__*/[];
   }
 
   // Image Preloading
+  function isImgReady(img) {
+    if (!img) return false;
+    if (typeof HTMLCanvasElement !== "undefined" && img instanceof HTMLCanvasElement) {
+      return img.width > 0 && img.height > 0;
+    }
+    return !!img.complete && img.naturalWidth > 0;
+  }
+
+  function ensureDiffCanvas(entry, item) {
+    if (!entry || entry.diff || !item) return;
+    if (!isImgReady(entry.new)) return;
+    if (item.oldPatch && !isImgReady(entry.old)) return;
+    if (item.old && !isImgReady(entry.old)) return;
+    const w = item.w6;
+    const h = item.h6;
+    const cNew = document.createElement("canvas");
+    cNew.width = w;
+    cNew.height = h;
+    const nctx = cNew.getContext("2d", { willReadFrequently: true });
+    nctx.imageSmoothingEnabled = false;
+    nctx.drawImage(entry.new, 0, 0, w, h);
+    const nData = nctx.getImageData(0, 0, w, h);
+    const nd = nData.data;
+
+    let od = null;
+    if (entry.old && entry.old !== entry.new && isImgReady(entry.old)) {
+      const cOld = document.createElement("canvas");
+      cOld.width = w;
+      cOld.height = h;
+      const octx = cOld.getContext("2d", { willReadFrequently: true });
+      octx.imageSmoothingEnabled = false;
+      octx.drawImage(entry.old, 0, 0, w, h);
+      od = octx.getImageData(0, 0, w, h).data;
+    }
+
+    for (let i = 0; i < nd.length; i += 4) {
+      if (od && (od[i] !== nd[i] || od[i + 1] !== nd[i + 1] || od[i + 2] !== nd[i + 2])) {
+        nd[i] = 255;
+        nd[i + 1] = 55;
+        nd[i + 2] = 130;
+        nd[i + 3] = 255;
+      } else {
+        nd[i] = Math.floor(nd[i] * 0.45);
+        nd[i + 1] = Math.floor(nd[i + 1] * 0.45);
+        nd[i + 2] = Math.floor(nd[i + 2] * 0.45);
+        nd[i + 3] = 255;
+      }
+    }
+    nctx.putImageData(nData, 0, 0);
+    entry.diff = cNew;
+  }
+
   function ensureItemImages(item) {
     if (!item) return null;
     let entry = imgCache.get(item.id);
     if (entry) return entry;
     entry = {};
     imgCache.set(item.id, entry);
+
+    function compositePatch(targetKey, patchKey, privKey) {
+      if (entry[targetKey]) return;
+      if (!item[targetKey] && !item[patchKey]) {
+        if (isImgReady(entry.new)) entry[targetKey] = entry.new;
+        return;
+      }
+      if (item[patchKey] && isImgReady(entry.new) && isImgReady(entry[privKey])) {
+        const c = document.createElement("canvas");
+        c.width = item.w6;
+        c.height = item.h6;
+        const cctx = c.getContext("2d");
+        cctx.imageSmoothingEnabled = false;
+        cctx.drawImage(entry.new, 0, 0, item.w6, item.h6);
+        cctx.drawImage(entry[privKey], 0, 0, item.w6, item.h6);
+        entry[targetKey] = c;
+      }
+    }
+
+    function onLoadKey() {
+      compositePatch("old", "oldPatch", "_oldPatch");
+      compositePatch("xbrz", "xbrzPatch", "_xbrzPatch");
+      if (currentItem() && currentItem().id === item.id) {
+        drawStage();
+      }
+    }
+
     ["orig", "xbrz", "old", "new", "diff"].forEach(function (k) {
       const uri = item[k];
       if (!uri) return;
       const im = new Image();
       im.decoding = "sync";
       entry[k] = im;
-      im.onload = function () {
-        if (currentItem() && currentItem().id === item.id) {
-          drawStage();
-        }
-      };
+      im.onload = onLoadKey;
       im.src = uri;
+    });
+
+    [["old", "oldPatch", "_oldPatch"], ["xbrz", "xbrzPatch", "_xbrzPatch"]].forEach(function (spec) {
+      if (!item[spec[0]] && item[spec[1]]) {
+        const pm = new Image();
+        pm.decoding = "sync";
+        entry[spec[2]] = pm;
+        pm.onload = onLoadKey;
+        pm.src = item[spec[1]];
+      }
     });
     return entry;
   }
@@ -1556,6 +1662,7 @@ const STUDIO_DATA = /*__STUDIO_DATA__*/[];
 
     const entry = ensureItemImages(item);
     const layerKey = displayedLayer();
+    if (layerKey === "diff") ensureDiffCanvas(entry, item);
     const img = (entry && entry[layerKey]) || (entry && entry.new) || (entry && entry.orig);
 
     const dx = state.panX;
@@ -1567,7 +1674,7 @@ const STUDIO_DATA = /*__STUDIO_DATA__*/[];
     ctx.fillStyle = "#000000";
     ctx.fillRect(Math.floor(dx) - 1, Math.floor(dy) - 1, Math.ceil(dw) + 2, Math.ceil(dh) + 2);
 
-    if (img && img.complete && img.naturalWidth > 0) {
+    if (isImgReady(img)) {
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(img, dx, dy, dw, dh);
     }
@@ -2289,8 +2396,9 @@ const STUDIO_DATA = /*__STUDIO_DATA__*/[];
 
     const entry = ensureItemImages(item);
     const layerKey = displayedLayer();
+    if (layerKey === "diff") ensureDiffCanvas(entry, item);
     const img = (entry && entry[layerKey]) || (entry && entry.new) || (entry && entry.orig);
-    if (!img || !img.complete || img.naturalWidth === 0) {
+    if (!isImgReady(img)) {
       showToast("Aguarde a imagem carregar...");
       return;
     }

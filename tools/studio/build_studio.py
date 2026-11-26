@@ -104,7 +104,7 @@ DEFAULT_ITEMS = [
          title="GS1 Vila — Cena Completa", badge="240×160",
          note="Cena completa da vila de Vale (grama, sprites, casa, ponte).",
          box=None,
-         autoSpots=[{"x": 124, "y": 82, "label": "Isaac"}, {"x": 122, "y": 84, "label": "Peito"}]),
+         autoSpots=[{"x": 14, "y": 115, "label": "Rampa 2:1→45° (14,115)"}, {"x": 14, "y": 110, "label": "Rosa (14,110)"}, {"x": 15, "y": 108, "label": "Cinza (15,108)"}, {"x": 12, "y": 112, "label": "Azul (12,112)"}]),
     dict(id="gs1_menu_full", cat="gs", sceneId="docs_gs_menu",
          title="GS1 Menu — Cena Completa", badge="240×160",
          note="Menu Psinergia completo: ícones, mini-sprites e sombras suaves das letras.",
@@ -134,7 +134,7 @@ DEFAULT_ITEMS = [
     dict(id="cv_aria_hud", cat="other", sceneId="docs_cv_aria",
          title="Castlevania: Aria of Sorrow", badge="GBA",
          note="Moldura dourada, barras retas e '280' suave.",
-         box=(0, 0, 112, 34), autoSpots=[]),
+         box=(0, 0, 112, 34), autoSpots=[{"x": 26, "y": 18, "label": "Canto (26,18)"}]),
     dict(id="ffta_boy", cat="other", sceneId="docs_ffta",
          title="Final Fantasy Tactics Advance", badge="GBA",
          note="Ombro do garoto (Regra 49) e contornos sem regressão.",
@@ -146,7 +146,7 @@ DEFAULT_ITEMS = [
     dict(id="dbz_title", cat="other", sceneId="docs_dbz_title",
          title="DBZ: Buu's Fury — Título", badge="GBA",
          note="Cabelo e traços finos em alta densidade.",
-         box=(4, 48, 84, 108), autoSpots=[]),
+         box=(4, 48, 84, 108), autoSpots=[{"x": 59, "y": 89, "label": "Diag (59,89)"}]),
     dict(id="fire_emblem", cat="other", sceneId="s50_gba_fire_emblem",
          title="Fire Emblem — Mapa & Sprites", badge="GBA",
          note="Cavalaria, lança diagonal e arcos de pedra.",
@@ -175,7 +175,15 @@ def discover_scenes(extra_dir: str | None) -> dict[str, Path]:
 
 def encode_webp_uri(rgb: np.ndarray) -> str:
     buf = io.BytesIO()
-    Image.fromarray(rgb, "RGB").save(buf, format="WEBP", lossless=True, quality=100, method=4)
+    m = 6 if (rgb.shape[0] * rgb.shape[1] >= 120_000) else 4
+    Image.fromarray(rgb, "RGB").save(buf, format="WEBP", lossless=True, quality=100, method=m)
+    return "data:image/webp;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def encode_webp_rgba_uri(rgba: np.ndarray) -> str:
+    buf = io.BytesIO()
+    m = 6 if (rgba.shape[0] * rgba.shape[1] >= 80_000) else 4
+    Image.fromarray(rgba, "RGBA").save(buf, format="WEBP", lossless=True, quality=100, method=m)
     return "data:image/webp;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
 
 
@@ -215,8 +223,14 @@ def main() -> None:
     ap.add_argument("--extra-dir", default=None, help="Optional directory of extra native 1x PNG scenes")
     ap.add_argument("--template", default=str(TEMPLATE_PATH), help="Path to studio_template.html")
     ap.add_argument("--data-out", default=None, help="Optional path to save raw JSON data payload")
+    ap.add_argument("--only-diffs", action="store_true", help="Hide 0-px items and replace with other scenes that have diffs")
+    ap.add_argument("--auto-fill", type=int, default=4, help="Max extra diff-bearing scenes to auto-add with --only-diffs (default: 4)")
+    ap.add_argument("--compact", action="store_true", default=True, help="Keep HTML compact (~1.2 MiB) by focusing full-screen scenes onto 100x80 diff crops (default: on)")
+    ap.add_argument("--full-frames", action="store_true", help="Keep full 240x160 full-screen scenes instead of 100x80 diff crops")
     ap.add_argument("--out", default=str(REPO_ROOT / "build/xbrz_crisp_studio.html"), help="Output HTML path")
     args = ap.parse_args()
+    if args.full_frames:
+        args.compact = False
 
     scenes = discover_scenes(args.extra_dir)
     active_items = [it for it in DEFAULT_ITEMS if it["sceneId"] in scenes]
@@ -240,25 +254,43 @@ def main() -> None:
 
         cache: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = {}
 
-        def get_renders(scene_id: str):
+        def get_renders(scene_id: str, need_xbrz: bool = True):
             if scene_id not in cache:
                 rgba = np.array(Image.open(scenes[scene_id]).convert("RGBA"), dtype=np.uint8)
                 orig = rgba[:, :, :3]
                 new_c = render_crisp(gles, new_progs, rgba)
-                xbrz = render_xbrz(gles, new_progs, rgba)
+                xbrz = render_xbrz(gles, new_progs, rgba) if need_xbrz else None
                 if args.baseline_dir:
                     old_c = np.array(Image.open(Path(args.baseline_dir) / f"{scene_id}.png").convert("RGB"), dtype=np.uint8)
                 else:
                     old_c = render_crisp(gles, old_progs, rgba)
                 cache[scene_id] = (orig, xbrz, old_c, new_c)
+            elif need_xbrz and cache[scene_id][1] is None:
+                orig, _, old_c, new_c = cache[scene_id]
+                rgba = np.array(Image.open(scenes[scene_id]).convert("RGBA"), dtype=np.uint8)
+                cache[scene_id] = (orig, render_xbrz(gles, new_progs, rgba), old_c, new_c)
             return cache[scene_id]
 
-        payload = []
-        for it in active_items:
-            orig, xbrz, old_c, new_c = get_renders(it["sceneId"])
+        def build_item(it: dict) -> dict | None:
+            orig, xbrz, old_c, new_c = get_renders(it["sceneId"], need_xbrz=True)
             h1, w1 = orig.shape[:2]
+            badge = it["badge"]
             if it["box"] is None:
-                x0, y0, x1, y1 = 0, 0, w1, h1
+                if args.compact and w1 * h1 > 100 * 80:
+                    dm_all = np.any(old_c != new_c, axis=2)
+                    ys, xs = np.where(dm_all)
+                    if len(xs) > 0:
+                        cx = int(np.median(xs) // 6)
+                        cy = int(np.median(ys) // 6)
+                        cw, ch = min(100, w1), min(80, h1)
+                        x0 = max(0, min(w1 - cw, cx - cw // 2))
+                        y0 = max(0, min(h1 - ch, cy - ch // 2))
+                        x1, y1 = x0 + cw, y0 + ch
+                        badge = f"{cw}×{ch}"
+                    else:
+                        x0, y0, x1, y1 = 0, 0, w1, h1
+                else:
+                    x0, y0, x1, y1 = 0, 0, w1, h1
             else:
                 x0, y0, x1, y1 = max(0, it["box"][0]), max(0, it["box"][1]), min(w1, it["box"][2]), min(h1, it["box"][3])
             oc = old_c[y0 * 6 : y1 * 6, x0 * 6 : x1 * 6]
@@ -266,16 +298,34 @@ def main() -> None:
             xc = xbrz[y0 * 6 : y1 * 6, x0 * 6 : x1 * 6]
             diff_mask = np.any(oc != nc, axis=2)
             dpx = int(diff_mask.sum())
-            diff_vis = (nc.astype(np.float32) * 0.45).astype(np.uint8)
-            diff_vis[diff_mask] = (255, 55, 130)
+            if args.only_diffs and dpx == 0:
+                print(f"  [skip ] {it['id']:18s} ({x1-x0:3d}x{y1-y0:3d}) diff=    0 px")
+                return None
+
+            def attach_layer(target_key: str, patch_key: str, arr: np.ndarray, mask: np.ndarray) -> None:
+                n_diff = int(mask.sum())
+                if n_diff == 0:
+                    return
+                patch = np.zeros((arr.shape[0], arr.shape[1], 4), dtype=np.uint8)
+                patch[mask, :3] = arr[mask]
+                patch[mask, 3] = 255
+                patch_uri = encode_webp_rgba_uri(patch)
+                if n_diff * 50 < arr.shape[0] * arr.shape[1]:
+                    item_obj[patch_key] = patch_uri
+                else:
+                    full_uri = encode_webp_uri(arr)
+                    if len(patch_uri) < len(full_uri):
+                        item_obj[patch_key] = patch_uri
+                    else:
+                        item_obj[target_key] = full_uri
 
             spots = [s for s in it["autoSpots"] if x0 <= s["x"] < x1 and y0 <= s["y"] < y1]
-            payload.append({
+            item_obj = {
                 "id": it["id"],
                 "cat": it["cat"],
                 "sceneId": it["sceneId"],
                 "title": it["title"],
-                "badge": it["badge"],
+                "badge": badge,
                 "note": it["note"],
                 "ox": x0,
                 "oy": y0,
@@ -284,18 +334,80 @@ def main() -> None:
                 "dpx": dpx,
                 "autoSpots": spots,
                 "orig": encode_webp_uri(orig[y0:y1, x0:x1]),
-                "xbrz": encode_webp_uri(xc),
-                "old": encode_webp_uri(oc),
                 "new": encode_webp_uri(nc),
-                "diff": encode_webp_uri(diff_vis),
-            })
+            }
+            attach_layer("old", "oldPatch", oc, diff_mask)
+            attach_layer("xbrz", "xbrzPatch", xc, np.any(xc != nc, axis=2))
             print(f"  [{it['cat']:5s}] {it['id']:18s} ({x1-x0:3d}x{y1-y0:3d}) diff={dpx:5d} px")
+            return item_obj
+
+        payload = []
+        shown_scenes: set[str] = set()
+        for it in active_items:
+            obj = build_item(it)
+            if obj is not None:
+                payload.append(obj)
+                shown_scenes.add(it["sceneId"])
+
+        if args.only_diffs and args.auto_fill > 0:
+            extra_cands = []
+            for sid in sorted(scenes.keys()):
+                if sid in shown_scenes:
+                    continue
+                orig, _, old_c, new_c = get_renders(sid, need_xbrz=False)
+                diff6 = np.any(old_c != new_c, axis=2)
+                dpx_all = int(diff6.sum())
+                if dpx_all == 0:
+                    continue
+                h1, w1 = orig.shape[:2]
+                diff1 = diff6.reshape(h1, 6, w1, 6).any(axis=(1, 3))
+                ys, xs = np.where(diff1)
+                # Center an 80x60 (or full if smaller) window on the densest diff tile
+                best_x, best_y, best_cnt = int(xs[0]), int(ys[0]), -1
+                for tx, ty in zip(xs.tolist(), ys.tolist()):
+                    cnt = int(((np.abs(xs - tx) <= 40) & (np.abs(ys - ty) <= 30)).sum())
+                    if cnt > best_cnt:
+                        best_cnt, best_x, best_y = cnt, tx, ty
+                half_w, half_h = min(40, w1 // 2), min(30, h1 // 2)
+                x0 = max(0, min(w1 - 2 * half_w, best_x - half_w))
+                y0 = max(0, min(h1 - 2 * half_h, best_y - half_h))
+                x1 = min(w1, x0 + max(2 * half_w, min(w1, 80)))
+                y1 = min(h1, y0 + max(2 * half_h, min(h1, 60)))
+                box_dpx = int(diff6[y0 * 6 : y1 * 6, x0 * 6 : x1 * 6].sum())
+                # Pick up to 3 distinct changed 1x spots inside the box
+                in_box = [(int(tx), int(ty)) for tx, ty in zip(xs.tolist(), ys.tolist()) if x0 <= tx < x1 and y0 <= ty < y1]
+                auto_spots = []
+                for tx, ty in in_box:
+                    if all(abs(tx - s["x"]) + abs(ty - s["y"]) > 8 for s in auto_spots):
+                        auto_spots.append({"x": tx, "y": ty, "label": f"Diff ({tx},{ty})"})
+                        if len(auto_spots) >= 3:
+                            break
+                extra_cands.append((box_dpx, sid, (x0, y0, x1, y1), auto_spots))
+
+            extra_cands.sort(key=lambda t: (-t[0], t[1]))
+            for _, sid, box, auto_spots in extra_cands[: args.auto_fill]:
+                pretty = sid.replace("s50_", "").replace("docs_", "").replace("micro_", "").replace("_", " ").title()
+                badge = "Auto Diff"
+                cat = "gs" if ("gs1" in sid or "gs2" in sid or "gs_" in sid) else "other"
+                obj = build_item(dict(
+                    id=f"auto_{sid}",
+                    cat=cat,
+                    sceneId=sid,
+                    title=pretty,
+                    badge=badge,
+                    note=f"Recorte automático focado na maior concentração de diffs em {sid}.",
+                    box=box,
+                    autoSpots=auto_spots,
+                ))
+                if obj is not None:
+                    payload.append(obj)
+                    shown_scenes.add(sid)
     finally:
         gles.close()
         if tmp_dir_ctx is not None:
             tmp_dir_ctx.cleanup()
 
-    data_json = json.dumps(payload, separators=(",", ":"))
+    data_json = "[\n" + ",\n".join(json.dumps(it, separators=(",", ":")) for it in payload) + "\n]"
     if args.data_out:
         Path(args.data_out).write_text(data_json, encoding="utf-8")
     out_path = Path(args.out)
