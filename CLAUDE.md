@@ -12,13 +12,13 @@ Edit only the shared templates in `tools/src/` and the generator in `tools/build
 - `tools/src/header.inc` — Full numbered rule catalog, Pass-to-Rule Index, and Decision-Word Bit Layout (included in `pass0.inc` only)
 - `tools/src/header_short.inc` — Concise header for `resolve.inc`, `match.inc`, and `pass1.inc`
 - `tools/src/color.inc` — Rec. 2020 `LUMA_W`, `toYCbCr()`, `luma()`, `distSqY()`, `distSqYCbCr()`, `distYCbCr()`, `dist255()`, `SQ255()`, `withinY255()`, `withinEqY255()`, `within255()`, `withinEq255()`, `geomRamp4()`
-- `tools/src/bits.inc` — Shared decision-word bit constants (`BIT_LINE`..`BIT_BLOCKED`, `BIT_LONG3`/`BIT_LONG4`) and word masks (`BLEND`, `FLAG`, `cut4`, `activeCutOf`, `cutNoWeak`, `drawsLine4`, `isLine45`, `wordPlain`, `wordLine45`)
-- `tools/src/hold28.inc` — Shared Rule 28 hold-score and tie-breaker helpers (`held28`, `holdOf28`, `holdOfEdge28`, `tie28`, `whole28Mask`) used by `resolve.inc` and `match.inc`
+- `tools/src/bits.inc` — Shared decision-word bit constants (`BIT_LINE`..`BIT_BLOCKED`, `BIT_LONG3`/`BIT_LONG4`, `BIT_ARC45`/`BIT_ARC21`) and word masks (`BLEND`, `FLAG`, `cut4`, `activeCutOf`, `cutNoWeak`, `drawsLine4`, `isLine45`, `wordPlain`, `wordLine45`)
+- `tools/src/hold28.inc` — Shared Rule 28 hold-score, tie-breaker, and crossing drop helpers (`held28`, `holdOf28`, `holdOfEdge28`, `tie28`, `whole28Mask`, `dropCross28`) used by `resolve.inc` and `match.inc`
 - `tools/src/point.inc` + `tools/src/point_checker46.inc` — Pass 0a (`point`): per-vertex 2×2 junction preprocessing + T-junction/dark-outline guards + Rules 31, 36, and 46 (checkerboards/50% meshes)
 - `tools/src/pass0.inc` — Pass 0b (`pass0`): per-texel corner detection and Crisp rules (Rules 1–11, 13, 15, 16, 18, 30, 32, 33)
 - `tools/src/resolve.inc` + `tools/src/resolve_steps14.inc` + `tools/src/resolve_junc20.inc` — Pass 0c (`resolve`): cross-neighbor corner resolution (Rules 1 weak, 2 chain/meet, 9 2nd, 14–15b, 17, 19–21 incl. 20b crosshair bar, 23, 24, 28, 29, 37)
-- `tools/src/match.inc` + `tools/src/match_geom.inc` + `tools/src/match_r26.inc` + `tools/src/match_r28.inc` + `tools/src/match_junctions.inc` + `tools/src/match_strokes.inc` — Pass 0d (`match`): post-resolve diagonal matching, junction guards, and stroke refinements (`xbrz-crisp` only; Rules 26, 28–28b, 38–41, 42b, 43–45, 48, 49)
-- `tools/src/pass1.inc` — Pass 1 (`pass1`): output-scale corner rasterization (45°, 2:1, 3:1, 4:1, small/thin, C1 circular fillets on plain bevels and isolated flat-wall 45° corners)
+- `tools/src/match.inc` + `tools/src/match_geom.inc` + `tools/src/match_r26.inc` + `tools/src/match_r28.inc` + `tools/src/match_junctions.inc` + `tools/src/match_strokes.inc` — Pass 0d (`match`): monotonic 4-phase post-resolve diagonal matching, junction guards, unified 2:1 downgrade (`downgrade21Collision`), stroke refinements (`xbrz-crisp` only; Rules 26, 28–28b, 38–41, 42b, 43–45, 48, 49), and Phase 5 `BIT_ARC45`/`BIT_ARC21` precomputation
+- `tools/src/pass1.inc` — Pass 1 (`pass1`): zero-neighbor-fetch output-scale corner rasterization (45°, 2:1, 3:1, 4:1, small/thin, C1 circular fillets on bevels & `BIT_ARC45` corners, C1 `sdParab21` curves on `BIT_ARC21` flat→2:1→45° transitions)
 
 After any shader or template change, run the build and verification scripts from the repository root:
 

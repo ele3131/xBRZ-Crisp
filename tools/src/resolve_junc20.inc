@@ -40,27 +40,23 @@ float knightFlip37(bool s1, vec3 E, vec3 cPri, vec3 cSec, vec3 kPri, vec3 kSec, 
   return float(dPcE >= XBRZ_JUNCTION && dOE >= XBRZ_JUNCTION && cand + dPcE >= 1.15 * dOE && kin37(O, K, Pc));
 }
 
-// ---- 21 and 22: corner-local neighborhood frame ----
+// ---- 21: corner-local neighborhood frame ----
 // Oriented around a corner's chosen paint direction p (color u) and unchosen side q (color w):
-//   p, q     : unit cardinal offsets to painted neighbor u and unchosen neighbor w; s = BIT_SEC flag
-//   u, w     : colors at +p and +q; mu, mw = colors at -p and -q; opp = diagonal pixel at -p-q
-//   uw       : corner diagonal pixel at +p+q; umw = +p-q; wmu = +q-p
-//   u2, w2   : two steps along +p and +q; u2mw = +2p-q; w2mu = +2q-p; uw2 = +p+2q
-//   ru, rumw : decision word of +p's opposite corner and +p-q's matching corner
+//   p, q   : unit cardinal offsets to painted neighbor u and unchosen neighbor w
+//   u, w   : colors at +p and +q; mu, mw = colors at -p and -q; opp = diagonal pixel at -p-q
+//   uw     : corner diagonal pixel at +p+q; umw = +p-q; wmu = +q-p
+//   u2, w2 : two steps along +p and +q; u2mw = +2p-q; w2mu = +2q-p; uw2 = +p+2q
 struct Roles
 {
   vec2 p, q;
-  float s;
   vec3 u, w, mu, mw, opp, uw, umw, wmu, u2, w2, u2mw, w2mu, uw2;
-  float ru, rumw;
 };
 Roles makeRoles(vec2 v, vec2 h, vec3 cv, vec3 ch, vec3 cvh, vec3 cvmh, vec3 chmv,
                 vec3 cv2, vec3 ch2, vec3 cv2mh, vec3 ch2mv, vec3 cvp2h, vec3 chp2v,
-                vec3 cmv, vec3 cmh, vec3 copp, float rv, float rh, float rvmh, float rhmv, float s)
+                vec3 cmv, vec3 cmh, vec3 copp, float s)
 {
   bool sv = s > 0.5;
   Roles r;
-  r.s = s;
   r.p = sv ? v : h;            r.q = sv ? h : v;
   r.u = sv ? cv : ch;          r.w = sv ? ch : cv;
   r.mu = sv ? cmv : cmh;       r.mw = sv ? cmh : cmv;
@@ -69,15 +65,19 @@ Roles makeRoles(vec2 v, vec2 h, vec3 cv, vec3 ch, vec3 cvh, vec3 cvmh, vec3 chmv
   r.u2 = sv ? cv2 : ch2;       r.w2 = sv ? ch2 : cv2;
   r.u2mw = sv ? cv2mh : ch2mv; r.w2mu = sv ? ch2mv : cv2mh;
   r.uw2 = sv ? cvp2h : chp2v;
-  r.ru = sv ? rv : rh;         r.rumw = sv ? rvmh : rhmv;
   return r;
+}
+
+// 3x3 pre-gate for Rule 21 so outer-ring fetches can be skipped when no corner matches a straight/shaded line
+bool line21Seed(vec3 u, vec3 uw, vec3 umw)
+{
+  return sameColor(u, uw) || (withinY255(u, uw, XBRZ_MINC) && withinY255(u, umw, XBRZ_MINC) && sameColor(uw, umw));
 }
 
 // ---- 21. A straight line does not bend ----
 vec2 straight21(Roles r, vec3 E, float ln, float uwSq, float euSq, float ewSq)
 {
   bool shadedLine = withinY255(r.u, r.uw, XBRZ_MINC) && withinY255(r.u, r.umw, XBRZ_MINC) && sameColor(r.uw, r.umw);
-  if (uwSq <= SQ255(XBRZ_LINE_SIDE) || (!sameColor(r.u, r.uw) && !shadedLine)) return vec2(0.0);
   float minESq = min(euSq, ewSq);
   float dEwmuSq = distSqY(E, r.wmu);
   bool sEwmu = dEwmuSq < SQ255(XBRZ_SAME);
@@ -110,7 +110,7 @@ vec2 straight21(Roles r, vec3 E, float ln, float uwSq, float euSq, float ewSq)
   return vec2(1.0, takes ? 1.0 : 0.0);
 }
 
-#define ROLES_0(s) makeRoles(vX, hX, B, D, A, C, G, uu, ll, ruu, lld, llu, luu, H, F, I, iB.z, iD.z, iC.x, iG.x, s)
-#define ROLES_1(s) makeRoles(vY, hY, F, B, C, I, A, rr, uu, rrd, luu, ruu, rru, D, H, G, iF.w, iB.w, iI.y, iA.y, s)
-#define ROLES_2(s) makeRoles(vZ, hZ, H, F, I, G, C, dd, rr, ldd, rru, rrd, rdd, B, D, A, iH.x, iF.x, iG.z, iC.z, s)
-#define ROLES_3(s) makeRoles(vW, hW, D, H, G, A, I, ll, dd, llu, rdd, ldd, lld, F, B, C, iD.y, iH.y, iA.w, iI.w, s)
+#define ROLES_0(s) makeRoles(vX, hX, B, D, A, C, G, uu, ll, ruu, lld, llu, luu, H, F, I, s)
+#define ROLES_1(s) makeRoles(vY, hY, F, B, C, I, A, rr, uu, rrd, luu, ruu, rru, D, H, G, s)
+#define ROLES_2(s) makeRoles(vZ, hZ, H, F, I, G, C, dd, rr, ldd, rru, rrd, rdd, B, D, A, s)
+#define ROLES_3(s) makeRoles(vW, hW, D, H, G, A, I, ll, dd, llu, rdd, ldd, lld, F, B, C, s)

@@ -214,137 +214,67 @@ vec4 applyRule26b(vec4 res, vec4 pairSq, vec4 minCornerSq, vec4 maxCornerSq, flo
   return res;
 }
 
-// Rule 26d: downgrade a 2:1 shallow/steep line to 45 deg when extended neighbor N has its adjacent corner
-// cut away at 45 deg (cases A, B, C, D)
-vec4 applyRule26d(vec4 res, vec4 pairSq, vec4 minCornerSq)
-{
-  vec4 sh26 = FLAG(res, BIT_SHALLOW), st26 = FLAG(res, BIT_STEEP), sec26 = FLAG(res, BIT_SEC);
-  vec4 ln21Base = cut4(res) * FLAG(res, BIT_LINE) * abs(sh26 - st26)
-                * (1.0 - FLAG(res, BIT_LONG3)) * (1.0 - FLAG(res, BIT_LONG4));
-  vec4 ln21A = ln21Base * vec4(lessThan(pairSq, vec4(SQ255(XBRZ_SAME_M))));
-  vec4 ln21Want = ln21Base * vec4(equal(sec26, st26));
-  vec4 ln21B = ln21Want * vec4(greaterThanEqual(pairSq, vec4(SQ255(XBRZ_JUNC4))));
-  vec4 ln21C = ln21Want * vec4(greaterThanEqual(pairSq, vec4(mincSq)))
-             * vec4(greaterThanEqual(minCornerSq, vec4(SQ255(XBRZ_JUNC4))));
-  vec4 ln21D = ln21Base * cut4(res.zwxy) * isLine45(res.zwxy);
-  vec4 ln21 = max(max(ln21A, ln21B), max(ln21C, ln21D));
-  if (dot(ln21, vec4(1.0)) <= 0.5) return res;
-  for (int k = 0; k < 4; k++)
-  {
-    vec4 m = cornerMask(k);
-    if (dot(ln21, m) < 0.5) continue;
-    bool isSh = dot(sh26, m) > 0.5;
-    vec2 nbrOff, othOff;
-    slope21Offsets(k, isSh, nbrOff, othOff);
-    float nw = dot(cardInfo(nbrOff), m.zwxy);
-    if (BLEND(nw) < 0.5 || FLAG(nw, BIT_LINE) < 0.5 || FLAG(nw, BIT_SHALLOW) > 0.5 || FLAG(nw, BIT_STEEP) > 0.5) continue;
-    float wantSec = isSh ? 0.0 : 1.0;
-    float nwSec = FLAG(nw, BIT_SEC);
-    vec2 extOff = nbrOff - othOff;
-    vec3 Nc = cardColor(nbrOff), Xc = diagColor(extOff);
-    float dNXSq = distSqY(Nc, Xc), dEXSq = distSqY(nE, Xc);
-    bool ok26d = false;
-    if (dot(ln21C, m) > 0.5
-        && abs(nwSec - (1.0 - wantSec)) < 0.5
-        && dEXSq >= SQ255(XBRZ_SAME_M))
-      ok26d = true;
-    if (!ok26d && dot(ln21A, m) > 0.5)
-    {
-      if (dNXSq >= SQ255(XBRZ_SAME_M) && dNXSq > dEXSq
-          && (abs(nwSec - wantSec) < 0.5 || dEXSq < SQ255(XBRZ_SAME_M)))
-        ok26d = true;
-    }
-    else if (!ok26d && dot(ln21B, m) > 0.5
-             && abs(nwSec - wantSec) < 0.5)
-    {
-      vec3 Oc = cardColor(othOff);
-      if (dNXSq >= SQ255(XBRZ_JUNC4) && distSqY(Oc, Xc) >= mincSq
-          && withinY255(nE, cardColor(-othOff), XBRZ_SAME_M)
-          && dot(cut4(cardInfo(-othOff)), vec4(1.0)) < 0.5)
-        ok26d = true;
-    }
-    if (!ok26d && dot(ln21D, m) > 0.5
-        && FLAG(nw, BIT_LONG3) + FLAG(nw, BIT_LONG4) < 0.5
-        && abs(nwSec - wantSec) < 0.5
-        && dEXSq >= SQ255(XBRZ_SAME_M))
-    {
-      if (distSqY(cardColor(othOff), Xc) >= mincSq)
-      {
-        vec4 rO = cardInfo(othOff), rD = diagInfo(nbrOff + othOff);
-        if (dot(cut4(rO) * isLine45(rO) + cut4(rD) * isLine45(rD), m.zwxy) > 0.5)
-        {
-          float xw = dot(diagInfo(extOff), m.zwxy);
-          if (FLAG(xw, BIT_SHALLOW) + FLAG(xw, BIT_STEEP) < 0.5)
-            ok26d = true;
-        }
-      }
-    }
-    if (ok26d)
-      res -= m * (isSh ? BIT_SHALLOW : BIT_STEEP);
-  }
-  return res;
-}
 
-// Rules 26e & 26f (shared 45-degree line gate):
-// - 26e: drop a 45 deg line cutting a straight 2px light sclera E tucked inside two orthogonal uncut dark bars
-// - 26f: upgrade a 45 deg line on a high-contrast (>= 100) gradient edge to 2:1 when partner at extOff matches
-vec4 applyRule26ef(vec4 res, vec4 pairSq, vec4 minCornerSq)
+// Rule 26e: drop a 45 deg line cutting a straight 2px light sclera E tucked inside two orthogonal uncut dark bars
+vec4 applyRule26e(vec4 res, vec4 pairSq, vec4 minCornerSq)
 {
-  vec4 l45_26 = cut4(res) * isLine45(res);
-  vec4 eyeC = l45_26 * vec4(greaterThanEqual(pairSq, vec4(SQ255(XBRZ_JUNC4))))
+  vec4 eyeC = cut4(res) * isLine45(res) * vec4(greaterThanEqual(pairSq, vec4(SQ255(XBRZ_JUNC4))))
             * vec4(greaterThanEqual(minCornerSq, vec4(SQ255(60.0))));
-  vec4 ln45 = l45_26 * vec4(greaterThanEqual(minCornerSq, vec4(SQ255(100.0))))
-            * vec4(lessThan(pairSq, vec4(SQ255(45.0))));
-  if (dot(eyeC + ln45, vec4(1.0)) <= 0.5) return res;
+  if (dot(eyeC, vec4(1.0)) <= 0.5) return res;
   vec4 secM = FLAG(res, BIT_SEC);
   vec4 dropEye = vec4(0.0);
-  vec4 add26f = vec4(0.0);
   for (int k = 0; k < 4; k++)
   {
     vec2 c = cornerOff(k);
     vec4 m = vtxCorner(c);
-    bool dropped = false;
-    if (dot(eyeC, m) > 0.5)
-    {
-      vec2 pOff, qOff;
-      paintPairOffsets(k, c, dot(secM, m) > 0.5, pOff, qOff);
-      vec3 Pc = cardColor(pOff), Qc = cardColor(qOff);
-      if (max(Pc.x, Qc.x) <= nE.x - 0.15
-          && withinY255(nE, cardColor(-qOff), XBRZ_SAME_M) && !withinY255(nE, cardColor(-pOff), XBRZ_SAME_M)
-          && withinY255(Qc, diagColor(c), XBRZ_SAME_M) && withinY255(Pc, diagColor(pOff - qOff), XBRZ_SAME_M)
-          && dot(cut4(cardInfo(pOff)), vec4(1.0)) < 0.5
-          && dot(cut4(cardInfo(qOff)), vec4(1.0)) < 0.5
-          && dot(cut4(diagInfo(c)), vec4(1.0)) < 0.5)
-      {
-        dropEye += m;
-        dropped = true;
-      }
-    }
-    if (!dropped && dot(ln45, m) > 0.5)
-    {
-      float addBit = 0.0;
-      for (int dir = 0; dir < 2; dir++)
-      {
-        bool isSh = (dir == 0);
-        vec2 nbrOff, othOff;
-        slope21Offsets(k, isSh, nbrOff, othOff);
-        vec2 extOff = nbrOff - othOff;
-        vec2 runOff = othOff - nbrOff;
-        if (!withinY255(nE, cardColor(-othOff), XBRZ_SAME_M)) continue;
-        if (!withinY255(nE, diagColor(runOff), XBRZ_SAME_M)) continue;
-        vec3 Nc = cardColor(nbrOff), Xc = diagColor(extOff);
-        if (distSqY(Nc, Xc) >= SQ255(45.0) || distSqY(nE, Xc) < SQ255(100.0)) continue;
-        float xw = dot(diagInfo(extOff), m.zwxy);
-        float wantBit = isSh ? BIT_SHALLOW : BIT_STEEP;
-        float otherBit = isSh ? BIT_STEEP : BIT_SHALLOW;
-        if (BLEND(xw) > 0.5 && FLAG(xw, BIT_LINE) > 0.5 && FLAG(xw, wantBit) > 0.5 && FLAG(xw, otherBit) < 0.5
-            && FLAG(xw, BIT_LONG3) < 0.5 && FLAG(xw, BIT_LONG4) < 0.5)
-          addBit = addBit > 0.5 ? -1.0 : wantBit;
-      }
-      if (addBit > 0.5) add26f += m * addBit;
-    }
+    if (dot(eyeC, m) < 0.5) continue;
+    vec2 pOff, qOff;
+    paintPairOffsets(k, c, dot(secM, m) > 0.5, pOff, qOff);
+    vec3 Pc = cardColor(pOff), Qc = cardColor(qOff);
+    if (max(Pc.x, Qc.x) <= nE.x - 0.15
+        && withinY255(nE, cardColor(-qOff), XBRZ_SAME_M) && !withinY255(nE, cardColor(-pOff), XBRZ_SAME_M)
+        && withinY255(Qc, diagColor(c), XBRZ_SAME_M) && withinY255(Pc, diagColor(pOff - qOff), XBRZ_SAME_M)
+        && dot(cut4(cardInfo(pOff)), vec4(1.0)) < 0.5
+        && dot(cut4(cardInfo(qOff)), vec4(1.0)) < 0.5
+        && dot(cut4(diagInfo(c)), vec4(1.0)) < 0.5)
+      dropEye += m;
   }
-  return res * (1.0 - min(dropEye, vec4(1.0))) + add26f;
+  return res * (1.0 - min(dropEye, vec4(1.0)));
+}
+
+// Rule 26f: upgrade a 45 deg line on a high-contrast (>= 100) gradient edge to 2:1 when partner at extOff matches
+vec4 applyRule26f(vec4 res, vec4 pairSq, vec4 minCornerSq)
+{
+  vec4 ln45 = cut4(res) * isLine45(res) * vec4(greaterThanEqual(minCornerSq, vec4(SQ255(100.0))))
+            * vec4(lessThan(pairSq, vec4(SQ255(45.0))));
+  if (dot(ln45, vec4(1.0)) <= 0.5) return res;
+  vec4 add26f = vec4(0.0);
+  for (int k = 0; k < 4; k++)
+  {
+    vec4 m = cornerMask(k);
+    if (dot(ln45, m) < 0.5) continue;
+    float addBit = 0.0;
+    for (int dir = 0; dir < 2; dir++)
+    {
+      bool isSh = (dir == 0);
+      vec2 nbrOff, othOff;
+      slope21Offsets(k, isSh, nbrOff, othOff);
+      vec2 extOff = nbrOff - othOff;
+      vec2 runOff = othOff - nbrOff;
+      if (!withinY255(nE, cardColor(-othOff), XBRZ_SAME_M)) continue;
+      if (!withinY255(nE, diagColor(runOff), XBRZ_SAME_M)) continue;
+      vec3 Nc = cardColor(nbrOff), Xc = diagColor(extOff);
+      if (distSqY(Nc, Xc) >= SQ255(45.0) || distSqY(nE, Xc) < SQ255(100.0)) continue;
+      float xw = dot(diagInfo(extOff), m.zwxy);
+      float wantBit = isSh ? BIT_SHALLOW : BIT_STEEP;
+      float otherBit = isSh ? BIT_STEEP : BIT_SHALLOW;
+      if (BLEND(xw) > 0.5 && FLAG(xw, BIT_LINE) > 0.5 && FLAG(xw, wantBit) > 0.5 && FLAG(xw, otherBit) < 0.5
+          && FLAG(xw, BIT_LONG3) < 0.5 && FLAG(xw, BIT_LONG4) < 0.5)
+        addBit = addBit > 0.5 ? -1.0 : wantBit;
+    }
+    if (addBit > 0.5) add26f += m * addBit;
+  }
+  return res + add26f;
 }
 
 // Rule 26c (unified dark-outline flat-wall guard):

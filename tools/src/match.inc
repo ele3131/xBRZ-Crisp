@@ -189,47 +189,99 @@ void main()
   vec4 maxCornerSq = max(vec4(sBSq, sBSq, sFSq, sHSq), vec4(sDSq, sFSq, sHSq, sDSq));
   vec4 minCornerSq = min(vec4(sBSq, sBSq, sFSq, sHSq), vec4(sDSq, sFSq, sHSq, sDSq));
 
-  // ---- Rules 26, 28: matching corners and post-resolve 2:1 fixes ----
-  res = applyRule26Lost(res, w0, aW0, pairSq, minCornerSq, maxCornerSq);
-  res = applyRule26b(res, pairSq, minCornerSq, maxCornerSq, minSideSq);
-  res = applyRule26d(res, pairSq, minCornerSq);
-  res = applyRule28Match(res, pairSq);
-  res = applyRule26ef(res, pairSq, minCornerSq);
-  if (nE.x <= 0.30) res = applyRule26c(res, pairSq);
-
-  // ---- Rules 38-41: 4-color junctions, ramp ties, dots, diagonal strokes ----
-  if (dot(cut4(res), vec4(1.0)) > 0.0) res = junc4(res, pairSq, minCornerSq);
-  if (dot(cut4(res), vec4(1.0)) > 0.0)
-  {
-    vec4 m39 = cut4(res) * vec4(greaterThan(minCornerSq, vec4(SQ255(20.0))))
-             * vec4(greaterThan(minCornerSq, (1.0 - XBRZ_MID39) * (1.0 - XBRZ_MID39) * maxCornerSq))
-             * vec4(greaterThan(pairSq, 3.24 * maxCornerSq));
-    if (dot(m39, vec4(1.0)) > 0.5) res = tieRamp(res, m39);
-  }
-  if (maxSideSq >= SQ255(XBRZ_DOT40)
-      && (minSideSq >= SQ255(XBRZ_DOT40)
-          || dot(cut4(res) * vec4(greaterThanEqual(pairSq, vec4(SQ255(XBRZ_DOT40)))), vec4(1.0)) > 0.5)
-      && dot(cut4(res), vec4(1.0)) > 0.0)
-    res = dots40(res, minSideSq, pairSq);
   bool loneE = minSideSq >= SQ255(XBRZ_SAME_M);
-  if (dot(cut4(res), vec4(1.0)) > 0.0
-      && (loneE || dot(cut4(res) * FLAG(res, BIT_LINE) * abs(FLAG(res, BIT_SHALLOW) - FLAG(res, BIT_STEEP))
-          * vec4(equal(FLAG(res, BIT_LONG3) + FLAG(res, BIT_LONG4), vec4(0.0)))
-          * vec4(lessThan(pairSq, vec4(SQ255(XBRZ_SAME_M))))
-          * vec4(greaterThanEqual(minCornerSq, vec4(SQ255(XBRZ_SAME_M)))), vec4(1.0)) > 0.0))
-    res = diagStroke41(res, loneE, pairSq);
 
-  // ---- Rules 44, 45, 48, 49, 41b/c, 42b: stroke ends, slopes, bars, convex bevels ----
-  if (nE.x <= 0.35 && maxSideSq >= SQ255(XBRZ_END44) && minSideSq < SQ255(XBRZ_SAME_M)) res = strokeEnd44(res);
+  // ---- Phase 1: Rescues & Upgrades (26Lost+43+cont45 -> 26f) ----
+  res = applyRule26Lost(res, w0, aW0, pairSq, minCornerSq, maxCornerSq);
+  res = applyRule26f(res, pairSq, minCornerSq);
+
+  // ---- Phase 2: Prunes & Color Flips (26b, 28Match, 26e, 26c, 38, 39, 40, 45, 48c) ----
   if (dot(cut4(res), vec4(1.0)) > 0.0)
   {
-    if (maxSideSq >= SQ255(80.0) && minSideSq < SQ255(XBRZ_SAME_M)) res = applyRule45(res, pairSq, minCornerSq, maxCornerSq);
-    res = applyRule48(res, pairSq, minSideSq, maxSideSq, loneE);
+    res = applyRule26b(res, pairSq, minCornerSq, maxCornerSq, minSideSq);
+    res = applyRule28Match(res, pairSq);
+    res = applyRule26e(res, pairSq, minCornerSq);
+    if (nE.x <= 0.30) res = applyRule26c(res, pairSq);
+    if (dot(cut4(res), vec4(1.0)) > 0.0) res = junc4(res, pairSq, minCornerSq);
+    if (dot(cut4(res), vec4(1.0)) > 0.0)
+    {
+      vec4 m39 = cut4(res) * vec4(greaterThan(minCornerSq, vec4(SQ255(20.0))))
+               * vec4(greaterThan(minCornerSq, (1.0 - XBRZ_MID39) * (1.0 - XBRZ_MID39) * maxCornerSq))
+               * vec4(greaterThan(pairSq, 3.24 * maxCornerSq));
+      if (dot(m39, vec4(1.0)) > 0.5) res = tieRamp(res, m39);
+    }
+    if (maxSideSq >= SQ255(XBRZ_DOT40)
+        && (minSideSq >= SQ255(XBRZ_DOT40)
+            || dot(cut4(res) * vec4(greaterThanEqual(pairSq, vec4(SQ255(XBRZ_DOT40)))), vec4(1.0)) > 0.5)
+        && dot(cut4(res), vec4(1.0)) > 0.0)
+      res = dots40(res, minSideSq, pairSq);
+    if (dot(cut4(res), vec4(1.0)) > 0.0)
+    {
+      if (maxSideSq >= SQ255(80.0) && !loneE) res = applyRule45(res, pairSq, minCornerSq, maxCornerSq);
+      res = applyRule48c(res, pairSq);
+    }
   }
+
+  // ---- Phase 3: Unified 2:1 Downgrades & Lone-Pixel Apex (41, 26d+48a+48b, 41b/c) ----
+  if (dot(cut4(res), vec4(1.0)) > 0.0)
+  {
+    if (loneE || dot(cut4(res) * FLAG(res, BIT_LINE) * abs(FLAG(res, BIT_SHALLOW) - FLAG(res, BIT_STEEP))
+        * vec4(equal(FLAG(res, BIT_LONG3) + FLAG(res, BIT_LONG4), vec4(0.0)))
+        * vec4(lessThan(pairSq, vec4(SQ255(XBRZ_SAME_M))))
+        * vec4(greaterThanEqual(minCornerSq, vec4(SQ255(XBRZ_SAME_M)))), vec4(1.0)) > 0.0)
+      res = diagStroke41(res, loneE, pairSq);
+    res = downgrade21Collision(res, pairSq, minCornerSq, minSideSq, maxSideSq, loneE);
+    if (loneE) res = apex41(res, pairSq, minCornerSq);
+  }
+
+  // ---- Phase 4: Late Geometric Completions (44, 49, 42b) ----
+  if (nE.x <= 0.35 && maxSideSq >= SQ255(XBRZ_END44) && !loneE) res = strokeEnd44(res);
   res = applyRule49(res, res0, pairSq, minSideSq, maxSideSq);
-  if (loneE && dot(cut4(res), vec4(1.0)) > 0.0) res = apex41(res, pairSq, minCornerSq);
-  if (!loneE && maxSideSq >= mincSq)
-    res = applyRule42b(res, pairSq, minCornerSq);
+  if (!loneE && maxSideSq >= mincSq) res = applyRule42b(res, pairSq, minCornerSq);
+
+  // ---- Phase 5: Precompute C1 curve tags (BIT_ARC45 & BIT_ARC21) once at 1x for zero-fetch pass1 ----
+  vec4 c45 = cut4(res) * isLine45(res);
+  if (dot(c45, vec4(1.0)) > 0.5)
+  {
+    ensureCardInfo();
+    vec4 wX  = vec4(gID.z, gIB.w, gIF.x, gIH.y);
+    vec4 wY  = vec4(gIB.z, gIF.w, gIH.x, gID.y);
+    vec4 wXr = vec4(gID.y, gIB.z, gIF.w, gIH.x);
+    vec4 wYr = vec4(gIB.w, gIF.x, gIH.y, gID.z);
+    vec4 shX  = cut4(wX)  * FLAG(wX,  BIT_LINE) * FLAG(wX,  BIT_SHALLOW) * (1.0 - FLAG(wX,  BIT_STEEP));
+    vec4 stY  = cut4(wY)  * FLAG(wY,  BIT_LINE) * FLAG(wY,  BIT_STEEP)   * (1.0 - FLAG(wY,  BIT_SHALLOW));
+    vec4 stXr = cut4(wXr) * FLAG(wXr, BIT_LINE) * FLAG(wXr, BIT_STEEP)   * (1.0 - FLAG(wXr, BIT_SHALLOW));
+    vec4 shYr = cut4(wYr) * FLAG(wYr, BIT_LINE) * FLAG(wYr, BIT_SHALLOW) * (1.0 - FLAG(wYr, BIT_STEEP));
+    vec4 cont = cut4(wY) * isLine45(wY) + stY + cut4(wYr) * isLine45(wYr) + shYr
+              + cut4(wX) * isLine45(wX) + shX + cut4(wXr) * isLine45(wXr) + stXr;
+    res += BIT_ARC45 * c45 * vec4(lessThan(cont, vec4(0.5)));
+  }
+  vec4 is21Base = cut4(res) * FLAG(res, BIT_LINE) * (1.0 - FLAG(res, BIT_LONG3)) * (1.0 - FLAG(res, BIT_LONG4));
+  vec4 c21Sh = is21Base * FLAG(res, BIT_SHALLOW) * (1.0 - FLAG(res, BIT_STEEP));
+  vec4 c21St = is21Base * FLAG(res, BIT_STEEP)   * (1.0 - FLAG(res, BIT_SHALLOW));
+  if (dot(c21Sh + c21St, vec4(1.0)) > 0.5)
+  {
+    ensureCardInfo();
+    ensureDiagInfo();
+    vec4 wX  = vec4(gID.z, gIB.w, gIF.x, gIH.y);
+    vec4 wY  = vec4(gIB.z, gIF.w, gIH.x, gID.y);
+    vec4 wXr = vec4(gID.y, gIB.z, gIF.w, gIH.x);
+    vec4 wYr = vec4(gIB.w, gIF.x, gIH.y, gID.z);
+    // Shallow 2:1: right end P1 meets 45-deg (wX) with no reversing cut (wXr);
+    // left end P0 meets flat horizontal wall (no continuing shallow slope in wDiagSh, no cut on adj corner).
+    vec4 wDiagSh = vec4(gIC.z, gII.w, gIG.x, gIA.y);
+    vec4 shDiagCont = cut4(wDiagSh) * FLAG(wDiagSh, BIT_LINE) * FLAG(wDiagSh, BIT_SHALLOW) * (1.0 - FLAG(wDiagSh, BIT_STEEP));
+    vec4 shRev = cut4(wXr) * FLAG(wXr, BIT_LINE);
+    vec4 shOk = c21Sh * cut4(wX) * isLine45(wX) * (1.0 - shRev)
+              * (1.0 - shDiagCont) * (1.0 - cut4(res.yzwx));
+    // Steep 2:1: exact transpose
+    vec4 wDiagSt = vec4(gIG.z, gIA.w, gIC.x, gII.y);
+    vec4 stDiagCont = cut4(wDiagSt) * FLAG(wDiagSt, BIT_LINE) * FLAG(wDiagSt, BIT_STEEP) * (1.0 - FLAG(wDiagSt, BIT_SHALLOW));
+    vec4 stRev = cut4(wYr) * FLAG(wYr, BIT_LINE);
+    vec4 stOk = c21St * cut4(wY) * isLine45(wY) * (1.0 - stRev)
+              * (1.0 - stDiagCont) * (1.0 - cut4(res.wxyz));
+    res += BIT_ARC21 * (shOk + stOk);
+  }
 
   FRAG_OUT = res / 255.0;
 }

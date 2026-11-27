@@ -152,7 +152,7 @@ libretro's `xbrz-freescale-multipass` uses the same tolerance, steep, and domina
 - **🌿 Soft shading, checkerboards & 50% mesh (`XBRZ_MINC`):** Low-contrast shading, exact/shaded checkerboard textures, 2×N checker strips, and 50% transparency meshes keep their crisp square pixels while strong outlines, antialiasing bands, and crossing strokes stay smooth.
 - **🎨 Color junction protection (`XBRZ_DIAG`):** High-contrast 3- and 4-color junctions (eyes, eyebrows, outlines, orthogonal HUD crosshairs) are never bridged by fake diagonals, while intentional shade ramps (`geomRamp4`) and 45° corners stay continuous.
 - **📏 Clean endings & 1px geometry:** Stacked bars end square, HUD frames stay straight, convex 8-bit icon corners bevel cleanly, and isolated 1px glints and 1px diagonal strokes keep their exact artist intent.
-- **📐 Straight stepped slopes & C¹ circular fillets:** Regular 2–6px staircases (italic fonts, parallel drop shadows, roofs, rails) smooth along their true angle (2:1, 3:1, 4:1), while plain bevels and isolated 45° corners meeting flat H/V walls render as true C¹ circular arcs in `pass1`.
+- **📐 Straight stepped slopes & C¹ curves:** Regular 2–6px staircases (italic fonts, parallel drop shadows, roofs, rails) smooth along their true angle (2:1, 3:1, 4:1), while plain bevels, isolated 45° corners meeting flat walls, and strictly convex flat → 2:1 → 45° transitions render as true C¹ circular/parabolic curves in `pass1` with zero neighbor fetches.
 
 See the [interactive comparison page](https://ele3131.github.io/xBRZ-Crisp/#how) for visual diagrams of the core rules.
 
@@ -163,7 +163,7 @@ See the [interactive comparison page](https://ele3131.github.io/xBRZ-Crisp/#how)
 
 <br>
 
-xBRZ Crisp started as a set of fixes to libretro's `xbrz-freescale-multipass` and has since been largely rewritten around **42 streamlined visual rules** (indexed across the 1–49 catalog) plus C¹ circular corner fillets. Blend color ties, exact corner ties, dual shallow/steep corners, and corner processing order follow Zenju's C++ xBRZ 1.9, while the output pass reads directly from the pass preceding xBRZ so it chains cleanly after color-correction shaders.
+xBRZ Crisp started as a set of fixes to libretro's `xbrz-freescale-multipass` and has since been largely rewritten around **42 streamlined visual rules** (indexed across the 1–49 catalog) plus zero-fetch C¹ corner/transition curves. Blend color ties, exact corner ties, dual shallow/steep corners, and corner processing order follow Zenju's C++ xBRZ 1.9, while the output pass reads directly from the pass preceding xBRZ so it chains cleanly after color-correction shaders.
 
 It runs in **five passes** — four at native 1× game resolution (`point` → `pass0` → `resolve` → `match`) and one lightweight output rasterization pass (`pass1`) that only draws the resolved corners, with dual-path GLES 3.0+ / Slang `texelFetch` & `uvec4` support and full GLSL ES 1.00 compatibility.
 

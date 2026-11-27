@@ -50,9 +50,11 @@ vec2 stepSide(vec3 X, vec3 Y, vec2 row1, vec2 row2, vec2 a, vec2 n, bool skipFir
   bool dark = w.dk && w.nt < 2.5;
   return vec2((w.thin && (w.nu || w.fu || dark)) ? run : 0.0, w.nu ? run : 0.0);
 }
-vec2 stepRun(vec3 X, vec3 Y, vec2 s, vec2 a, vec2 b)
+vec2 stepRun(vec3 X, vec3 Y, vec2 s, vec2 a, vec2 b, bool tryRy, bool rySkipFirst)
 {
-  vec2 rx = stepSide(X, Y, s, s - b, a, b, true), ry = stepSide(Y, X, s + b, s, a, -b, false);
+  vec2 rx = stepSide(X, Y, s, s - b, a, b, true);
+  if (!tryRy) return rx;
+  vec2 ry = stepSide(Y, X, s + b, s, a, -b, rySkipFirst);
   return vec2(max(rx.x, ry.x), max(rx.y, ry.y));
 }
 vec2 stepSlope(vec2 st, vec2 sh, float xs, float xh)
@@ -90,7 +92,9 @@ void evalSteps14(vec4 blendResult, vec4 line, vec4 haveSteepLine, vec4 haveShall
 {
   nn = vec4(0.0); ty = vec4(0.0); thinN = vec4(0.0); thinSteep = vec4(0.0);
   vec4 dEv14Sq = dE1Sq.xzwy, dEh14Sq = dE1Sq.yxzw;
-  vec4 lineOn = line * isCut(blendResult) * vec4(greaterThanEqual(max(dEv14Sq, dEh14Sq), vec4(SQ255(XBRZ_STRAIGHT))));
+  vec4 lineOn = line * isCut(blendResult)
+              * vec4(greaterThanEqual(max(dEv14Sq, dEh14Sq), vec4(SQ255(XBRZ_STRAIGHT))))
+              * vec4(greaterThan(min(dEv14Sq, dEh14Sq), vec4(SQ255(XBRZ_TONE))));
   vec4 free = vec4(equal(blendResult, vec4(0.0)));
   if (anyCut(blendResult))
   {
@@ -111,6 +115,7 @@ void evalSteps14(vec4 blendResult, vec4 line, vec4 haveSteepLine, vec4 haveShall
     vec2 v = k == 0 ? vX : (k == 1 ? vY : (k == 2 ? vZ : vW));
     vec2 h = k == 0 ? hX : (k == 1 ? hY : (k == 2 ? hZ : hW));
     float lo = dot(m, lineOn), xs = dot(m, xSt), xh = dot(m, xSh);
+    bool ryOk = dot(m, dLOSq) <= SQ255(XBRZ_TONE);
     vec3 vPix = haveCardPix ? (k == 0 ? cBpix : (k == 1 ? cFpix : (k == 2 ? cHpix : cDpix))) : vec3(0.0);
     vec3 hPix = haveCardPix ? (k == 0 ? cDpix : (k == 1 ? cBpix : (k == 2 ? cFpix : cHpix))) : vec3(0.0);
     bool haveVPix = haveCardPix, haveHPix = haveCardPix;
@@ -156,7 +161,7 @@ void evalSteps14(vec4 blendResult, vec4 line, vec4 haveSteepLine, vec4 haveShall
                : ((j == 1 && haveHPix) ? hPix
                : (((j == 3 || j == 5) && haveDiagPix) ? (k == 0 ? cachedA : (k == 1 ? cachedC : (k == 2 ? cachedI : cachedG)))
                : at(s + a)));
-        if (!withinY255(X, Y, XBRZ_STRAIGHT)) rr = stepRun(X, Y, s, a, b);
+        if (!withinY255(X, Y, XBRZ_STRAIGHT)) rr = stepRun(X, Y, s, a, b, j >= 2 || ryOk, j < 2);
       }
       if (j == 0) r0 = rr; else if (j == 1) r1 = rr; else if (j == 2) r2 = rr;
       else if (j == 3) r3 = rr; else if (j == 4) r4 = rr; else r5 = rr;

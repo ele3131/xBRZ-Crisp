@@ -398,8 +398,7 @@ vec4 diagLimitRule26(vec4 res, vec2 coord, vec4 cut, vec4 sec, vec4 pair, vec4 d
   {
     computeLonePQ(sec, A, B, C, D, F, G, H, I, loneP, loneQ);
     haveLone = true;
-    vec4 dQc = mix(dEQ, dEP, sec);
-    vec4 notch = geomRamp4(dEPc * dEPc, pair2, dQc * dQc, 0.22, 22.0)
+    vec4 notch = onRamp2
                * vec4(lessThanEqual(pair * 255.0, vec4(XBRZ_DIAG + XBRZ_NOTCH))) * loneP * blocked2;
     if (dot(notch, vec4(1.0)) > 0.0)
     {

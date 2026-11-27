@@ -29,17 +29,17 @@ precision highp int;
 //   point   (point.inc, point_checker46.inc)           : xBRZ 2x2 preprocessing, T-junction/dark-outline guards, Rules 31, 36, 46
 //   pass0   (pass0.inc)                                : xBRZ corner decisions, Rules 1-11, 13, 15, 16, 18, 30, 32, 33
 //   resolve (resolve.inc, resolve_steps14/junc20.inc)  : Rules 1 (weak), 2 (chain/meet), 9 (2nd), 14-15b, 17, 19-21 (incl. 20b crosshair bar), 23, 24, 28, 29, 37
-//   match   (match.inc, match_r26/r28/junc/strokes.inc): Rules 26, 28-28b, 38-41, 42b, 43-45, 48, 49
-//   pass1   (pass1.inc)                                : Output-scale corner rasterization (45-deg, 2:1, 3:1, 4:1, small/thin, C1 circular fillets on bevels & flat-wall 45-deg corners)
+//   match   (match.inc, match_r26/r28/junc/strokes.inc): Rules 26, 28-28b, 38-41, 42b, 43-45, 48, 49 + BIT_ARC45/BIT_ARC21 curve tags
+//   pass1   (pass1.inc)                                : Zero-neighbor-fetch output rasterization (45-deg, 2:1, 3:1, 4:1, small/thin, C1 arcs & flat->2:1->45-deg parabolas)
 //
 // Decision-Word Bit Layout (0..255 per corner channel: x=TL, y=TR, z=BR, w=BL):
 //   bits 0..1 (BLEND)  : 0 none | 1 normal | 2 dominant (pass0) or thin sliver R14 (resolve+) | 3 weak (pass0) or small tip R23/R40 (resolve+)
 //   bit  2 (BIT_LINE)  :   4 = line blend (45-deg unless BIT_SHALLOW or BIT_STEEP is set)
 //   bit  3 (BIT_SEC)   :   8 = blend with second candidate neighbor (B, F, H, D instead of D, B, F, H)
 //   bit  4 (BIT_SHALLOW): 16 = shallow 2:1 (or 3:1 / 4:1 with BIT_LONG3 / BIT_LONG4)
-//   bit  5 (BIT_TONE)  :  32 = pass0: hue-weighted-only line (R9) | resolve+: BIT_LONG3 (3:1 slope)
+//   bit  5 (BIT_TONE)  :  32 = pass0: hue-weighted-only line (R9) | resolve+: BIT_LONG3 (3:1 slope) | match->pass1 on 45-deg: BIT_ARC45
 //   bit  6 (BIT_STEEP) :  64 = steep 2:1 (or 3:1 / 4:1 with BIT_LONG3 / BIT_LONG4)
-//   bit  7 (BIT_BLOCKED):128 = pass0: diagonal-limit blocked (R2) | resolve+: BIT_LONG4 (4:1 slope)
+//   bit  7 (BIT_BLOCKED):128 = pass0: diagonal-limit blocked (R2) | resolve+: BIT_LONG4 (4:1 slope) | match->pass1 on 2:1 with bit 5 (160): BIT_ARC21
 //#crisp}
 //
 // 1. Minimum contrast (XBRZ_MINC): a corner whose two colors differ by less than XBRZ_MINC (x/255,
@@ -567,14 +567,16 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 //   bit  2 (  4.0): BIT_LINE    - line blend (45-deg unless BIT_SHALLOW or BIT_STEEP is also set)
 //   bit  3 (  8.0): BIT_SEC     - blend with second candidate neighbor (B, F, H, D instead of D, B, F, H)
 //   bit  4 ( 16.0): BIT_SHALLOW - shallow 2:1 (or 3:1 / 4:1 when paired with BIT_LONG3 / BIT_LONG4)
-//   bit  5 ( 32.0): BIT_TONE    - pass0: hue-weighted-only line (rule 9); resolve/match/pass1: BIT_LONG3 (3:1 slope)
+//   bit  5 ( 32.0): BIT_TONE    - pass0: hue-weighted-only line (rule 9); resolve+: BIT_LONG3 (3:1 slope) or BIT_ARC45 (isolated flat-wall 45-deg arc, match->pass1)
 //   bit  6 ( 64.0): BIT_STEEP   - steep 2:1 (or 3:1 / 4:1 when paired with BIT_LONG3 / BIT_LONG4)
-//   bit  7 (128.0): BIT_BLOCKED - pass0: diagonal-limit blocked (rule 2); resolve/match/pass1: BIT_LONG4 (4:1 slope)
+//   bit  7 (128.0): BIT_BLOCKED - pass0: diagonal-limit blocked (rule 2); resolve+: BIT_LONG4 (4:1 slope); BIT_LONG3+BIT_LONG4 (160) on 2:1 = BIT_ARC21 (C1 flat->2:1->45-deg curve)
 #define BIT_LINE    4.0
 #define BIT_SEC     8.0
 #define BIT_SHALLOW 16.0
 #define BIT_TONE    32.0
 #define BIT_LONG3   32.0
+#define BIT_ARC45   32.0
+#define BIT_ARC21   160.0
 #define BIT_STEEP   64.0
 #define BIT_BLOCKED 128.0
 #define BIT_LONG4   128.0
@@ -1013,8 +1015,7 @@ vec4 diagLimitRule26(vec4 res, vec2 coord, vec4 cut, vec4 sec, vec4 pair, vec4 d
   {
     computeLonePQ(sec, A, B, C, D, F, G, H, I, loneP, loneQ);
     haveLone = true;
-    vec4 dQc = mix(dEQ, dEP, sec);
-    vec4 notch = geomRamp4(dEPc * dEPc, pair2, dQc * dQc, 0.22, 22.0)
+    vec4 notch = onRamp2
                * vec4(lessThanEqual(pair * 255.0, vec4(XBRZ_DIAG + XBRZ_NOTCH))) * loneP * blocked2;
     if (dot(notch, vec4(1.0)) > 0.0)
     {

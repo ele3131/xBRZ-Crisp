@@ -20,13 +20,7 @@ vec4 applyRule28Match(vec4 res, vec4 pairSq)
     {
       vec3 nA = diagColor(vec2(-1.0, -1.0)), nC = diagColor(vec2(1.0, -1.0));
       vec3 nG = diagColor(vec2(-1.0,  1.0)), nI = diagColor(vec2(1.0,  1.0));
-      float hE = holdOf28(nE, nA, nB, nC, nD, nF, nG, nH, nI), hB = 0.0, hD = 0.0, hF = 0.0, hH = 0.0;
-      if (pair28.x * sec28.x + pair28.y * (1.0 - sec28.y) > 0.5) hB = holdOfEdge28(nB, hE, nD, nF, nA, nC, nE, vec2(-1.,-2.), vec2( 0.,-2.), vec2( 1.,-2.));
-      if (pair28.x * (1.0 - sec28.x) + pair28.w * sec28.w > 0.5) hD = holdOfEdge28(nD, hE, nB, nH, nA, nE, nG, vec2(-2.,-1.), vec2(-2., 0.), vec2(-2., 1.));
-      if (pair28.y * sec28.y + pair28.z * (1.0 - sec28.z) > 0.5) hF = holdOfEdge28(nF, hE, nB, nH, nC, nE, nI, vec2( 2.,-1.), vec2( 2., 0.), vec2( 2., 1.));
-      if (pair28.z * sec28.z + pair28.w * (1.0 - sec28.w) > 0.5) hH = holdOfEdge28(nH, hE, nD, nF, nE, nG, nI, vec2(-1., 2.), vec2( 0., 2.), vec2( 1., 2.));
-      vec4 hN = mix(vec4(hD, hB, hF, hH), vec4(hB, hF, hH, hD), sec28);
-      res *= 1.0 - pair28 * whole28Mask(hE, hN, sec28, nE, nB, nD, nF, nH);
+      res *= 1.0 - dropCross28(pair28, sec28, nE, nA, nB, nC, nD, nF, nG, nH, nI);
     }
     vec4 opp28 = p28 * abs(sh28 - st28)
                * cut4(nW) * FLAG(nW, BIT_LINE) * (1.0 - FLAG(nW, BIT_LONG3)) * (1.0 - FLAG(nW, BIT_LONG4))

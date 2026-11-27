@@ -270,14 +270,6 @@ float adjPairMinSq(vec2 a, vec4 pairSq)
        : a.x >  0.5 ? min(pairSq.y, pairSq.z)
                     : min(pairSq.w, pairSq.x);
 }
-bool isLone3x3Card(vec3 Q, vec2 a)
-{
-  // caller already verified sideSq(a) >= SQ255(XBRZ_SAME_M) and adjPairMinSq(a, pairSq) >= SQ255(XBRZ_SAME_M)
-  vec2 s = vec2(a.y, -a.x);
-  return !withinY255(Q, diagColor(a + s), XBRZ_SAME_M) && !withinY255(Q, diagColor(a - s), XBRZ_SAME_M)
-      && !withinY255(Q, at3(2.0 * a + s), XBRZ_SAME_M) && !withinY255(Q, at3(2.0 * a), XBRZ_SAME_M)
-      && !withinY255(Q, at3(2.0 * a - s), XBRZ_SAME_M);
-}
 
 // 45. the dark side of a mid-tone stroke's end
 vec4 applyRule45(vec4 res, vec4 pairSq, vec4 minCornerSq, vec4 maxCornerSq)
@@ -310,63 +302,111 @@ vec4 applyRule45(vec4 res, vec4 pairSq, vec4 minCornerSq, vec4 maxCornerSq)
   return res * (1.0 - min(sq, vec4(1.0)));
 }
 
-// 48, 48b & 48c: 2:1 slope colliding along its long edge with a neighbor's 45-degree line,
-// plus bright phantom wedge cut into a turning dark 2:1 outline
-vec4 applyRule48(vec4 res, vec4 pairSq, float minSideSq, float maxSideSq, bool loneE)
+// 26d, 48a & 48b: unified 2:1-vs-45-deg collision downgrade (shares slope21Offsets loop, cardInfo, diagColor)
+vec4 downgrade21Collision(vec4 res, vec4 pairSq, vec4 minCornerSq, float minSideSq, float maxSideSq, bool loneE)
 {
   vec4 shM = FLAG(res, BIT_SHALLOW), stM = FLAG(res, BIT_STEEP);
   vec4 cw48 = cut4(res) * FLAG(res, BIT_LINE) * abs(shM - stM)
             * vec4(equal(FLAG(res, BIT_LONG3) + FLAG(res, BIT_LONG4), vec4(0.0)));
-  if (dot(cw48, vec4(1.0)) > 0.5)
+  if (dot(cw48, vec4(1.0)) <= 0.5) return res;
+  vec4 secM = FLAG(res, BIT_SEC);
+  vec4 ln21D = cw48 * cut4(res.zwxy) * isLine45(res.zwxy);
+  bool can48a = maxSideSq >= SQ255(XBRZ_SAME_M) && minSideSq < SQ255(XBRZ_SHADE48);
+  vec4 dropS = vec4(0.0), dropT = vec4(0.0);
+  for (int k = 0; k < 4; k++)
   {
-    vec4 secM = FLAG(res, BIT_SEC);
-    bool can48a = maxSideSq >= SQ255(XBRZ_SAME_M) && minSideSq < SQ255(XBRZ_SHADE48);
-    vec4 dropS = vec4(0.0), dropT = vec4(0.0);
-    for (int k = 0; k < 4; k++)
+    vec4 m = cornerMask(k);
+    if (dot(cw48, m) < 0.5) continue;
+    bool isSh = dot(shM, m) > 0.5;
+    vec2 nbrOff, othOff;
+    slope21Offsets(k, isSh, nbrOff, othOff);
+    vec4 oppM = m.zwxy;
+    vec4 rS = cardInfo(nbrOff);
+    float nw = dot(rS, oppM);
+    if (BLEND(nw) < 0.5) continue;
+    // Crossed opposite 2:1 cuts on a shared edge where both sides form close-color 45-deg diagonals (pair < 15):
+    // downgrading both to 45 deg eliminates the X-crossing color-swap spike and aligns the diagonal smoothly.
+    if (FLAG(nw, BIT_LINE) > 0.5 && (FLAG(nw, BIT_SHALLOW) > 0.5) == isSh && (FLAG(nw, BIT_STEEP) > 0.5) != isSh
+        && FLAG(nw, BIT_LONG3) + FLAG(nw, BIT_LONG4) < 0.5
+        && dot(pairSq, m) < SQ255(XBRZ_SAME_M) && sideSq(nbrOff) >= SQ255(XBRZ_SAME_M))
     {
-      vec2 c = cornerOff(k);
-      vec4 m = vtxCorner(c);
-      if (dot(cw48, m) < 0.5) continue;
-      bool sh = dot(shM, m) > 0.5;
-      vec2 sOff, tOff;
-      slope21Offsets(k, sh, sOff, tOff);
-      vec4 oppM = vtxCorner(-c);
-      vec4 rS = cardInfo(sOff);
-      float sw = dot(rS, oppM);
-      if (BLEND(sw) < 0.5 || dot(isLine45(rS), oppM) < 0.5) continue;
-      bool swPaintsE = (FLAG(sw, BIT_SEC) > 0.5) == sh;
-      if (swPaintsE)
+      if (distSqY(nE, diagColor(nbrOff - othOff)) < SQ255(XBRZ_SAME_M))
       {
-        if (!can48a || (dot(secM, m) > 0.5) != sh) continue;
-        float dASq = sideSq(sOff);
-        if (dASq < SQ255(XBRZ_SAME_M) || dASq >= SQ255(XBRZ_SHADE48)) continue;
-        vec3 Ac = cardColor(sOff);
-        bool hit = false;
-        if (loneE && withinY255(Ac, cardColor(-sOff), XBRZ_SAME_M)
-            && !withinY255(nE, diagColor(vec2(-1.0, -1.0)), XBRZ_SAME_M) && !withinY255(nE, diagColor(vec2(1.0, -1.0)), XBRZ_SAME_M)
-            && !withinY255(nE, diagColor(vec2(-1.0,  1.0)), XBRZ_SAME_M) && !withinY255(nE, diagColor(vec2(1.0,  1.0)), XBRZ_SAME_M))
-          hit = true;
-        else if (adjPairMinSq(sOff, pairSq) >= SQ255(XBRZ_SAME_M) && withinY255(nE, at3(2.0 * sOff), XBRZ_SAME_M) && isLone3x3Card(Ac, sOff))
-          hit = true;
-        if (!hit) continue;
+        if (isSh) dropS += m; else dropT += m;
+        continue;
       }
+    }
+    if (dot(isLine45(rS), oppM) < 0.5) continue;
+    vec2 extOff = nbrOff - othOff;
+    vec3 Nc = cardColor(nbrOff), Xc = diagColor(extOff);
+    float dEXSq = distSqY(nE, Xc), dNXSq = distSqY(Nc, Xc);
+    bool nwPaintsE = (FLAG(nw, BIT_SEC) > 0.5) == isSh;
+    bool ePaintsN = (dot(secM, m) > 0.5) == isSh;
+    bool ok = false;
+    if (nwPaintsE)
+    {
+      if (!ePaintsN && dEXSq >= SQ255(XBRZ_SAME_M)
+          && dot(pairSq, m) >= mincSq && dot(minCornerSq, m) >= SQ255(XBRZ_JUNC4))
+        ok = true;
+      else if (dot(pairSq, m) < SQ255(XBRZ_SAME_M) && dEXSq < SQ255(XBRZ_SAME_M)
+               && dNXSq >= SQ255(XBRZ_SAME_M) && dNXSq > dEXSq)
+        ok = true;
+      else if (can48a && ePaintsN)
+      {
+        float dASq = sideSq(nbrOff);
+        if (dASq >= SQ255(XBRZ_SAME_M) && dASq < SQ255(XBRZ_SHADE48)
+            && ((loneE && withinY255(Nc, cardColor(-nbrOff), XBRZ_SAME_M))
+             || (adjPairMinSq(nbrOff, pairSq) >= SQ255(XBRZ_SAME_M) && withinY255(nE, at3(2.0 * nbrOff), XBRZ_SAME_M))))
+          ok = true;
+      }
+    }
+    else
+    {
+      if (dot(pairSq, m) < SQ255(XBRZ_SAME_M) && dNXSq >= SQ255(XBRZ_SAME_M) && dNXSq > dEXSq)
+        ok = true;
       else
       {
-        bool ePaintsT = ((dot(secM, m) > 0.5) != sh) || (dot(pairSq, m) < SQ255(XBRZ_SAME_M));
-        if (ePaintsT)
+        float dOXSq = distSqY(cardColor(othOff), Xc);
+        if (!ePaintsN && dot(pairSq, m) >= SQ255(XBRZ_JUNC4) && dNXSq >= SQ255(XBRZ_JUNC4) && dOXSq >= mincSq
+            && withinY255(nE, cardColor(-othOff), XBRZ_SAME_M)
+            && dot(cut4(cardInfo(-othOff)), vec4(1.0)) < 0.5)
+          ok = true;
+        if (!ok && dot(ln21D, m) > 0.5 && dEXSq >= SQ255(XBRZ_SAME_M) && dOXSq >= mincSq)
         {
-          float tw = dot(cardInfo(tOff), oppM);
-          if (BLEND(tw) > 0.5 && FLAG(tw, BIT_LINE) > 0.5 && (FLAG(tw, BIT_SHALLOW) > 0.5) == sh && (FLAG(tw, BIT_STEEP) > 0.5) != sh) continue;
+          vec4 rO = cardInfo(othOff), rD = diagInfo(nbrOff + othOff);
+          if (dot(cut4(rO) * isLine45(rO) + cut4(rD) * isLine45(rD), oppM) > 0.5)
+          {
+            float xw = dot(diagInfo(extOff), oppM);
+            if (FLAG(xw, BIT_SHALLOW) + FLAG(xw, BIT_STEEP) < 0.5)
+              ok = true;
+          }
         }
-        float mw = dot(cardInfo(-tOff), m);
-        if (BLEND(mw) > 0.5 && FLAG(mw, BIT_LINE) > 0.5 && (FLAG(mw, BIT_SHALLOW) > 0.5) == sh && (FLAG(mw, BIT_STEEP) > 0.5) != sh) continue;
-        vec3 Fc = diagColor(sOff - tOff);
-        if (min(min(distSqY(Fc, cardColor(sOff)), distSqY(Fc, cardColor(tOff))), distSqY(Fc, nE)) < SQ255(XBRZ_JUNC4)) continue;
+        if (!ok && min(min(dNXSq, dOXSq), dEXSq) >= SQ255(XBRZ_JUNC4))
+        {
+          bool ePaintsT = !ePaintsN || dot(pairSq, m) < SQ255(XBRZ_SAME_M);
+          bool contT = false;
+          if (ePaintsT)
+          {
+            float tw = dot(cardInfo(othOff), oppM);
+            contT = BLEND(tw) > 0.5 && FLAG(tw, BIT_LINE) > 0.5 && (FLAG(tw, BIT_SHALLOW) > 0.5) == isSh && (FLAG(tw, BIT_STEEP) > 0.5) != isSh;
+          }
+          if (!contT)
+          {
+            float mw = dot(cardInfo(-othOff), m);
+            if (!(BLEND(mw) > 0.5 && FLAG(mw, BIT_LINE) > 0.5 && (FLAG(mw, BIT_SHALLOW) > 0.5) == isSh && (FLAG(mw, BIT_STEEP) > 0.5) != isSh))
+              ok = true;
+          }
+        }
       }
-      if (sh) dropS += m; else dropT += m;
     }
-    res -= BIT_SHALLOW * dropS + BIT_STEEP * dropT;
+    if (ok) { if (isSh) dropS += m; else dropT += m; }
   }
+  return res - (BIT_SHALLOW * dropS + BIT_STEEP * dropT);
+}
+
+// 48c: bright phantom wedge cut into a turning dark 2:1 outline whose long side already cuts Pc's touching corner
+vec4 applyRule48c(vec4 res, vec4 pairSq)
+{
   // 48c. bright phantom wedge cut into a turning dark 2:1 outline whose long side already cuts Pc's touching corner
   vec4 sumSq = vec4(sDSq + sBSq, sBSq + sFSq, sFSq + sHSq, sHSq + sDSq);
   vec4 cw48c = cut4(res) * (1.0 - FLAG(res, BIT_SHALLOW)) * (1.0 - FLAG(res, BIT_STEEP))
@@ -436,14 +476,15 @@ vec4 applyRule49(vec4 res, vec4 res0, vec4 pairSq, float minSideSq, float maxSid
   vec4 c49 = cut4(res);
   if (maxSideSq >= SQ255(XBRZ_BAR49) && dot(c49, vec4(1.0)) > 0.0)
   {
+    vec4 c0 = cut4(res0);
     vec4 p15 = vec4(lessThan(pairSq, vec4(SQ255(XBRZ_SAME_M))));
     vec4 p60 = vec4(lessThan(pairSq, vec4(SQ255(XBRZ_BAR49))));
     vec4 sec49 = FLAG(res, BIT_SEC);
     vec4 q49 = vec4(
-      c49.x * (1.0 - sec49.x) * p15.y * (1.0 - p60.x) + c49.y * sec49.y * p15.x * (1.0 - p60.y),
-      c49.y * (1.0 - sec49.y) * p15.z * (1.0 - p60.y) + c49.z * sec49.z * p15.y * (1.0 - p60.z),
-      c49.z * (1.0 - sec49.z) * p15.w * (1.0 - p60.z) + c49.w * sec49.w * p15.z * (1.0 - p60.w),
-      c49.w * (1.0 - sec49.w) * p15.x * (1.0 - p60.w) + c49.x * sec49.x * p15.w * (1.0 - p60.x))
+      c49.x * (1.0 - sec49.x) * p15.y * (1.0 - p60.x) * c0.y + c49.y * sec49.y * p15.x * (1.0 - p60.y) * c0.x,
+      c49.y * (1.0 - sec49.y) * p15.z * (1.0 - p60.y) * c0.z + c49.z * sec49.z * p15.y * (1.0 - p60.z) * c0.y,
+      c49.z * (1.0 - sec49.z) * p15.w * (1.0 - p60.z) * c0.w + c49.w * sec49.w * p15.z * (1.0 - p60.w) * c0.z,
+      c49.w * (1.0 - sec49.w) * p15.x * (1.0 - p60.w) * c0.x + c49.x * sec49.x * p15.w * (1.0 - p60.x) * c0.w)
       * vec4(greaterThanEqual(vec4(sBSq, sFSq, sHSq, sDSq), vec4(SQ255(XBRZ_BAR49))));
     if (dot(q49, vec4(1.0)) > 0.5)
     {
@@ -459,24 +500,16 @@ vec4 applyRule49(vec4 res, vec4 res0, vec4 pairSq, float minSideSq, float maxSid
                          : (p15.x > 0.5 ? vec2( 1.0, -1.0) : vec2( 1.0,  1.0));
         vec2 sideDir = cn + n;
         vec2 k = n - sideDir;
-        vec4 mk = vtxCorner(k);
-        float wk = dot(res, mk);
-        bool hz = k.x * k.y > 0.0, sec = FLAG(wk, BIT_SEC) > 0.5;
-        vec2 pk = (hz == sec) ? vec2(0.0, k.y) : vec2(k.x, 0.0);
-        vec3 pCol = cardColor(pk);
+        vec3 pCol = cardColor(-sideDir);
         vec3 other = diagColor(n + sideDir);
         if (!withinY255(pCol, other, XBRZ_SAME_M) || withinY255(En, other, XBRZ_BAR49)) continue;
         if ((En.x - nE.x) * (En.x - other.x) <= 0.0) continue;
         vec3 cK = diagColor(k);
         if (withinY255(En, cK, XBRZ_BAR49)) continue;
         if (!(withinY255(nE, cK, 100.0) || sideSq(-sideDir) < SQ255(100.0))) continue;
+        if (BLEND(dot(diagInfo(n + sideDir), vtxCorner(-(n + sideDir)))) < 0.5) continue;
         if (withinY255(En, at3(2.0 * n), XBRZ_BAR49)) continue;
         if (withinY255(En, at3(2.0 * n + sideDir), XBRZ_BAR49) || withinY255(En, at3(2.0 * n - sideDir), XBRZ_BAR49)) continue;
-        vec2 iOff1 = n + vec2(cn.x, 0.0), iOff2 = n + vec2(0.0, cn.y);
-        vec4 iW1 = (abs(iOff1.x) + abs(iOff1.y) < 0.5) ? res0 : diagInfo(iOff1);
-        vec4 iW2 = (abs(iOff2.x) + abs(iOff2.y) < 0.5) ? res0 : diagInfo(iOff2);
-        if (BLEND(dot(iW1, vtxCorner(vec2(-cn.x, cn.y)))) < 0.5 ||
-            BLEND(dot(iW2, vtxCorner(vec2(cn.x, -cn.y)))) < 0.5) continue;
         if (withinY255(En, at3x3(n + vec2(2.0 * cn.x, 0.0)), XBRZ_BAR49)
             || withinY255(En, at3x3(n + vec2(0.0, 2.0 * cn.y)), XBRZ_BAR49)
             || withinY255(En, at3x3(n + vec2(2.0 * cn.x, cn.y)), XBRZ_BAR49)
@@ -484,7 +517,7 @@ vec4 applyRule49(vec4 res, vec4 res0, vec4 pairSq, float minSideSq, float maxSid
           continue;
         float d2Sq = distSqY(En, at3(n + 2.0 * cn));
         if (d2Sq < SQ255(XBRZ_BAR49) && d2Sq >= SQ255(XBRZ_SAME_M)) continue;
-        res = mix(res, vec4(0.0), mk);
+        res = mix(res, vec4(0.0), vtxCorner(k));
       }
     }
   }

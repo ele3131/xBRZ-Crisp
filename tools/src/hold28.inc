@@ -21,11 +21,18 @@ float tie28(vec3 e, vec3 n)
   if (abs(e.y - n.y) > SAFE_EPS) return float(e.y < n.y);
   return float(e.z < n.z);
 }
-// Returns per-corner mask of pixels that stay whole (higher hold score, or darker on tie)
-vec4 whole28Mask(float hE, vec4 hN, vec4 sec, vec3 E, vec3 B, vec3 D, vec3 F, vec3 H)
+// Returns per-corner mask of crossing 2:1 cuts that stay whole (higher hold score, or darker on tie)
+vec4 dropCross28(vec4 pair, vec4 sec, vec3 E, vec3 A, vec3 B, vec3 C, vec3 D, vec3 F, vec3 G, vec3 H, vec3 I)
 {
+  float hE = holdOf28(E, A, B, C, D, F, G, H, I), hB = 0.0, hD = 0.0, hF = 0.0, hH = 0.0;
+  if (pair.x * sec.x + pair.y * (1.0 - sec.y) > 0.5) hB = holdOfEdge28(B, hE, D, F, A, C, E, vec2(-1.,-2.), vec2( 0.,-2.), vec2( 1.,-2.));
+  if (pair.x * (1.0 - sec.x) + pair.w * sec.w > 0.5) hD = holdOfEdge28(D, hE, B, H, A, E, G, vec2(-2.,-1.), vec2(-2., 0.), vec2(-2., 1.));
+  if (pair.y * sec.y + pair.z * (1.0 - sec.z) > 0.5) hF = holdOfEdge28(F, hE, B, H, C, E, I, vec2( 2.,-1.), vec2( 2., 0.), vec2( 2., 1.));
+  if (pair.z * sec.z + pair.w * (1.0 - sec.w) > 0.5) hH = holdOfEdge28(H, hE, D, F, E, G, I, vec2(-1., 2.), vec2( 0., 2.), vec2( 1., 2.));
+  vec4 hN = mix(vec4(hD, hB, hF, hH), vec4(hB, hF, hH, hD), sec);
   vec4 tie = vec4(tie28(E, sec.x > 0.5 ? B : D), tie28(E, sec.y > 0.5 ? F : B),
                   tie28(E, sec.z > 0.5 ? H : F), tie28(E, sec.w > 0.5 ? D : H));
-  return max(vec4(greaterThan(vec4(hE), hN + 0.5)),
-             vec4(lessThan(abs(hE - hN), vec4(0.5))) * tie);
+  vec4 whole = max(vec4(greaterThan(vec4(hE), hN + 0.5)),
+                   vec4(lessThan(abs(hE - hN), vec4(0.5))) * tie);
+  return pair * whole;
 }
