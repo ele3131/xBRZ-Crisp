@@ -1,6 +1,7 @@
 build/
 __pycache__/
 *.pyc
+*.studio.html
 docs/img/*-crisp10.png
 docs/img/*-crisp20.png
 docs/img/*-crisp30.png

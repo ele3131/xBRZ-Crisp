@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: ["main"]
   push:
-    branches-ignore: ["main"]
+    branches: ["main", "**"]
     tags-ignore: ["*"]
 
 jobs:
@@ -14,14 +14,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install headless Mesa OpenGL ES & Python imaging libraries
+      - name: Install headless Mesa OpenGL ES, glslangValidator & Python imaging libraries
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libegl1 libgles2 libgl1-mesa-dri python3-pil python3-numpy
+            libegl1 libgles2 libgl1-mesa-dri glslang-tools python3-pil python3-numpy
 
-      - name: Verify single-source sync, lint, ES 1.00 / 3.00 compile & multipass
+      - name: Verify single-source sync, lint, ES 1.00 / 3.00 / 3.10, SPIR-V & runtime smoke
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
           LP_NATIVE_VECTOR_WIDTH: "128"
-        run: python3 tools/verify.py
+        run: python3 tools/verify.py --smoke --require-spirv

@@ -1140,6 +1140,7 @@ window.addEventListener("error", function (ev) {
 </script>
 <script>
 const STUDIO_DATA = /*__STUDIO_DATA__*/[];
+const STUDIO_META = /*__STUDIO_META__*/{};
 window.__STUDIO_DATA_OK = true;
 </script>
 <script>
@@ -1156,14 +1157,37 @@ window.__STUDIO_DATA_OK = true;
 
   const STORAGE_KEY = "xbrz_crisp_studio_v4_pins";
   const DRAG_THRESHOLD = 6;
+  const META = (typeof STUDIO_META === "object" && STUDIO_META) ? STUDIO_META : {};
 
   const LAYERS = {
     orig: { label: "Original 1×", short: "Orig 1×", color: "#b88cff" },
-    xbrz: { label: "xBRZ 1.9",    short: "xBRZ 1.9", color: "#58a6ff" },
-    old:  { label: "Crisp (Antes)", short: "Antes", color: "#ff8672" },
-    new:  { label: "Crisp Novo (Depois)", short: "Novo", color: "#3fd278" },
+    xbrz: { label: META.xbrzLabel || "xBRZ 1.9", short: META.xbrzShort || "xBRZ 1.9", color: "#58a6ff" },
+    old:  { label: META.oldLabel  || "Crisp (Antes)", short: META.oldShort || "Antes", color: "#ff8672" },
+    new:  { label: META.newLabel  || "Crisp Novo (Depois)", short: META.newShort || "Novo", color: "#3fd278" },
     diff: { label: "Mapa Diff",   short: "Diff",    color: "#ff5ca8" }
   };
+
+  if (META.title) {
+    document.title = META.title;
+    var brandEl = document.querySelector(".brand-title");
+    if (brandEl) brandEl.textContent = META.title;
+  }
+  function updateLayerBtn(key, kbd) {
+    var btn = document.querySelector('.layer-btn[data-layer="' + key + '"]');
+    if (!btn) return;
+    btn.title = LAYERS[key].label + " (Tecla " + kbd + ")";
+    btn.innerHTML = '<span class="dot" style="background:var(--c-' + key + ')"></span>' + LAYERS[key].short + '<span class="kbd">' + kbd + '</span>';
+  }
+  if (META.oldShort || META.oldLabel) updateLayerBtn("old", "3");
+  if (META.newShort || META.newLabel) updateLayerBtn("new", "4");
+  if (META.xbrzShort || META.xbrzLabel) updateLayerBtn("xbrz", "2");
+  document.querySelectorAll(".pair-chip").forEach(function (chip) {
+    var a = chip.getAttribute("data-a"), b = chip.getAttribute("data-b");
+    if (LAYERS[a] && LAYERS[b]) {
+      chip.textContent = LAYERS[a].short + " ↔ " + LAYERS[b].short;
+      chip.title = "Alternar entre " + LAYERS[a].label + " e " + LAYERS[b].label + " ao clicar na imagem";
+    }
+  });
 
   // Normalize incoming items cleanly
   const ITEMS = (Array.isArray(STUDIO_DATA) ? STUDIO_DATA : []).map(function (raw, idx) {

@@ -2,11 +2,12 @@
 """One-command build, verification, libretro multipass export, and GitHub Release preparation.
 
 Usage:
-    python3 tools/publish-release.py 3.6                     # Build + verify + deterministic zip + changelog preview
-    python3 tools/publish-release.py 3.6 --rebuild-docs      # Also update changed docs/img/*-crisp*.png
-    python3 tools/publish-release.py 3.6 --libretro-dir DIR  # Sync 4-pass multipass into local glsl-shaders/slang-shaders clones
-    python3 tools/publish-release.py 3.6 --tag               # Create annotated git tag after verifying clean git status
-    python3 tools/publish-release.py 3.6 --publish           # Create tag, push, and publish GitHub Release via gh CLI
+    python3 tools/publish-release.py 4.2                     # Build + verify + deterministic zip + changelog preview
+    python3 tools/publish-release.py 4.2 --rebuild-docs      # Also update changed docs/img/*-crisp*.png
+    python3 tools/publish-release.py 4.2 --libretro-dir DIR  # Sync 4-pass multipass into local glsl-shaders/slang-shaders clones
+    python3 tools/publish-release.py 4.2 --tag               # Create annotated git tag after verifying clean git status
+    python3 tools/publish-release.py 4.2 --publish           # Create tag and push (triggers .github/workflows/release.yml cleanly)
+    python3 tools/publish-release.py 4.2 --publish --local-release  # Also create/update GitHub Release locally via gh CLI
 """
 import argparse
 import importlib.util
@@ -32,10 +33,14 @@ def load_make_release():
     return mod
 
 
-def latest_git_tag() -> str:
+def latest_git_tag(exclude: str = "") -> str:
     try:
-        out = subprocess.check_output(["git", "describe", "--tags", "--abbrev=0"], cwd=ROOT, stderr=subprocess.DEVNULL)
-        return out.decode("utf-8").strip()
+        out = subprocess.check_output(["git", "tag", "--sort=-v:refname"], cwd=ROOT, stderr=subprocess.DEVNULL)
+        for line in out.decode("utf-8").splitlines():
+            t = line.strip()
+            if t and t != exclude:
+                return t
+        return ""
     except subprocess.CalledProcessError:
         return ""
 
@@ -69,25 +74,29 @@ def sync_libretro_clones(lr_root: str) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("version", help="Release version tag (e.g., 3.6 or 4.0)")
+    ap.add_argument("version", help="Release version tag (e.g., 4.1 or 4.2)")
     ap.add_argument("--rebuild-docs", action="store_true", help="Update changed docs/img/*-crisp*.png headlessly")
     ap.add_argument("--libretro-dir", metavar="DIR", help="Parent directory containing glsl-shaders/ and/or slang-shaders/")
     ap.add_argument("--tag", action="store_true", help="Create annotated git tag after verifying clean git status")
-    ap.add_argument("--publish", action="store_true", help="Push tag and create GitHub Release via gh CLI")
+    ap.add_argument("--publish", action="store_true", help="Push main + tag (triggers .github/workflows/release.yml without racing)")
+    ap.add_argument("--local-release", action="store_true", help="With --publish, also create/upload GitHub Release locally via gh CLI")
     args = ap.parse_args()
 
     print(f"=== Preparing xBRZ Crisp Release {args.version} ===")
     run_py("build-shaders.py")
     run_py("make-multipass.py")
-    run_py("verify.py")
+    run_py("verify.py", "--smoke", "--require-spirv")
 
     if args.rebuild_docs:
-        run_py("render-docs.py", "--all", "--include-xbrz")
+        run_py("render-docs.py", "--all", "--include-xbrz", "--workers", "2")
 
     mr = load_make_release()
     zip_name = f"xbrz-crisp-v{args.version}.zip"
     zip_path = os.path.join(BUILD_DIR, zip_name)
+    sha_path = zip_path + ".sha256"
     count, sha256 = mr.build_zip(zip_path)
+    with open(sha_path, "w", encoding="utf-8") as sf:
+        sf.write(f"{sha256}  {zip_name}\n")
     size_kb = os.path.getsize(zip_path) / 1024.0
     print(f"[publish-release] Archive ready: {zip_path} ({count} files, {size_kb:.1f} KB)")
     print(f"[publish-release] SHA256: {sha256}")
@@ -95,7 +104,7 @@ def main() -> None:
     if args.libretro_dir:
         sync_libretro_clones(args.libretro_dir)
 
-    prev = latest_git_tag()
+    prev = latest_git_tag(exclude=args.version)
     notes = f"## Changes since {prev or 'initial commit'}\n\n{generate_changelog(prev)}\n\n**SHA256 (`{zip_name}`):** `{sha256}`\n"
     notes_path = os.path.join(BUILD_DIR, f"release-notes-{args.version}.md")
     with open(notes_path, "w", encoding="utf-8") as f:
@@ -110,11 +119,21 @@ def main() -> None:
         print(f"[publish-release] Created annotated git tag {args.version}")
         if args.publish:
             subprocess.check_call(["git", "push", "origin", "main", args.version], cwd=ROOT)
-            subprocess.check_call(
-                ["gh", "release", "create", args.version, zip_path, "--title", f"xBRZ Crisp {args.version}", "--notes-file", notes_path],
-                cwd=ROOT,
-            )
-            print(f"[publish-release] Published GitHub Release {args.version}!")
+            if args.local_release:
+                exists = subprocess.run(["gh", "release", "view", args.version], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+                if exists:
+                    subprocess.check_call(["gh", "release", "upload", args.version, zip_path, sha_path, "--clobber"], cwd=ROOT)
+                else:
+                    subprocess.check_call(
+                        ["gh", "release", "create", args.version, zip_path, sha_path, "--title", f"xBRZ Crisp {args.version}", "--notes-file", notes_path],
+                        cwd=ROOT,
+                    )
+                print(f"[publish-release] Published GitHub Release {args.version} locally!")
+            else:
+                print(
+                    f"[publish-release] Pushed main + tag {args.version}. "
+                    f"GitHub Actions (.github/workflows/release.yml) will build and publish Release {args.version} automatically."
+                )
     else:
         print(
             f"\nReady! Once changes are committed & pushed to main, publish with:\n"

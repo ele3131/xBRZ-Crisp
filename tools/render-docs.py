@@ -532,13 +532,65 @@ def render_explain_diagram(ecfg: dict, docs_renders: dict) -> np.ndarray:
     return np.array(im, dtype=np.uint8)
 
 
+def _render_docs_chunk(args_tuple: tuple) -> tuple[int, int, list[str], dict[tuple[str, str], str]]:
+    """Worker process: renders a chunk of docs/img/*-original.png scenes and saves updated PNGs."""
+    os.environ["LP_NATIVE_VECTOR_WIDTH"] = "128"
+    crisp_glsl, mp_glsl, scene_paths, force, dry_run, tol_lsb, keep_all = args_tuple
+    gles = HeadlessGLES()
+    crisp_progs = [
+        gles.compile_program(os.path.join(crisp_glsl, f"xbrz-crisp-{p}.glsl"), "#version 300 es", True)
+        for p in ("point", "pass0", "resolve", "match", "pass1")
+    ]
+    mp_progs = (
+        [
+            gles.compile_program(os.path.join(mp_glsl, f"xbrz-freescale-{p}.glsl"), "#version 300 es", True)
+            for p in ("point", "pass0", "resolve", "pass1")
+        ]
+        if mp_glsl
+        else []
+    )
+    updated, skipped = 0, 0
+    logs: list[str] = []
+    saved_paths: dict[tuple[str, str], str] = {}
+    try:
+        for sp in scene_paths:
+            sid = os.path.basename(sp).replace("-original.png", "")
+            inp = np.ascontiguousarray(np.array(Image.open(sp).convert("RGBA"), dtype=np.uint8))
+            for minc_val, suffix in ((10.0, "crisp10"), (20.0, "crisp20"), (30.0, "crisp30")):
+                rgb = gles.render_pipeline(crisp_progs, inp, scale=6, minc=minc_val, diag=100.0, tol=15.0, steep=3.2, dom=3.8)
+                out_p = os.path.join(DOCS_IMG_DIR, f"{sid}-{suffix}.png")
+                if save_if_changed(rgb, out_p, force=force, dry_run=dry_run, tol_lsb=tol_lsb):
+                    updated += 1
+                    logs.append(f"  [{'DRY' if dry_run else 'UPD'}] img/{os.path.basename(out_p)}")
+                else:
+                    skipped += 1
+                if keep_all:
+                    saved_paths[(sid, suffix)] = out_p
+            if mp_progs:
+                rgb_x = gles.render_pipeline(mp_progs, inp, scale=6, minc=0.0, diag=0.0, tol=15.0, steep=3.2, dom=3.8)
+                out_x = os.path.join(DOCS_IMG_DIR, f"{sid}-xbrz.png")
+                if save_if_changed(rgb_x, out_x, force=force, dry_run=dry_run, tol_lsb=tol_lsb):
+                    updated += 1
+                    logs.append(f"  [{'DRY' if dry_run else 'UPD'}] img/{os.path.basename(out_x)}")
+                else:
+                    skipped += 1
+    finally:
+        for p in crisp_progs + mp_progs:
+            gles.delete_program(p)
+        gles.close()
+    return updated, skipped, logs, saved_paths
+
+
 def main() -> None:
+    import concurrent.futures
+
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--include-xbrz", action="store_true", help="Also render 4-pass plain *-xbrz.png")
     ap.add_argument("--all", action="store_true", help="Also render docs/img/explain/* and docs/sheets/* README visuals")
     ap.add_argument("--force", action="store_true", help="Rewrite PNGs even when pixels are unchanged")
     ap.add_argument("--dry-run", action="store_true", help="Report changes without touching disk")
     ap.add_argument("--exact", action="store_true", help="Treat even 1-LSB float rounding as a change")
+    ap.add_argument("--workers", type=int, default=1, help="Parallel worker processes for scene rendering (default: 1)")
     args = ap.parse_args()
 
     tol_lsb = 0 if args.exact else 1
@@ -547,53 +599,91 @@ def main() -> None:
     if not scenes:
         sys.exit(f"No *-original.png scenes found in {DOCS_IMG_DIR}")
 
-    gles = HeadlessGLES()
     tmp_mp = None
+    mp_glsl = None
     try:
-        crisp_progs = [
-            gles.compile_program(os.path.join(crisp_glsl, f"xbrz-crisp-{p}.glsl"), "#version 300 es", True)
-            for p in ("point", "pass0", "resolve", "match", "pass1")
-        ]
-        mp_progs = []
         if args.include_xbrz:
             tmp_mp = tempfile.mkdtemp(prefix="xbrz_docs_mp_")
             subprocess.check_call([sys.executable, os.path.join(TOOLS_DIR, "make-multipass.py"), tmp_mp], stdout=subprocess.DEVNULL)
             mp_glsl = os.path.join(tmp_mp, "glsl-shaders", "xbrz", "shaders", "xbrz-freescale-multipass")
-            mp_progs = [
-                gles.compile_program(os.path.join(mp_glsl, f"xbrz-freescale-{p}.glsl"), "#version 300 es", True)
-                for p in ("point", "pass0", "resolve", "pass1")
-            ]
 
         updated, skipped = 0, 0
         docs_renders: dict[tuple[str, str], Image.Image] = {}
-        for sp in scenes:
-            sid = os.path.basename(sp).replace("-original.png", "")
-            inp = np.ascontiguousarray(np.array(Image.open(sp).convert("RGBA"), dtype=np.uint8))
-            for minc_val, suffix in ((10.0, "crisp10"), (20.0, "crisp20"), (30.0, "crisp30")):
-                rgb = gles.render_pipeline(crisp_progs, inp, scale=6, minc=minc_val, diag=100.0, tol=15.0, steep=3.2, dom=3.8)
-                if args.all:
-                    docs_renders[(sid, suffix)] = Image.fromarray(rgb, "RGB")
-                out_p = os.path.join(DOCS_IMG_DIR, f"{sid}-{suffix}.png")
-                if save_if_changed(rgb, out_p, force=args.force, dry_run=args.dry_run, tol_lsb=tol_lsb):
-                    updated += 1
-                    print(f"  [{'DRY' if args.dry_run else 'UPD'}] img/{os.path.basename(out_p)}")
-                else:
-                    skipped += 1
 
-            if mp_progs:
-                rgb_x = gles.render_pipeline(mp_progs, inp, scale=6, minc=0.0, diag=0.0, tol=15.0, steep=3.2, dom=3.8)
-                out_x = os.path.join(DOCS_IMG_DIR, f"{sid}-xbrz.png")
-                if save_if_changed(rgb_x, out_x, force=args.force, dry_run=args.dry_run, tol_lsb=tol_lsb):
-                    updated += 1
-                    print(f"  [{'DRY' if args.dry_run else 'UPD'}] img/{os.path.basename(out_x)}")
-                else:
-                    skipped += 1
+        w = max(1, min(args.workers, len(scenes)))
+        if w > 1 and not args.dry_run:
+            chunks = [scenes[i::w] for i in range(w)]
+            jobs = [(crisp_glsl, mp_glsl, c, args.force, args.dry_run, tol_lsb, args.all) for c in chunks]
+            with concurrent.futures.ProcessPoolExecutor(max_workers=w) as ex:
+                for u, s, logs, saved in ex.map(_render_docs_chunk, jobs):
+                    updated += u
+                    skipped += s
+                    for ln in logs:
+                        print(ln)
+                    if args.all:
+                        for key, pth in saved.items():
+                            docs_renders[key] = Image.open(pth).convert("RGB")
+            if args.all:
+                gles = HeadlessGLES()
+                try:
+                    crisp_progs = [
+                        gles.compile_program(os.path.join(crisp_glsl, f"xbrz-crisp-{p}.glsl"), "#version 300 es", True)
+                        for p in ("point", "pass0", "resolve", "match", "pass1")
+                    ]
+                    with open(SPEC_PATH, "r", encoding="utf-8") as f:
+                        spec = json.load(f)
+                    sources = load_or_render_sources(spec, gles, crisp_progs, docs_renders)
+                    for p in crisp_progs:
+                        gles.delete_program(p)
+                finally:
+                    gles.close()
+        else:
+            gles = HeadlessGLES()
+            try:
+                crisp_progs = [
+                    gles.compile_program(os.path.join(crisp_glsl, f"xbrz-crisp-{p}.glsl"), "#version 300 es", True)
+                    for p in ("point", "pass0", "resolve", "match", "pass1")
+                ]
+                mp_progs = (
+                    [
+                        gles.compile_program(os.path.join(mp_glsl, f"xbrz-freescale-{p}.glsl"), "#version 300 es", True)
+                        for p in ("point", "pass0", "resolve", "pass1")
+                    ]
+                    if mp_glsl
+                    else []
+                )
+                for sp in scenes:
+                    sid = os.path.basename(sp).replace("-original.png", "")
+                    inp = np.ascontiguousarray(np.array(Image.open(sp).convert("RGBA"), dtype=np.uint8))
+                    for minc_val, suffix in ((10.0, "crisp10"), (20.0, "crisp20"), (30.0, "crisp30")):
+                        rgb = gles.render_pipeline(crisp_progs, inp, scale=6, minc=minc_val, diag=100.0, tol=15.0, steep=3.2, dom=3.8)
+                        if args.all:
+                            docs_renders[(sid, suffix)] = Image.fromarray(rgb, "RGB")
+                        out_p = os.path.join(DOCS_IMG_DIR, f"{sid}-{suffix}.png")
+                        if save_if_changed(rgb, out_p, force=args.force, dry_run=args.dry_run, tol_lsb=tol_lsb):
+                            updated += 1
+                            print(f"  [{'DRY' if args.dry_run else 'UPD'}] img/{os.path.basename(out_p)}")
+                        else:
+                            skipped += 1
+
+                    if mp_progs:
+                        rgb_x = gles.render_pipeline(mp_progs, inp, scale=6, minc=0.0, diag=0.0, tol=15.0, steep=3.2, dom=3.8)
+                        out_x = os.path.join(DOCS_IMG_DIR, f"{sid}-xbrz.png")
+                        if save_if_changed(rgb_x, out_x, force=args.force, dry_run=args.dry_run, tol_lsb=tol_lsb):
+                            updated += 1
+                            print(f"  [{'DRY' if args.dry_run else 'UPD'}] img/{os.path.basename(out_x)}")
+                        else:
+                            skipped += 1
+                if args.all:
+                    with open(SPEC_PATH, "r", encoding="utf-8") as f:
+                        spec = json.load(f)
+                    sources = load_or_render_sources(spec, gles, crisp_progs, docs_renders)
+                for p in crisp_progs + mp_progs:
+                    gles.delete_program(p)
+            finally:
+                gles.close()
 
         if args.all:
-            with open(SPEC_PATH, "r", encoding="utf-8") as f:
-                spec = json.load(f)
-            sources = load_or_render_sources(spec, gles, crisp_progs, docs_renders)
-
             sheet_jobs = [
                 (spec["banner"]["output"], render_banner(spec, sources, docs_renders)),
                 (spec["hero_triptych"]["output"], render_hero_triptych(spec, sources)),
@@ -621,11 +711,8 @@ def main() -> None:
                 else:
                     skipped += 1
 
-        for p in crisp_progs + mp_progs:
-            gles.gl.glDeleteProgram(p)
         print(f"[render-docs] Done: {updated} updated, {skipped} unchanged (skipped).")
     finally:
-        gles.close()
         if tmp_mp:
             shutil.rmtree(tmp_mp, ignore_errors=True)
 

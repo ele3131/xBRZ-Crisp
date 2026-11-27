@@ -5,15 +5,16 @@ Usage examples (run from repo root):
   # Compare current working-tree shaders against git HEAD (default):
   python3 tools/studio/build_studio.py --out build/xbrz_crisp_studio.html
 
-  # Compare against a specific git tag/commit and include extra native PNG scenes:
-  python3 tools/studio/build_studio.py --baseline-ref 3.6 --extra-dir /path/to/suite50 --out /path/to/studio.html
+  # Build a Desktop App-safe (< 900 KB) diff-only comparator against a git tag:
+  python3 tools/studio/build_studio.py --baseline-ref 4.1 --preset desktop --out build/v42_desktop.studio.html
 
   # Compare against pre-rendered 6x baseline PNGs in a cache directory:
-  python3 tools/studio/build_studio.py --baseline-dir /path/to/baseline_6x --extra-dir /path/to/suite50 --out /path/to/studio.html
+  python3 tools/studio/build_studio.py --baseline-dir /path/to/baseline_6x --out build/studio.html
 """
 import argparse
 import base64
 import glob
+import hashlib
 import io
 import json
 import os
@@ -30,6 +31,7 @@ STUDIO_DIR = Path(__file__).resolve().parent
 REPO_ROOT = STUDIO_DIR.parents[1]
 TOOLS_DIR = REPO_ROOT / "tools"
 TEMPLATE_PATH = STUDIO_DIR / "studio_template.html"
+DEFAULT_SUITE_DIR = Path(os.environ.get("XBRZ_SUITE_DIR", str(Path.home() / ".cache" / "xbrz-crisp" / "suite50")))
 
 sys.path.insert(0, str(TOOLS_DIR))
 import numpy as np
@@ -45,6 +47,7 @@ SHADER_REL_PATHS = [
 ]
 
 PLACEHOLDER = "/*__STUDIO_DATA__*/[]"
+META_PLACEHOLDER = "/*__STUDIO_META__*/{}"
 
 # Curated Golden Sun + multi-console showcase items.
 # Items whose sceneId is not present (e.g., optional --extra-dir scenes) are skipped cleanly.
@@ -158,6 +161,16 @@ DEFAULT_ITEMS = [
 ]
 
 
+def resolve_extra_dir(extra_dir: str | None, no_extra: bool = False) -> str | None:
+    if no_extra:
+        return None
+    if extra_dir:
+        return extra_dir
+    if DEFAULT_SUITE_DIR.is_dir():
+        return str(DEFAULT_SUITE_DIR)
+    return None
+
+
 def discover_scenes(extra_dir: str | None) -> dict[str, Path]:
     scenes: dict[str, Path] = {}
     for p in sorted(glob.glob(str(REPO_ROOT / "docs/img/*-original.png"))):
@@ -171,6 +184,14 @@ def discover_scenes(extra_dir: str | None) -> dict[str, Path]:
             name = "s50_" + Path(p).stem
             scenes[name] = Path(p)
     return scenes
+
+
+def shader_sources_hash(sources: list[str], salt: str = "crisp20") -> str:
+    h = hashlib.sha256(salt.encode("utf-8"))
+    for s in sources:
+        h.update(b"\0")
+        h.update(s.encode("utf-8"))
+    return h.hexdigest()[:12]
 
 
 def encode_webp_uri(rgb: np.ndarray) -> str:
@@ -206,73 +227,181 @@ def validate_html_js(html_text: str) -> None:
             subprocess.run(["node", "--check", str(js_path)], check=True)
 
 
-def assemble_html(template_path: Path, data_json: str, out_path: Path) -> None:
+def render_html_string(template_text: str, payload: list[dict], meta: dict) -> str:
+    data_json = "[\n" + ",\n".join(json.dumps(it, separators=(",", ":")) for it in payload) + "\n]"
+    meta_json = json.dumps(meta, separators=(",", ":"), ensure_ascii=False)
+    if PLACEHOLDER not in template_text:
+        raise RuntimeError(f"Placeholder {PLACEHOLDER!r} not found in template")
+    html = template_text.replace(PLACEHOLDER, data_json, 1)
+    if META_PLACEHOLDER in html:
+        html = html.replace(META_PLACEHOLDER, meta_json, 1)
+    return html
+
+
+def assemble_html(template_path: Path, payload: list[dict], meta: dict, out_path: Path, budget_kb: int | None = None) -> tuple[str, list[dict]]:
     tpl = template_path.read_text(encoding="utf-8")
-    if PLACEHOLDER not in tpl:
-        raise RuntimeError(f"Placeholder {PLACEHOLDER!r} not found in {template_path}")
-    html = tpl.replace(PLACEHOLDER, data_json, 1)
+    kept = list(payload)
+    html = render_html_string(tpl, kept, meta)
+    if budget_kb and budget_kb > 0:
+        limit = budget_kb * 1024
+        while len(html.encode("utf-8")) > limit and len(kept) > 1:
+            # Prefer trimming auto-filled items, then full-frame duplicates, then lowest-diff non-GS items
+            def drop_rank(it: dict) -> tuple[int, int, int]:
+                if it["id"].startswith("auto_"):
+                    tier = 0
+                elif it["id"].endswith("_full"):
+                    tier = 1
+                elif it["cat"] != "gs":
+                    tier = 2
+                else:
+                    tier = 3
+                return (tier, it["dpx"], -it["w1"] * it["h1"])
+            victim = min(kept, key=drop_rank)
+            kept.remove(victim)
+            print(f"  [budget] dropped {victim['id']:18s} (diff={victim['dpx']} px) to fit <= {budget_kb} KB")
+            html = render_html_string(tpl, kept, meta)
     validate_html_js(html)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html, encoding="utf-8")
+    return html, kept
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Build offline Studio v4 HTML comparator.")
     ap.add_argument("--baseline-ref", default="HEAD", help="Git ref for 'Antes' baseline shaders (default: HEAD)")
     ap.add_argument("--baseline-dir", default=None, help="Optional directory of cached 6x baseline PNGs (<sceneId>.png)")
-    ap.add_argument("--extra-dir", default=None, help="Optional directory of extra native 1x PNG scenes")
+    ap.add_argument("--baseline-label", default=None, help="Short label for baseline layer (default: baseline-ref or 'Antes')")
+    ap.add_argument("--cand-label", default="Novo", help="Short label for candidate layer (default: 'Novo')")
+    ap.add_argument("--title", default=None, help="Custom page & header title")
+    ap.add_argument("--extra-dir", default=None, help="Optional directory of extra native 1x PNG scenes (auto-uses ~/.cache/xbrz-crisp/suite50 if present)")
+    ap.add_argument("--no-extra", action="store_true", help="Disable auto-discovery of extra suite50 scenes")
+    ap.add_argument("--cache-dir", default=str(REPO_ROOT / "build" / "cache"), help="Content-addressed 6x PNG render cache directory ('' to disable)")
     ap.add_argument("--template", default=str(TEMPLATE_PATH), help="Path to studio_template.html")
     ap.add_argument("--data-out", default=None, help="Optional path to save raw JSON data payload")
+    ap.add_argument("--preset", choices=("compact", "desktop", "full"), default=None, help="Shortcut presets: desktop (--only-diffs --compact --desktop-budget 900), compact, full")
     ap.add_argument("--only-diffs", action="store_true", help="Hide 0-px items and replace with other scenes that have diffs")
     ap.add_argument("--auto-fill", type=int, default=4, help="Max extra diff-bearing scenes to auto-add with --only-diffs (default: 4)")
-    ap.add_argument("--compact", action="store_true", default=True, help="Keep HTML compact (~1.2 MiB) by focusing full-screen scenes onto 100x80 diff crops (default: on)")
+    ap.add_argument("--compact", action="store_true", default=True, help="Keep HTML compact by focusing full-screen scenes onto 100x80 diff crops (default: on)")
     ap.add_argument("--full-frames", action="store_true", help="Keep full 240x160 full-screen scenes instead of 100x80 diff crops")
+    ap.add_argument("--desktop-budget", type=int, default=None, help="Enforce max output HTML size in KB (e.g. 900 for Desktop App preview)")
     ap.add_argument("--out", default=str(REPO_ROOT / "build/xbrz_crisp_studio.html"), help="Output HTML path")
     args = ap.parse_args()
+
+    if args.preset == "desktop":
+        args.only_diffs = True
+        args.compact = True
+        if args.desktop_budget is None:
+            args.desktop_budget = 900
+    elif args.preset == "full":
+        args.full_frames = True
+    elif args.preset == "compact":
+        args.compact = True
+
     if args.full_frames:
         args.compact = False
 
-    scenes = discover_scenes(args.extra_dir)
+    extra_dir = resolve_extra_dir(args.extra_dir, no_extra=args.no_extra)
+    scenes = discover_scenes(extra_dir)
     active_items = [it for it in DEFAULT_ITEMS if it["sceneId"] in scenes]
     if not active_items:
         raise RuntimeError("No matching scenes found.")
 
-    gles = HeadlessGLES()
-    new_progs = [gles.compile_program(str(REPO_ROOT / rel), "#version 300 es") for rel in SHADER_REL_PATHS]
+    cache_root = Path(args.cache_dir) if args.cache_dir else None
 
-    tmp_dir_ctx = tempfile.TemporaryDirectory() if not args.baseline_dir else None
-    try:
-        old_progs = None
-        if not args.baseline_dir:
-            td = Path(tmp_dir_ctx.name)
+    new_srcs = [(REPO_ROOT / rel).read_text(encoding="utf-8") for rel in SHADER_REL_PATHS]
+    new_hash = shader_sources_hash(new_srcs, "crisp20")
+
+    old_srcs = None
+    old_hash = None
+    if not args.baseline_dir:
+        old_srcs = [
+            subprocess.check_output(["git", "show", f"{args.baseline_ref}:{rel}"], cwd=str(REPO_ROOT)).decode("utf-8")
+            for rel in SHADER_REL_PATHS
+        ]
+        old_hash = shader_sources_hash(old_srcs, "crisp20")
+
+    gles = HeadlessGLES()
+    new_progs = None
+    old_progs = None
+    plain_progs = None
+    plain_hash = None
+    tmp_dir_ctx = tempfile.TemporaryDirectory(prefix="xbrz_studio_")
+    td = Path(tmp_dir_ctx.name)
+
+    def ensure_new_progs():
+        nonlocal new_progs
+        if new_progs is None:
+            new_progs = [gles.compile_program(str(REPO_ROOT / rel), "#version 300 es") for rel in SHADER_REL_PATHS]
+        return new_progs
+
+    def ensure_old_progs():
+        nonlocal old_progs
+        if old_progs is None:
+            assert old_srcs is not None
             old_progs = []
-            for i, rel in enumerate(SHADER_REL_PATHS):
-                src = subprocess.check_output(["git", "show", f"{args.baseline_ref}:{rel}"], cwd=str(REPO_ROOT)).decode("utf-8")
+            for i, src in enumerate(old_srcs):
                 sp = td / f"old_{i}.glsl"
                 sp.write_text(src, encoding="utf-8")
                 old_progs.append(gles.compile_program(str(sp), "#version 300 es"))
+        return old_progs
 
-        cache: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = {}
+    def ensure_plain_progs():
+        nonlocal plain_progs, plain_hash
+        if plain_progs is None:
+            mp_dir = td / "mp"
+            subprocess.check_call([sys.executable, str(TOOLS_DIR / "make-multipass.py"), str(mp_dir)], stdout=subprocess.DEVNULL)
+            mp_glsl = mp_dir / "glsl-shaders" / "xbrz" / "shaders" / "xbrz-freescale-multipass"
+            mp_paths = [mp_glsl / f"xbrz-freescale-{p}.glsl" for p in ("point", "pass0", "resolve", "pass1")]
+            plain_hash = "plain_" + shader_sources_hash([p.read_text(encoding="utf-8") for p in mp_paths], "xbrz19")
+            plain_progs = [gles.compile_program(str(p), "#version 300 es", True) for p in mp_paths]
+        return plain_progs, plain_hash
+
+    def cached_render(hash_key: str | None, scene_id: str, render_fn) -> np.ndarray:
+        if cache_root and hash_key:
+            cp = cache_root / hash_key / f"{scene_id}.png"
+            if cp.is_file():
+                return np.array(Image.open(cp).convert("RGB"), dtype=np.uint8)
+            rgb = render_fn()
+            cp.parent.mkdir(parents=True, exist_ok=True)
+            Image.fromarray(rgb, "RGB").save(cp, compress_level=1)
+            return rgb
+        return render_fn()
+
+    def load_or_render_xbrz(scene_id: str, rgba: np.ndarray) -> np.ndarray:
+        src_p = scenes[scene_id]
+        h1, w1 = rgba.shape[:2]
+        if src_p.name.endswith("-original.png"):
+            cpp_p = src_p.with_name(src_p.name.replace("-original.png", "-xbrzcpp.png"))
+            if cpp_p.is_file():
+                arr = np.array(Image.open(cpp_p).convert("RGB"), dtype=np.uint8)
+                if arr.shape == (h1 * 6, w1 * 6, 3):
+                    return arr
+        p_progs, p_hash = ensure_plain_progs()
+        return cached_render(p_hash, scene_id, lambda: render_xbrz(gles, p_progs, rgba))
+
+    try:
+        cache: dict[str, tuple[np.ndarray, np.ndarray | None, np.ndarray, np.ndarray]] = {}
 
         def get_renders(scene_id: str, need_xbrz: bool = True):
             if scene_id not in cache:
                 rgba = np.array(Image.open(scenes[scene_id]).convert("RGBA"), dtype=np.uint8)
                 orig = rgba[:, :, :3]
-                new_c = render_crisp(gles, new_progs, rgba)
-                xbrz = render_xbrz(gles, new_progs, rgba) if need_xbrz else None
+                new_c = cached_render(new_hash, scene_id, lambda: render_crisp(gles, ensure_new_progs(), rgba))
+                xbrz = load_or_render_xbrz(scene_id, rgba) if need_xbrz else None
                 if args.baseline_dir:
                     old_c = np.array(Image.open(Path(args.baseline_dir) / f"{scene_id}.png").convert("RGB"), dtype=np.uint8)
                 else:
-                    old_c = render_crisp(gles, old_progs, rgba)
+                    old_c = cached_render(old_hash, scene_id, lambda: render_crisp(gles, ensure_old_progs(), rgba))
                 cache[scene_id] = (orig, xbrz, old_c, new_c)
             elif need_xbrz and cache[scene_id][1] is None:
                 orig, _, old_c, new_c = cache[scene_id]
                 rgba = np.array(Image.open(scenes[scene_id]).convert("RGBA"), dtype=np.uint8)
-                cache[scene_id] = (orig, render_xbrz(gles, new_progs, rgba), old_c, new_c)
+                cache[scene_id] = (orig, load_or_render_xbrz(scene_id, rgba), old_c, new_c)
             return cache[scene_id]
 
         def build_item(it: dict) -> dict | None:
             orig, xbrz, old_c, new_c = get_renders(it["sceneId"], need_xbrz=True)
+            assert xbrz is not None
             h1, w1 = orig.shape[:2]
             badge = it["badge"]
             if it["box"] is None:
@@ -362,7 +491,6 @@ def main() -> None:
                 h1, w1 = orig.shape[:2]
                 diff1 = diff6.reshape(h1, 6, w1, 6).any(axis=(1, 3))
                 ys, xs = np.where(diff1)
-                # Center an 80x60 (or full if smaller) window on the densest diff tile
                 best_x, best_y, best_cnt = int(xs[0]), int(ys[0]), -1
                 for tx, ty in zip(xs.tolist(), ys.tolist()):
                     cnt = int(((np.abs(xs - tx) <= 40) & (np.abs(ys - ty) <= 30)).sum())
@@ -374,7 +502,6 @@ def main() -> None:
                 x1 = min(w1, x0 + max(2 * half_w, min(w1, 80)))
                 y1 = min(h1, y0 + max(2 * half_h, min(h1, 60)))
                 box_dpx = int(diff6[y0 * 6 : y1 * 6, x0 * 6 : x1 * 6].sum())
-                # Pick up to 3 distinct changed 1x spots inside the box
                 in_box = [(int(tx), int(ty)) for tx, ty in zip(xs.tolist(), ys.tolist()) if x0 <= tx < x1 and y0 <= ty < y1]
                 auto_spots = []
                 for tx, ty in in_box:
@@ -403,16 +530,31 @@ def main() -> None:
                     payload.append(obj)
                     shown_scenes.add(sid)
     finally:
+        for group in (new_progs, old_progs, plain_progs):
+            if group:
+                for p in group:
+                    gles.delete_program(p)
         gles.close()
-        if tmp_dir_ctx is not None:
-            tmp_dir_ctx.cleanup()
+        tmp_dir_ctx.cleanup()
 
-    data_json = "[\n" + ",\n".join(json.dumps(it, separators=(",", ":")) for it in payload) + "\n]"
-    if args.data_out:
-        Path(args.data_out).write_text(data_json, encoding="utf-8")
+    old_short = args.baseline_label or (args.baseline_ref if not args.baseline_dir else "Antes")
+    new_short = args.cand_label
+    meta = {
+        "title": args.title or f"xBRZ Crisp Studio ({old_short} → {new_short})",
+        "oldShort": old_short,
+        "oldLabel": f"Crisp ({old_short})",
+        "newShort": new_short,
+        "newLabel": f"Crisp ({new_short})",
+        "xbrzShort": "xBRZ 1.9",
+        "xbrzLabel": "xBRZ 1.9",
+    }
+
     out_path = Path(args.out)
-    assemble_html(Path(args.template), data_json, out_path)
-    print(f"Wrote {out_path} ({out_path.stat().st_size / 1024:.1f} KB, {len(payload)} items) — node --check OK!")
+    _, kept = assemble_html(Path(args.template), payload, meta, out_path, budget_kb=args.desktop_budget)
+    if args.data_out:
+        data_json = "[\n" + ",\n".join(json.dumps(it, separators=(",", ":")) for it in kept) + "\n]"
+        Path(args.data_out).write_text(data_json, encoding="utf-8")
+    print(f"Wrote {out_path} ({out_path.stat().st_size / 1024:.1f} KB, {len(kept)} items) — node --check OK!")
 
 
 if __name__ == "__main__":

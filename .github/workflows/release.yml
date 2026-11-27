@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version tag (e.g. 3.6)"
+        description: "Release version tag (e.g. 4.1)"
         required: true
         type: string
 
@@ -39,28 +39,32 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "zip_name=xbrz-crisp-v${VERSION}.zip" >> "$GITHUB_OUTPUT"
 
-      - name: Install headless Mesa OpenGL ES & Python imaging libraries
+      - name: Install headless Mesa OpenGL ES, glslangValidator & Python imaging libraries
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libegl1 libgles2 libgl1-mesa-dri python3-pil python3-numpy
+            libegl1 libgles2 libgl1-mesa-dri glslang-tools python3-pil python3-numpy
 
-      - name: Verify shaders
+      - name: Verify shaders (ES 1.00 / 3.00 / 3.10, SPIR-V & runtime smoke)
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
           LP_NATIVE_VECTOR_WIDTH: "128"
-        run: python3 tools/verify.py
+        run: python3 tools/verify.py --smoke --require-spirv
 
-      - name: Build deterministic RetroArch release zip
+      - name: Build deterministic RetroArch release zip & SHA-256 checksum
         id: pkg
         shell: bash
         run: |
-          ZIP_PATH="build/${{ steps.ver.outputs.zip_name }}"
+          ZIP_NAME="${{ steps.ver.outputs.zip_name }}"
+          ZIP_PATH="build/${ZIP_NAME}"
+          SHA_PATH="${ZIP_PATH}.sha256"
           python3 tools/make-release.py "$ZIP_PATH"
           SHA256="$(sha256sum "$ZIP_PATH" | awk '{print $1}')"
+          printf "%s  %s\n" "$SHA256" "$ZIP_NAME" > "$SHA_PATH"
           echo "zip_path=${ZIP_PATH}" >> "$GITHUB_OUTPUT"
+          echo "sha_path=${SHA_PATH}" >> "$GITHUB_OUTPUT"
           echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
-          echo "SHA256 (${{ steps.ver.outputs.zip_name }}): ${SHA256}"
+          echo "SHA256 (${ZIP_NAME}): ${SHA256}"
 
       - name: Create or update GitHub Release
         env:
@@ -70,10 +74,11 @@ jobs:
           TAG_NAME="${{ steps.ver.outputs.tag }}"
           VERSION="${{ steps.ver.outputs.version }}"
           ZIP_PATH="${{ steps.pkg.outputs.zip_path }}"
+          SHA_PATH="${{ steps.pkg.outputs.sha_path }}"
           ZIP_NAME="${{ steps.ver.outputs.zip_name }}"
           SHA256="${{ steps.pkg.outputs.sha256 }}"
 
-          PREV_TAG="$(git tag --sort=-creatordate | grep -vx "$TAG_NAME" | head -n 1 || true)"
+          PREV_TAG="$(git tag --sort=-v:refname | grep -vx "$TAG_NAME" | head -n 1 || true)"
           if [ -n "$PREV_TAG" ]; then
             CHANGES="$(git log "${PREV_TAG}..HEAD" --no-merges --pretty=format:'- %s (%h)')"
           else
@@ -93,9 +98,9 @@ jobs:
           EOF
 
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release upload "$TAG_NAME" "$ZIP_PATH" --clobber
+            gh release upload "$TAG_NAME" "$ZIP_PATH" "$SHA_PATH" --clobber
           else
-            gh release create "$TAG_NAME" "$ZIP_PATH" \
+            gh release create "$TAG_NAME" "$ZIP_PATH" "$SHA_PATH" \
               --title "xBRZ Crisp ${VERSION}" \
               --notes-file build/release-notes.md
           fi

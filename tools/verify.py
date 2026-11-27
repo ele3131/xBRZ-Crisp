@@ -78,6 +78,7 @@ class HeadlessGLES:
         self.dpy = self._init_display()
         self.ctx = self._init_context()
         self.vbo = self._init_quad()
+        self._uloc_cache: dict[tuple[int, bytes], int] = {}
 
     def _bind_prototypes(self) -> None:
         self.egl.eglGetProcAddress.argtypes = [ctypes.c_char_p]
@@ -141,6 +142,7 @@ class HeadlessGLES:
         self.gl.glFramebufferTexture2D.argtypes = [ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.c_int]
         self.gl.glViewport.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
         self.gl.glDrawArrays.argtypes = [ctypes.c_uint, ctypes.c_int, ctypes.c_int]
+        self.gl.glFinish.argtypes = []
         self.gl.glReadPixels.argtypes = [
             ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_uint, ctypes.c_uint, ctypes.c_void_p
         ]
@@ -186,6 +188,19 @@ class HeadlessGLES:
         self.gl.glBindBuffer(self.GL_ARRAY_BUFFER, vbo)
         self.gl.glBufferData(self.GL_ARRAY_BUFFER, ctypes.sizeof(quad), quad, self.GL_STATIC_DRAW)
         return vbo
+
+    def _uloc(self, prog: int, name: bytes) -> int:
+        key = (prog, name)
+        loc = self._uloc_cache.get(key)
+        if loc is None:
+            loc = self.gl.glGetUniformLocation(prog, name)
+            self._uloc_cache[key] = loc
+        return loc
+
+    def delete_program(self, prog: int) -> None:
+        self.gl.glDeleteProgram(prog)
+        for k in [k for k in self._uloc_cache if k[0] == prog]:
+            del self._uloc_cache[k]
 
     @staticmethod
     def preprocess_retroarch_glsl(raw_src: str, is_vertex: bool, version_hdr: str, param_uniform: bool = True) -> bytes:
@@ -246,9 +261,71 @@ class HeadlessGLES:
         self.gl.glTexImage2D(self.GL_TEXTURE_2D, 0, self.GL_RGBA, w, h, 0, self.GL_RGBA, self.GL_UNSIGNED_BYTE, data_ptr)
         return t
 
+    def _bind_pass_uniforms(
+        self, p: int, i: int, n: int, w: int, h: int, pw: int, ph: int,
+        tex_orig: int, tex_pass, ident,
+        minc: float, diag: float, tol: float, steep: float, dom: float,
+    ) -> None:
+        self.gl.glUseProgram(p)
+        mvp = self._uloc(p, b"MVPMatrix")
+        if mvp >= 0:
+            self.gl.glUniformMatrix4fv(mvp, 1, self.GL_FALSE, ident)
+
+        def u1f(name: bytes, v: float) -> None:
+            loc = self._uloc(p, name)
+            if loc >= 0:
+                self.gl.glUniform1f(loc, v)
+
+        def u2f(name: bytes, x: float, y: float) -> None:
+            loc = self._uloc(p, name)
+            if loc >= 0:
+                self.gl.glUniform2f(loc, x, y)
+
+        def utex(name: bytes, unit: int, tex: int) -> None:
+            loc = self._uloc(p, name)
+            if loc >= 0:
+                self.gl.glActiveTexture(self.GL_TEXTURE0 + unit)
+                self.gl.glBindTexture(self.GL_TEXTURE_2D, tex)
+                self.gl.glUniform1i(loc, unit)
+
+        u2f(b"TextureSize", float(w), float(h))
+        u2f(b"InputSize", float(w), float(h))
+        u2f(b"OutputSize", float(pw), float(ph))
+        u1f(b"XBRZ_MINC", minc)
+        u1f(b"XBRZ_DIAG", diag)
+        u1f(b"XBRZ_TOL", tol)
+        u1f(b"XBRZ_STEEP", steep)
+        u1f(b"XBRZ_DOM", dom)
+        utex(b"Texture", 0, tex_orig if i == 0 else tex_pass[i - 1])
+        if n == 5:
+            if i == 2:
+                utex(b"PassPrev2Texture", 1, tex_pass[0])
+                u2f(b"PassPrev2TextureSize", float(w), float(h))
+                u2f(b"PassPrev2InputSize", float(w), float(h))
+            elif i == 3:
+                utex(b"PassPrev2Texture", 1, tex_pass[1])
+                u2f(b"PassPrev2TextureSize", float(w), float(h))
+                utex(b"PassPrev3Texture", 2, tex_pass[0])
+                u2f(b"PassPrev3TextureSize", float(w), float(h))
+                u2f(b"PassPrev3InputSize", float(w), float(h))
+            elif i == 4:
+                utex(b"PassPrev4Texture", 1, tex_pass[0])
+                u2f(b"PassPrev4TextureSize", float(w), float(h))
+                u2f(b"PassPrev4InputSize", float(w), float(h))
+        elif n == 4:
+            if i == 2:
+                utex(b"PassPrev2Texture", 1, tex_pass[0])
+                u2f(b"PassPrev2TextureSize", float(w), float(h))
+                u2f(b"PassPrev2InputSize", float(w), float(h))
+            elif i == 3:
+                utex(b"PassPrev3Texture", 1, tex_pass[0])
+                u2f(b"PassPrev3TextureSize", float(w), float(h))
+                u2f(b"PassPrev3InputSize", float(w), float(h))
+
     def render_pipeline(
         self, progs: list[int], in_rgba, scale: int = 6,
-        minc: float = 20.0, diag: float = 100.0, tol: float = 15.0, steep: float = 3.2, dom: float = 3.8
+        minc: float = 20.0, diag: float = 100.0, tol: float = 15.0, steep: float = 3.2, dom: float = 3.8,
+        return_passes: bool = False,
     ):
         import numpy as np
         h, w, _ = in_rgba.shape
@@ -272,65 +349,18 @@ class HeadlessGLES:
         self.gl.glEnableVertexAttribArray(1)
         self.gl.glVertexAttribPointer(1, 4, self.GL_FLOAT, self.GL_FALSE, 32, ctypes.c_void_p(16))
 
-        def u1f(p: int, name: bytes, v: float) -> None:
-            loc = self.gl.glGetUniformLocation(p, name)
-            if loc >= 0:
-                self.gl.glUniform1f(loc, v)
-
-        def u2f(p: int, name: bytes, x: float, y: float) -> None:
-            loc = self.gl.glGetUniformLocation(p, name)
-            if loc >= 0:
-                self.gl.glUniform2f(loc, x, y)
-
-        def utex(p: int, name: bytes, unit: int, tex: int) -> None:
-            loc = self.gl.glGetUniformLocation(p, name)
-            if loc >= 0:
-                self.gl.glActiveTexture(self.GL_TEXTURE0 + unit)
-                self.gl.glBindTexture(self.GL_TEXTURE_2D, tex)
-                self.gl.glUniform1i(loc, unit)
-
+        pass_outputs = []
         for i, p in enumerate(progs):
             pw, ph = (ow, oh) if i == n - 1 else (w, h)
             self.gl.glBindFramebuffer(self.GL_FRAMEBUFFER, fbos[i])
             self.gl.glViewport(0, 0, pw, ph)
-            self.gl.glUseProgram(p)
-            mvp = self.gl.glGetUniformLocation(p, b"MVPMatrix")
-            if mvp >= 0:
-                self.gl.glUniformMatrix4fv(mvp, 1, self.GL_FALSE, ident)
-            u2f(p, b"TextureSize", float(w), float(h))
-            u2f(p, b"InputSize", float(w), float(h))
-            u2f(p, b"OutputSize", float(pw), float(ph))
-            u1f(p, b"XBRZ_MINC", minc)
-            u1f(p, b"XBRZ_DIAG", diag)
-            u1f(p, b"XBRZ_TOL", tol)
-            u1f(p, b"XBRZ_STEEP", steep)
-            u1f(p, b"XBRZ_DOM", dom)
-            utex(p, b"Texture", 0, tex_orig.value if i == 0 else tex_pass[i - 1])
-            if n == 5:
-                if i == 2:
-                    utex(p, b"PassPrev2Texture", 1, tex_pass[0])
-                    u2f(p, b"PassPrev2TextureSize", float(w), float(h))
-                    u2f(p, b"PassPrev2InputSize", float(w), float(h))
-                elif i == 3:
-                    utex(p, b"PassPrev2Texture", 1, tex_pass[1])
-                    u2f(p, b"PassPrev2TextureSize", float(w), float(h))
-                    utex(p, b"PassPrev3Texture", 2, tex_pass[0])
-                    u2f(p, b"PassPrev3TextureSize", float(w), float(h))
-                    u2f(p, b"PassPrev3InputSize", float(w), float(h))
-                elif i == 4:
-                    utex(p, b"PassPrev4Texture", 1, tex_pass[0])
-                    u2f(p, b"PassPrev4TextureSize", float(w), float(h))
-                    u2f(p, b"PassPrev4InputSize", float(w), float(h))
-            elif n == 4:
-                if i == 2:
-                    utex(p, b"PassPrev2Texture", 1, tex_pass[0])
-                    u2f(p, b"PassPrev2TextureSize", float(w), float(h))
-                    u2f(p, b"PassPrev2InputSize", float(w), float(h))
-                elif i == 3:
-                    utex(p, b"PassPrev3Texture", 1, tex_pass[0])
-                    u2f(p, b"PassPrev3TextureSize", float(w), float(h))
-                    u2f(p, b"PassPrev3InputSize", float(w), float(h))
+            self._bind_pass_uniforms(p, i, n, w, h, pw, ph, tex_orig.value, tex_pass, ident, minc, diag, tol, steep, dom)
             self.gl.glDrawArrays(self.GL_TRIANGLE_STRIP, 0, 4)
+            if return_passes and i < n - 1:
+                pbuf = np.empty((ph, pw, 4), dtype=np.uint8)
+                self.gl.glPixelStorei(self.GL_PACK_ALIGNMENT, 1)
+                self.gl.glReadPixels(0, 0, pw, ph, self.GL_RGBA, self.GL_UNSIGNED_BYTE, ctypes.c_void_p(pbuf.ctypes.data))
+                pass_outputs.append(pbuf)
 
         out = np.empty((oh, ow, 4), dtype=np.uint8)
         self.gl.glBindFramebuffer(self.GL_FRAMEBUFFER, fbos[n - 1])
@@ -339,9 +369,81 @@ class HeadlessGLES:
         self.gl.glDeleteFramebuffers(n, fbos)
         self.gl.glDeleteTextures(n, tex_pass)
         self.gl.glDeleteTextures(1, ctypes.byref(tex_orig))
+        if return_passes:
+            return out[:, :, :3], pass_outputs
         return out[:, :, :3]
 
+    def render_pipeline_timed(
+        self, progs: list[int], in_rgba, scale: int = 6,
+        minc: float = 20.0, diag: float = 100.0, tol: float = 15.0, steep: float = 3.2, dom: float = 3.8,
+        warmup: int = 2, iters: int = 7,
+    ) -> tuple[list[float], float]:
+        """Return (median_per_pass_ms, median_total_ms) using process_time() on pre-allocated FBOs."""
+        import statistics
+        import time
+        h, w, _ = in_rgba.shape
+        ow, oh = w * scale, h * scale
+        n = len(progs)
+        ident = (ctypes.c_float * 16)(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
+
+        tex_orig = self._make_tex(w, h, ctypes.c_void_p(in_rgba.ctypes.data))
+        tex_pass = (ctypes.c_uint * n)()
+        fbos = (ctypes.c_uint * n)()
+        self.gl.glGenFramebuffers(n, fbos)
+        for i in range(n):
+            pw, ph = (ow, oh) if i == n - 1 else (w, h)
+            tex_pass[i] = self._make_tex(pw, ph, None).value
+            self.gl.glBindFramebuffer(self.GL_FRAMEBUFFER, fbos[i])
+            self.gl.glFramebufferTexture2D(self.GL_FRAMEBUFFER, self.GL_COLOR_ATTACHMENT0, self.GL_TEXTURE_2D, tex_pass[i], 0)
+
+        self.gl.glBindBuffer(self.GL_ARRAY_BUFFER, self.vbo)
+        self.gl.glEnableVertexAttribArray(0)
+        self.gl.glVertexAttribPointer(0, 4, self.GL_FLOAT, self.GL_FALSE, 32, ctypes.c_void_p(0))
+        self.gl.glEnableVertexAttribArray(1)
+        self.gl.glVertexAttribPointer(1, 4, self.GL_FLOAT, self.GL_FALSE, 32, ctypes.c_void_p(16))
+
+        buf_1x = (ctypes.c_ubyte * (w * h * 4))()
+        buf_6x = (ctypes.c_ubyte * (ow * oh * 4))()
+        self.gl.glPixelStorei(self.GL_PACK_ALIGNMENT, 1)
+
+        def _run(per_pass: bool):
+            times = []
+            if not per_pass:
+                self.gl.glFinish()
+                t_all0 = time.process_time()
+            for i, p in enumerate(progs):
+                pw, ph = (ow, oh) if i == n - 1 else (w, h)
+                self.gl.glBindFramebuffer(self.GL_FRAMEBUFFER, fbos[i])
+                self.gl.glViewport(0, 0, pw, ph)
+                self._bind_pass_uniforms(p, i, n, w, h, pw, ph, tex_orig.value, tex_pass, ident, minc, diag, tol, steep, dom)
+                if per_pass:
+                    t0 = time.process_time()
+                    self.gl.glDrawArrays(self.GL_TRIANGLE_STRIP, 0, 4)
+                    self.gl.glReadPixels(0, 0, pw, ph, self.GL_RGBA, self.GL_UNSIGNED_BYTE, buf_6x if i == n - 1 else buf_1x)
+                    times.append((time.process_time() - t0) * 1000.0)
+                else:
+                    self.gl.glDrawArrays(self.GL_TRIANGLE_STRIP, 0, 4)
+            if not per_pass:
+                self.gl.glReadPixels(0, 0, ow, oh, self.GL_RGBA, self.GL_UNSIGNED_BYTE, buf_6x)
+                return (time.process_time() - t_all0) * 1000.0
+            return times
+
+        try:
+            for _ in range(warmup):
+                _run(False)
+            pp_samples = [_run(True) for _ in range(iters)]
+            tot_samples = [_run(False) for _ in range(iters)]
+        finally:
+            self.gl.glDeleteFramebuffers(n, fbos)
+            self.gl.glDeleteTextures(n, tex_pass)
+            self.gl.glDeleteTextures(1, ctypes.byref(tex_orig))
+
+        med_pp = [statistics.median(s[i] for s in pp_samples) for i in range(n)]
+        med_tot = statistics.median(tot_samples)
+        return med_pp, med_tot
+
     def close(self) -> None:
+        self._uloc_cache.clear()
         self.gl.glDeleteBuffers(1, ctypes.byref(self.vbo))
         self.egl.eglMakeCurrent(self.dpy, None, None, None)
         self.egl.eglDestroyContext(self.dpy, self.ctx)
@@ -450,11 +552,66 @@ def check_slang_validator(slang_dir: str, gles: HeadlessGLES) -> tuple[int, int]
     return checked_spv, checked_es31
 
 
+def run_smoke_tests(gles: HeadlessGLES, crisp_glsl: str, mp_glsl: str) -> None:
+    """Fast runtime smoke test on 2 representative scenes: ES 1.00/3.00 parity, Full D4, and Plain 4-pass."""
+    import numpy as np
+    from PIL import Image
+
+    preferred = [
+        os.path.join(DOCS_IMG_DIR, "gs_village-original.png"),
+        os.path.join(DOCS_IMG_DIR, "dbz_title-original.png"),
+    ]
+    scenes = [p for p in preferred if os.path.isfile(p)]
+    if len(scenes) < 2:
+        scenes = sorted(glob.glob(os.path.join(DOCS_IMG_DIR, "*-original.png")))[:2]
+    if not scenes:
+        raise RuntimeError(f"No *-original.png scenes found in {DOCS_IMG_DIR} for --smoke")
+
+    progs300 = [gles.compile_program(os.path.join(crisp_glsl, f"xbrz-crisp-{p}.glsl"), "#version 300 es", True) for p in ("point", "pass0", "resolve", "match", "pass1")]
+    progs100 = [gles.compile_program(os.path.join(crisp_glsl, f"xbrz-crisp-{p}.glsl"), "#version 100", True) for p in ("point", "pass0", "resolve", "match", "pass1")]
+    progs_mp = [gles.compile_program(os.path.join(mp_glsl, f"xbrz-freescale-{p}.glsl"), "#version 300 es", False) for p in ("point", "pass0", "resolve", "pass1")]
+    try:
+        max_es = 0
+        max_d4 = 0
+        for sp in scenes:
+            sid = os.path.basename(sp).replace("-original.png", "")
+            rgba = np.ascontiguousarray(np.array(Image.open(sp).convert("RGBA"), dtype=np.uint8))
+            out300 = gles.render_pipeline(progs300, rgba, scale=6)
+            out100 = gles.render_pipeline(progs100, rgba, scale=6)
+            es_diff = int(np.max(np.abs(out300.astype(np.int16) - out100.astype(np.int16))))
+            max_es = max(max_es, es_diff)
+            if es_diff > 1:
+                raise RuntimeError(f"Smoke ES 1.00 vs ES 3.00 mismatch on {sid}: max_abs={es_diff}")
+
+            for name, fn, inv in (
+                ("rot90",  lambda a: np.ascontiguousarray(np.rot90(a, 1)), lambda a: np.rot90(a, 3)),
+                ("rot180", lambda a: np.ascontiguousarray(np.rot90(a, 2)), lambda a: np.rot90(a, 2)),
+                ("rot270", lambda a: np.ascontiguousarray(np.rot90(a, 3)), lambda a: np.rot90(a, 1)),
+                ("flipH",  lambda a: np.ascontiguousarray(np.fliplr(a)),   lambda a: np.fliplr(a)),
+            ):
+                got = inv(gles.render_pipeline(progs300, fn(rgba), scale=6))
+                d = int(np.max(np.abs(got.astype(np.int16) - out300.astype(np.int16))))
+                max_d4 = max(max_d4, d)
+                if d > 1:
+                    raise RuntimeError(f"Smoke D4 {name} failure on {sid}: max_abs={d}")
+
+            out_mp = gles.render_pipeline(progs_mp, rgba, scale=6)
+            if out_mp.shape != out300.shape or int(out_mp.max()) == 0:
+                raise RuntimeError(f"Smoke Plain 4-pass produced invalid/empty output on {sid}")
+
+        print(f"[verify] Runtime smoke OK ({len(scenes)} scenes: ES100/300 max_abs={max_es}, D4 0/0/0/0 max_abs={max_d4}, Plain 4-pass OK)")
+    finally:
+        for p in progs300 + progs100 + progs_mp:
+            gles.delete_program(p)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--diff", action="store_true", help="Compare 12 GBA scenes against docs/img/*-crisp20.png")
     ap.add_argument("--save-baseline", metavar="DIR", help="Render 12 GBA scenes at 6x into DIR")
     ap.add_argument("--diff-baseline", metavar="DIR", help="Compare 12 GBA scenes at 6x against DIR")
+    ap.add_argument("--smoke", action="store_true", help="Run fast runtime smoke checks (ES 1.00/3.00 parity, Full D4, Plain 4-pass on 2 scenes)")
+    ap.add_argument("--require-spirv", action="store_true", help="Fail if glslangValidator is not installed (no silent SPIR-V skip)")
     args = ap.parse_args()
 
     check_static_lint()
@@ -473,10 +630,10 @@ def main() -> None:
             for hdr, puni in (("#version 100", True), ("#version 100", False), ("#version 300 es", True), ("#version 310 es", True)):
                 for p in ("point", "pass0", "resolve", "match", "pass1"):
                     prog = gles.compile_program(os.path.join(crisp_glsl, f"xbrz-crisp-{p}.glsl"), hdr, puni)
-                    gles.gl.glDeleteProgram(prog)
+                    gles.delete_program(prog)
                 for p in ("point", "pass0", "resolve", "pass1"):
                     prog = gles.compile_program(os.path.join(mp_glsl, f"xbrz-freescale-{p}.glsl"), hdr, puni)
-                    gles.gl.glDeleteProgram(prog)
+                    gles.delete_program(prog)
             print("[verify] GLSL compilation OK (#version 100 default/uniform + #version 300 es + #version 310 es, 5-pass Crisp & 4-pass Multipass)")
 
             n_spv1, n_es1 = check_slang_validator(crisp_slang, gles)
@@ -484,6 +641,11 @@ def main() -> None:
             print(f"[verify] Slang ESSL 3.10 validation OK ({n_es1 + n_es2} stages across Crisp & Multipass)")
             if n_spv1 + n_spv2:
                 print(f"[verify] Vulkan SPIR-V validation OK ({n_spv1 + n_spv2} stages via glslangValidator)")
+            elif args.require_spirv:
+                sys.exit("[verify] ERROR: --require-spirv set, but glslangValidator is not installed!")
+
+            if args.smoke:
+                run_smoke_tests(gles, crisp_glsl, mp_glsl)
 
             if args.save_baseline or args.diff or args.diff_baseline:
                 import numpy as np
@@ -519,7 +681,7 @@ def main() -> None:
                         pct = ch / (rgb.shape[0] * rgb.shape[1]) * 100.0
                         print(f"  {sid:16s}: changed={ch:6d} px ({pct:6.3f}%), max_delta={int(np.max(diff)):3d}")
                 for prog in progs:
-                    gles.gl.glDeleteProgram(prog)
+                    gles.delete_program(prog)
                 if args.save_baseline:
                     print(f"[verify] Saved {len(scenes)} baseline 6x PNGs to {args.save_baseline}")
                 if (args.diff or args.diff_baseline) and compared == 0:

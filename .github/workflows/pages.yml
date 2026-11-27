@@ -26,11 +26,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install headless Mesa OpenGL ES, Python imaging & fonts
+      - name: Install headless Mesa OpenGL ES, glslangValidator, Python imaging & fonts
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libegl1 libgles2 libgl1-mesa-dri python3-pil python3-numpy \
+            libegl1 libgles2 libgl1-mesa-dri glslang-tools python3-pil python3-numpy \
             fonts-dejavu-core fonts-roboto-unhinted
 
       - name: Verify shaders & render all comparator, explain, and README visual assets
@@ -38,8 +38,8 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: "1"
           LP_NATIVE_VECTOR_WIDTH: "128"
         run: |
-          python3 tools/verify.py
-          python3 tools/render-docs.py --all --include-xbrz --force
+          python3 tools/verify.py --require-spirv
+          python3 tools/render-docs.py --all --include-xbrz --force --workers 2
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
