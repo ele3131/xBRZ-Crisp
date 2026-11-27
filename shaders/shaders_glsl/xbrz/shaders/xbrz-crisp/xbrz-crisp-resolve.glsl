@@ -872,7 +872,32 @@ void main()
           oDraw *= 1.0 - mix(rSt, rSh, sh);
           vec4 dLE = dE1_raw.yxzw;
           vec4 dOE = dE1_raw.xzwy;
-          oDraw *= vec4(greaterThan(dLE + dOE, XBRZ_LONE_RAMP * dLO_raw));
+          vec4 notRamp17 = vec4(greaterThan(dLE + dOE, XBRZ_LONE_RAMP * dLO_raw));
+          if (any(greaterThan(oDraw * (1.0 - notRamp17), vec4(0.0))))
+          {
+            // Also block when the line's paint pixel is 8-neighbor isolated (>= XBRZ_ISO)
+            // and E sits > 20/255 off the chromatic segment between the two neighbors (exact D4-symmetric altitude).
+            vec4 a2 = dE1Sq.yxzw, b2 = dE1Sq.xzwy, c2 = max(dLOSq, vec4(1e-6));
+            vec4 diff2 = a2 - b2;
+            vec4 perpSq = mix(0.5 * (a2 + b2) - 0.25 * c2 - (diff2 * diff2) / (4.0 * c2),
+                              min(a2, b2), vec4(greaterThan(abs(diff2), c2)));
+            vec4 iso17 = vec4(
+              sec.x > 0.5 ? isoSqOf5(B, min(dE1Sq.x, min(dLOSq.x, dLOSq.y)), luu, uu, ruu, A, C)
+                          : isoSqOf5(D, min(dE1Sq.y, min(dLOSq.x, dLOSq.w)), llu, A, ll, lld, G),
+              sec.y > 0.5 ? isoSqOf5(F, min(dE1Sq.z, min(dLOSq.y, dLOSq.z)), C, rru, rr, I, rrd)
+                          : isoSqOf5(B, min(dE1Sq.x, min(dLOSq.x, dLOSq.y)), luu, uu, ruu, A, C),
+              sec.z > 0.5 ? isoSqOf5(H, min(dE1Sq.w, min(dLOSq.z, dLOSq.w)), G, I, ldd, dd, rdd)
+                          : isoSqOf5(F, min(dE1Sq.z, min(dLOSq.y, dLOSq.z)), C, rru, rr, I, rrd),
+              sec.w > 0.5 ? isoSqOf5(D, min(dE1Sq.y, min(dLOSq.x, dLOSq.w)), llu, A, ll, lld, G)
+                          : isoSqOf5(H, min(dE1Sq.w, min(dLOSq.z, dLOSq.w)), G, I, ldd, dd, rdd));
+            vec4 lumP17 = vec4(sec.x > 0.5 ? B.x : D.x, sec.y > 0.5 ? F.x : B.x,
+                               sec.z > 0.5 ? H.x : F.x, sec.w > 0.5 ? D.x : H.x);
+            notRamp17 = max(notRamp17, vec4(greaterThanEqual(iso17, vec4(SQ255(XBRZ_ISO))))
+                                     * vec4(greaterThan(perpSq, vec4(SQ255(20.0))))
+                                     * vec4(greaterThanEqual(lumP17, vec4(0.18)))
+                                     * vec4(greaterThanEqual(min(a2, b2), vec4(SQ255(50.0)))));
+          }
+          oDraw *= notRamp17;
           blendResult *= 1.0 - oDraw;
         }
 

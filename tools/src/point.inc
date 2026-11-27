@@ -178,6 +178,35 @@ ivec4 pointBlend(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3 k
         }
       }
     }
+    // Protect a continuous dark outline diagonal (eqFK or eqGJ, Y < 0.15, darker than both light colors,
+    // massOuter on both sides) from being cut by a non-dominant heterochromatic diagonal (>= 50 apart)
+    // where at least one light color continues cardinally (not a shaded 1px diagonal stroke through bg).
+    if (eqFK != eqGJ)
+    {
+      bool bgFK = eqFK;
+      vec3 bg = bgFK ? kf : kg;
+      float dWinSq = bgFK ? dJgSq : dFkSq;
+      int winT = bgFK ? r.x : r.y;
+      if (winT == BLEND_NORMAL && bg.x < XBRZ_X36_DARK && dWinSq >= SQ255(50.0))
+      {
+        vec3 st1 = bgFK ? kg : kf, st2 = bgFK ? kj : kk;
+        float farSq = min(distSqY(bg, st1), distSqY(bg, st2));
+        bool cardCont = bgFK
+          ? (min(distSqY(kc, st1), distSqY(kh, st1)) < SQ255(30.0) || min(distSqY(ki, st2), distSqY(kn, st2)) < SQ255(30.0))
+          : (min(distSqY(kb, st1), distSqY(ke, st1)) < SQ255(30.0) || min(distSqY(kl, st2), distSqY(ko, st2)) < SQ255(30.0));
+        if (cardCont && farSq >= SQ255(64.0) && bg.x + 0.15 < min(st1.x, st2.x)
+            && massOuter(coord, bgFK ? kb : kc, bgFK ? ke : kh, bgFK ? kc : kb, bgFK ? ki : kl, bgFK ? vec2(-1.0, -1.0) : vec2(2.0, -1.0), bg)
+            && massOuter(coord, bgFK ? kl : ki, bgFK ? ko : kn, bgFK ? kh : ke, bgFK ? kn : ko, bgFK ? vec2(2.0, 2.0) : vec2(-1.0, 2.0), bg))
+        {
+          vec3 c1 = PY(bgFK ? 2.0 : -1.0, -1.0);
+          vec3 c2 = PY(bgFK ? -1.0 : 2.0,  2.0);
+          if ((distSqY(c1, bg) < SQ255(30.0) || distSqY(c2, bg) < SQ255(30.0))
+              && distSqY(c1, st1) >= SQ255(30.0) && distSqY(c2, st2) >= SQ255(30.0))
+            r = bgFK ? ivec4(BLEND_NONE, BLEND_NORMAL, BLEND_NORMAL, BLEND_NONE)
+                     : ivec4(BLEND_NORMAL, BLEND_NONE, BLEND_NONE, BLEND_NORMAL);
+        }
+      }
+    }
     // 36. Crossing strokes: join j-g (if kf==kk) or f-k (if kg==kj); skip when r already chose that diagonal (no-op)
     if (eqFK != eqGJ)
     {

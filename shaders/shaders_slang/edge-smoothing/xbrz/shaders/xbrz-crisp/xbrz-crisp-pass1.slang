@@ -239,16 +239,29 @@ void main()
   }
   MP vec4 om = 1.0 - ratios;
   MP float keepE = (om.x * om.y) * (om.z * om.w);
-  MP float wF = ratios.z * (1.0 - secondPix.z) + ratios.y * secondPix.y;
-  MP float wH = ratios.z * secondPix.z         + ratios.w * (1.0 - secondPix.w);
-  MP float wB = ratios.y * (1.0 - secondPix.y) + ratios.x * secondPix.x;
-  MP float wD = ratios.x * (1.0 - secondPix.x) + ratios.w * secondPix.w;
+  MP float maxR = max(max(ratios.x, ratios.y), max(ratios.z, ratios.w));
+  MP vec4 w = ratios;
+  MP float sumW = sumR;
+  if (sumR > maxR + 1e-4)
+  {
+    // Depth-sensitive weighting when 2+ corners overlap at the same output subpixel:
+    // prefer the deeper half-plane (larger signed distance d) to prevent AA fringe bleed.
+    vec4 dAct = mix(vec4(-1e4), d, isCut);
+    float dMax = max(max(dAct.x, dAct.y), max(dAct.z, dAct.w));
+    MP vec4 dw = clamp(1.0 - (dMax - d), 0.0, 1.0);
+    w = ratios * (dw * dw);
+    sumW = dot(w, vec4(1.0));
+  }
+  MP float wF = w.z * (1.0 - secondPix.z) + w.y * secondPix.y;
+  MP float wH = w.z * secondPix.z         + w.w * (1.0 - secondPix.w);
+  MP float wB = w.y * (1.0 - secondPix.y) + w.x * secondPix.x;
+  MP float wD = w.x * (1.0 - secondPix.x) + w.w * secondPix.w;
   MP vec3 accCol = vec3(0.0);
   if (wF > 0.0) accCol += wF * P( 1., 0.);
   if (wH > 0.0) accCol += wH * P( 0., 1.);
   if (wB > 0.0) accCol += wB * P( 0.,-1.);
   if (wD > 0.0) accCol += wD * P(-1., 0.);
-  MP vec3 res = accCol / sumR;
+  MP vec3 res = accCol / sumW;
   if (keepE > 1e-4) res = mix(P_CENTER, res, 1.0 - keepE);
   FRAG_OUT = vec4(res, 1.0);
 //#crisp}

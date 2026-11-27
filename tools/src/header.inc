@@ -153,15 +153,20 @@
 // 17. A line drawn on one side only: where xBRZ cuts a corner with a line between two lone pixels
 //     (neither goes on along the line and the pixel's own color does not repeat along it) but the
 //     pixel across the line draws the same line in the first pixel's color, and the three colors are
-//     not an antialiasing ramp, the corner stays square, so the line does not stick a spike into the
-//     pixel, like the light gray pixel under the pot in Golden Sun's village.
+//     not an antialiasing ramp (or the line's paint pixel is non-black >= 0.18 luma, 8-neighbor
+//     isolated >= XBRZ_ISO, >= 50 from E alongside the other neighbor, and E sits > 20/255 off their
+//     chromatic segment), the corner stays square, so the line does not stick a spike into the pixel,
+//     like the light gray pixel under the pot in Golden Sun's village or the rock pixel beside foliage
+//     in Tales of Phantasia.
 // 18. Outlines closed: the line of rule 16 is also drawn in its own color through a pixel that is not
-//     lone, where that line is a near-black outline (XBRZ_TINT_DARK) darker than the pixel, so an
-//     outline that steps by a knight's move stays closed instead of letting the colors on both sides
-//     touch, like a black outline between yellow and pink on a fighter's sprite. Unlike rule 16, the
-//     line keeps its shallow or steep shape, so a band that runs along the outline stays straight (the
-//     grey band of a hood). Not where the color the corner would take is near-black too: two dark shades
-//     meet there and there is no outline to close (Isaac's shoulder).
+//     lone, where that line is either a near-black outline (XBRZ_TINT_DARK) darker than the pixel or a
+//     non-black dark contour (< XBRZ_TINT_CONTOUR) darker than both E and the other neighbor by more
+//     than XBRZ_TINT_GAP without wrapping the corner diagonal (dist(diag, line) >= tol), so an outline
+//     that steps by a knight's move stays closed instead of letting the colors on both sides touch, like
+//     a black outline between yellow and pink on a fighter's sprite or a dark-brown/green sprite contour. Unlike rule 16, the line keeps
+//     its shallow or steep shape, so a band that runs along the outline stays straight (the grey band of a
+//     hood). Not where the color the corner would take is near-black too: two dark shades meet there and
+//     there is no outline to close (Isaac's shoulder).
 // 19. A pixel apart keeps to itself: a corner is not painted with the color of a pixel that differs from
 //     all 8 of its neighbors by XBRZ_ISO or more when it keeps its own corners square (or when the cut is
 //     a plain non-line bevel with cand20 >= XBRZ_ISO_FAR outside an antialiasing ramp), so a lone dot of

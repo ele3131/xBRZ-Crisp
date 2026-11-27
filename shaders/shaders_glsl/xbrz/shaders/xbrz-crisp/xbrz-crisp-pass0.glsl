@@ -153,15 +153,20 @@
 // 17. A line drawn on one side only: where xBRZ cuts a corner with a line between two lone pixels
 //     (neither goes on along the line and the pixel's own color does not repeat along it) but the
 //     pixel across the line draws the same line in the first pixel's color, and the three colors are
-//     not an antialiasing ramp, the corner stays square, so the line does not stick a spike into the
-//     pixel, like the light gray pixel under the pot in Golden Sun's village.
+//     not an antialiasing ramp (or the line's paint pixel is non-black >= 0.18 luma, 8-neighbor
+//     isolated >= XBRZ_ISO, >= 50 from E alongside the other neighbor, and E sits > 20/255 off their
+//     chromatic segment), the corner stays square, so the line does not stick a spike into the pixel,
+//     like the light gray pixel under the pot in Golden Sun's village or the rock pixel beside foliage
+//     in Tales of Phantasia.
 // 18. Outlines closed: the line of rule 16 is also drawn in its own color through a pixel that is not
-//     lone, where that line is a near-black outline (XBRZ_TINT_DARK) darker than the pixel, so an
-//     outline that steps by a knight's move stays closed instead of letting the colors on both sides
-//     touch, like a black outline between yellow and pink on a fighter's sprite. Unlike rule 16, the
-//     line keeps its shallow or steep shape, so a band that runs along the outline stays straight (the
-//     grey band of a hood). Not where the color the corner would take is near-black too: two dark shades
-//     meet there and there is no outline to close (Isaac's shoulder).
+//     lone, where that line is either a near-black outline (XBRZ_TINT_DARK) darker than the pixel or a
+//     non-black dark contour (< XBRZ_TINT_CONTOUR) darker than both E and the other neighbor by more
+//     than XBRZ_TINT_GAP without wrapping the corner diagonal (dist(diag, line) >= tol), so an outline
+//     that steps by a knight's move stays closed instead of letting the colors on both sides touch, like
+//     a black outline between yellow and pink on a fighter's sprite or a dark-brown/green sprite contour. Unlike rule 16, the line keeps
+//     its shallow or steep shape, so a band that runs along the outline stays straight (the grey band of a
+//     hood). Not where the color the corner would take is near-black too: two dark shades meet there and
+//     there is no outline to close (Isaac's shoulder).
 // 19. A pixel apart keeps to itself: a corner is not painted with the color of a pixel that differs from
 //     all 8 of its neighbors by XBRZ_ISO or more when it keeps its own corners square (or when the cut is
 //     a plain non-line bevel with cand20 >= XBRZ_ISO_FAR outside an antialiasing ramp), so a lone dot of
@@ -680,6 +685,8 @@ float wordLine45(bool sec) { return sec ? (1.0 + BIT_LINE + BIT_SEC) : (1.0 + BI
 #define XBRZ_TINT 20.0         // 16. the two colors beside the line differ by more than this
 #define XBRZ_TINT_RAMP 1.2     // 16. not a ramp: d(E,P) + d(P,L) above this times d(E,L)
 #define XBRZ_TINT_DARK 0.25    // 18. a near-black outline is darker than this (luma)
+#define XBRZ_TINT_CONTOUR 0.36 // 18. a non-black dark contour is darker than this (luma)
+#define XBRZ_TINT_GAP 0.20     // 18. and darker (luma) than both E and the other color by this much
 #define XBRZ_BAND_FAR 20.0     // 30. the color past a band of three pixels or more differs from the pixel by this
 #define XBRZ_BAND_FAR2 30.0    // 30. and past a band of two pixels by this
 #define eq(a,b)  (a == b)
@@ -934,14 +941,11 @@ float ringOutBand(vec3 E, vec3 K1, vec3 K2, vec3 X, vec3 N1, vec3 N2)
 // ============================================================================================
 // a corner whose two colors (E and its closer candidate) differ by less than XBRZ_MINC stays square;
 // one up to XBRZ_HYST below the limit is kept but marked weak afterwards (weakCorners)
-vec4 minimumContrast(vec4 res, float dEB, float dED, float dEF, float dEH, out vec4 contrast, out vec4 weak)
+vec4 minimumContrast(vec4 res, vec4 contrast, vec4 keep, out vec4 weak)
 {
   weak = vec4(0.0);
-  contrast = vec4(0.0);
   if (XBRZ_MINC > 0.0)
   {
-    contrast = vec4(min(dED, dEB), min(dEB, dEF), min(dEF, dEH), min(dEH, dED)) * 255.0;
-    vec4 keep = vec4(greaterThanEqual(contrast, vec4(XBRZ_MINC - XBRZ_HYST)));
     weak = keep * vec4(lessThan(contrast, vec4(XBRZ_MINC)));
     res *= keep;
   }
@@ -1516,8 +1520,14 @@ vec4 lineInOtherColor(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3
   vec4 dark = vec4(lessThan(lumLine, vec4(E.x))) * (straight ? 0.0 : 1.0);
   if (!lone)
   {
-    dark *= vec4(lessThan(lumLine, vec4(XBRZ_TINT_DARK)));
-    dark *= vec4(greaterThanEqual(mix(lumC2, lumC1, st), vec4(XBRZ_TINT_DARK)));
+    vec4 lumOther = mix(lumC2, lumC1, st);
+    vec4 r18 = vec4(lessThan(lumLine, vec4(XBRZ_TINT_DARK)));
+    vec4 dDiagShSq = vec4(distSqY(A, D), distSqY(C, B), distSqY(I, F), distSqY(G, H));
+    vec4 dDiagStSq = vec4(distSqY(A, B), distSqY(C, F), distSqY(I, H), distSqY(G, D));
+    vec4 notWrap = vec4(greaterThanEqual(sh * dDiagShSq + st * dDiagStSq, vec4(tolSq)));
+    vec4 contour = notWrap * vec4(lessThan(lumLine, vec4(XBRZ_TINT_CONTOUR)))
+                 * vec4(lessThan(lumLine + XBRZ_TINT_GAP, min(vec4(E.x), lumOther)));
+    dark *= max(r18, contour) * vec4(greaterThanEqual(lumOther, vec4(XBRZ_TINT_DARK)));
     tint *= dark;
   }
   dark = max(dark, stripes);
@@ -1700,10 +1710,25 @@ void main()
   float dEB = dE4.x, dED = dE4.y, dEF = dE4.z, dEH = dE4.w;
   vec4 pairSq = vec4(distSqY(B, D), distSqY(B, F), distSqY(F, H), distSqY(D, H));
 
-  if (blendResult.z >= BLEND_NORMAL) res.z += xbrzCorner(blendResult.z, blendResult.y, blendResult.w, min(dEF, dEH), pairSq.z, B, C, D, E, F, G, H, I, N_m1_p2, N_p2_m1);
-  if (blendResult.w >= BLEND_NORMAL) res.w += xbrzCorner(blendResult.w, blendResult.z, blendResult.x, min(dEH, dED), pairSq.w, F, I, B, E, H, A, D, G, N_m2_m1, N_p1_p2);
-  if (blendResult.x >= BLEND_NORMAL) res.x += xbrzCorner(blendResult.x, blendResult.w, blendResult.y, min(dED, dEB), pairSq.x, H, G, F, E, D, C, B, A, N_p1_m2, N_m2_p1);
-  if (blendResult.y >= BLEND_NORMAL) res.y += xbrzCorner(blendResult.y, blendResult.x, blendResult.z, min(dEB, dEF), pairSq.y, D, A, H, E, B, I, F, C, N_p2_p1, N_m1_m2);
+  // Pre-filter adjacent corners by rule 1's drop threshold (XBRZ_MINC - XBRZ_HYST) before cornerCut
+  // ONLY for strong, coherent 2-color corners (contrast >= 64, pair <= 40) such as text/outlines over
+  // shaded backgrounds; 3-color junctions and textured shading keep full lone0/lone4 protection.
+  vec4 contrast = vec4(0.0);
+  vec4 keep1 = vec4(1.0);
+  vec4 strongClean = vec4(0.0);
+  if (XBRZ_MINC > 0.0)
+  {
+    contrast = vec4(min(dED, dEB), min(dEB, dEF), min(dEF, dEH), min(dEH, dED)) * 255.0;
+    keep1 = vec4(greaterThanEqual(contrast, vec4(XBRZ_MINC - XBRZ_HYST)));
+    strongClean = vec4(greaterThanEqual(contrast, vec4(XBRZ_GUARD_EDGE)))
+                * vec4(lessThanEqual(pairSq, vec4(SQ255(40.0))));
+  }
+  ivec4 nbrBlend = blendResult * ivec4(keep1);
+
+  if (blendResult.z >= BLEND_NORMAL) { ivec4 nb = strongClean.z > 0.5 ? nbrBlend : blendResult; res.z += xbrzCorner(blendResult.z, nb.y, nb.w, min(dEF, dEH), pairSq.z, B, C, D, E, F, G, H, I, N_m1_p2, N_p2_m1); }
+  if (blendResult.w >= BLEND_NORMAL) { ivec4 nb = strongClean.w > 0.5 ? nbrBlend : blendResult; res.w += xbrzCorner(blendResult.w, nb.z, nb.x, min(dEH, dED), pairSq.w, F, I, B, E, H, A, D, G, N_m2_m1, N_p1_p2); }
+  if (blendResult.x >= BLEND_NORMAL) { ivec4 nb = strongClean.x > 0.5 ? nbrBlend : blendResult; res.x += xbrzCorner(blendResult.x, nb.w, nb.y, min(dED, dEB), pairSq.x, H, G, F, E, D, C, B, A, N_p1_m2, N_m2_p1); }
+  if (blendResult.y >= BLEND_NORMAL) { ivec4 nb = strongClean.y > 0.5 ? nbrBlend : blendResult; res.y += xbrzCorner(blendResult.y, nb.x, nb.z, min(dEB, dEF), pairSq.y, D, A, H, E, B, I, F, C, N_p2_p1, N_m1_m2); }
 
   vec4 second = vec4(pickSecond(dED, dEB, D, B), pickSecond(dEB, dEF, B, F), pickSecond(dEF, dEH, F, H), pickSecond(dEH, dED, H, D));
   res += 8.0 * second;
@@ -1712,8 +1737,8 @@ void main()
   // the rules, in order
   // ============================================================================================
   vec4 xbrz = res;
-  vec4 contrast, weak;
-  res = minimumContrast(res, dEB, dED, dEF, dEH, contrast, weak);              // 1
+  vec4 weak;
+  res = minimumContrast(res, contrast, keep1, weak);                            // 1
   vec4 cutXbrz = vec4(greaterThan(BLEND(xbrz), vec4(0.0)));
   vec4 low30 = cutXbrz * vec4(lessThan(contrast, vec4(XBRZ_MINC)));
   vec4 band30Lo = vec4(0.0);
