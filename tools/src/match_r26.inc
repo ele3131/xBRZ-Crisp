@@ -11,7 +11,8 @@ vec4 applyRule26Lost(vec4 res, vec4 w0, vec4 aW0, vec4 pairSq, vec4 minCornerSq,
   vec4 fix = vec4(0.0);
   if (dot(lostStrong, vec4(1.0)) > 0.0)
   {
-    vec4 iA = INFO_AT(-1.0, -1.0), iC = INFO_AT(1.0, -1.0), iI = INFO_AT(1.0, 1.0), iG = INFO_AT(-1.0, 1.0);
+    ensureDiagInfo();
+    vec4 iA = gIA, iC = gIC, iI = gII, iG = gIG;
     vec4 gap = vec4(cut4(iC).x * cut4(iG).x, cut4(iI).y * cut4(iA).y, cut4(iC).z * cut4(iG).z, cut4(iI).w * cut4(iA).w);
     vec4 wrapE = vec4(lessThan(pairSq, vec4(SQ255(XBRZ_MATCH_WRAP))));
     vec4 needGap = lostStrong * gap * wrapE;
@@ -51,7 +52,8 @@ vec4 applyRule26Lost(vec4 res, vec4 w0, vec4 aW0, vec4 pairSq, vec4 minCornerSq,
   if (dot(cont45, vec4(1.0)) > 0.5)
   {
     vec4 w0Sec = FLAG(w0, BIT_SEC);
-    vec4 iB = INFO_AT(0.0, -1.0), iD = INFO_AT(-1.0, 0.0), iF = INFO_AT(1.0, 0.0), iH = INFO_AT(0.0, 1.0);
+    ensureCardInfo();
+    vec4 iB = gIB, iD = gID, iF = gIF, iH = gIH;
     vec4 pOpp = mix(vec4(iD.z, iB.w, iF.x, iH.y), vec4(iB.z, iF.w, iH.x, iD.y), w0Sec);
     vec4 base45 = cont45 * cut4(pOpp) * isLine45(pOpp);
     vec4 secOk = vec4(equal(FLAG(pOpp, BIT_SEC), w0Sec));
@@ -78,7 +80,8 @@ vec4 applyRule26b(vec4 res, vec4 pairSq, vec4 minCornerSq, vec4 maxCornerSq, flo
            * vec4(greaterThanEqual(pairSq, vec4(SQ255(XBRZ_JUNC4))));
   if (dot(nb1, vec4(1.0)) > 0.5)
   {
-    vec4 dA = INFO_AT(-1.0, -1.0), dC = INFO_AT(1.0, -1.0), dI = INFO_AT(1.0, 1.0), dG = INFO_AT(-1.0, 1.0);
+    ensureDiagInfo();
+    vec4 dA = gIA, dC = gIC, dI = gII, dG = gIG;
     vec4 oInfo = vec4(dA.z, dC.w, dI.x, dG.y);
     vec4 oR = cut4(oInfo);
     vec4 nb1Orph = nb1 * vec4(greaterThan(pairSq, vec4(SQ255(XBRZ_MATCH_EDGE)))) * (1.0 - oR);
@@ -122,7 +125,8 @@ vec4 applyRule26b(vec4 res, vec4 pairSq, vec4 minCornerSq, vec4 maxCornerSq, flo
     }
     if (dot(candB + candB2ok + obt26 + isoOff + isoBar, vec4(1.0)) > 0.5)
     {
-      vec4 iB = INFO_AT(0.0, -1.0), iD = INFO_AT(-1.0, 0.0), iF = INFO_AT(1.0, 0.0), iH = INFO_AT(0.0, 1.0);
+      ensureCardInfo();
+      vec4 iB = gIB, iD = gID, iF = gIF, iH = gIH;
       vec4 cB = cut4(iB), cD = cut4(iD), cF = cut4(iF), cH = cut4(iH);
       vec4 edgeCut = vec4(max(cB.z, cD.z), max(cB.w, cF.w), max(cF.x, cH.x), max(cH.y, cD.y));
       drop = max(drop, candB * (1.0 - edgeCut));
@@ -190,7 +194,8 @@ vec4 applyRule26b(vec4 res, vec4 pairSq, vec4 minCornerSq, vec4 maxCornerSq, flo
     ph26 *= triGe4(minCornerSq, maxCornerSq, 1.12 * 1.12, pairSq);
     if (dot(ph26, vec4(1.0)) > 0.5)
     {
-      vec4 iA = INFO_AT(-1.0, -1.0), iC = INFO_AT(1.0, -1.0), iI = INFO_AT(1.0, 1.0), iG = INFO_AT(-1.0, 1.0);
+      ensureDiagInfo();
+      vec4 iA = gIA, iC = gIC, iI = gII, iG = gIG;
       vec4 oR = vec4(cut4(iA).z, cut4(iC).w, cut4(iI).x, cut4(iG).y);
       vec4 runLive = vec4(max(cut4(iC).x, cut4(iG).x), max(cut4(iA).y, cut4(iI).y),
                           max(cut4(iC).z, cut4(iG).z), max(cut4(iA).w, cut4(iI).w));

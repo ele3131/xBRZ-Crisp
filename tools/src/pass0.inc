@@ -34,7 +34,6 @@
 #define CRISP_RULES (XBRZ_MINC > 0.0 && XBRZ_DIAG > 0.0)
 #define XBRZ_ALIKE 20.0        // colors this close (x/255) count as alike
 #define XBRZ_HYST 4.0          // 1. a corner this close below XBRZ_MINC is weak
-#define XBRZ_RAMP 1.15         // 2, 6. a ramp: (d(E,P) + d(P,Q)) / d(E,Q) up to this
 #define XBRZ_STRIPE 64.0       // 2, 3. a diagonal stripe keeps a close color (within this) along its length
 #define XBRZ_OUTLINE 0.15      // 2, 3. an outline is darker (in luma) than both inner tones by this much
 #define XBRZ_NOT_LIGHTER 4.0   // 2. P is not lighter than E up to this much more luma (x/255)
@@ -54,7 +53,6 @@
 #define XBRZ_GUARD_EDGE 64.0   // 15. a strong edge: the pixel differs from both corner colors by this much
 #define XBRZ_GUARD_EDGE_L 54.0 // 15. the same for the L-shape test
 #define XBRZ_TINT 20.0         // 16. the two colors beside the line differ by more than this
-#define XBRZ_TINT_RAMP 1.2     // 16. not a ramp: d(E,P) + d(P,L) above this times d(E,L)
 #define XBRZ_TINT_DARK 0.25    // 18. a near-black outline is darker than this (luma)
 #define XBRZ_TINT_CONTOUR 0.36 // 18. a non-black dark contour is darker than this (luma)
 #define XBRZ_TINT_GAP 0.20     // 18. and darker (luma) than both E and the other color by this much
@@ -202,9 +200,6 @@ float bandSide(vec2 coord, vec2 o, vec2 t, vec3 e, vec3 cp, vec3 cpq,
   if (dAESq >= SQ255(XBRZ_BAND_FAR2)) return 1.0;
   return (eq(cp, cPpt) || eq(cp, (fetchQmt ? at5x5(coord, qmtOff) : cQmt))) ? 1.0 : 0.0;
 }
-
-// 32 to 34: two close shades (under 30 apart)
-bool near(vec3 a, vec3 b) { return withinY255(a, b, 30.0); }
 
 vec4 diagonalBands(vec4 xbrz, vec4 mask, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 G, vec3 H, vec3 I)
 {
@@ -362,8 +357,9 @@ vec4 diagLimitRule26(vec4 res, vec2 coord, vec4 cut, vec4 sec, vec4 pair, vec4 d
                      inout vec4 eDiagSq, inout bool haveDiagDist, out vec4 kept)
 {
   kept = vec4(0.0);
-  vec4 ramp = min((dEP + pair) / max(dEQ, vec4(SAFE_EPS)), (dEQ + pair) / max(dEP, vec4(SAFE_EPS)));
-  vec4 limit = mix(vec4(XBRZ_DIAG), vec4(XBRZ_DIAG * 0.92), vec4(lessThanEqual(ramp, vec4(XBRZ_RAMP))));
+  vec4 pair2 = pair * pair, dEP2 = dEP * dEP, dEQ2 = dEQ * dEQ;
+  vec4 onRamp2 = geomRamp4(min(dEP2, dEQ2), pair2, max(dEP2, dEQ2), 0.22, 22.0);
+  vec4 limit = mix(vec4(XBRZ_DIAG), vec4(XBRZ_DIAG * 0.92), onRamp2);
   vec4 keep = max(vec4(lessThanEqual(pair * 255.0, limit)), vec4(greaterThanEqual(res, vec4(BIT_SHALLOW))) * notLighter);
   if (dot((1.0 - keep) * cut, vec4(1.0)) <= 0.0)
     return res;
@@ -403,7 +399,7 @@ vec4 diagLimitRule26(vec4 res, vec2 coord, vec4 cut, vec4 sec, vec4 pair, vec4 d
     computeLonePQ(sec, A, B, C, D, F, G, H, I, loneP, loneQ);
     haveLone = true;
     vec4 dQc = mix(dEQ, dEP, sec);
-    vec4 notch = vec4(lessThanEqual((dEPc + pair) / max(dQc, vec4(SAFE_EPS)), vec4(XBRZ_RAMP)))
+    vec4 notch = geomRamp4(dEPc * dEPc, pair2, dQc * dQc, 0.22, 22.0)
                * vec4(lessThanEqual(pair * 255.0, vec4(XBRZ_DIAG + XBRZ_NOTCH))) * loneP * blocked2;
     if (dot(notch, vec4(1.0)) > 0.0)
     {
@@ -832,7 +828,7 @@ vec4 lineInOtherColor(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3
   vec4 dE1 = vec4(dED, dEB, dEF, dEH);
   vec4 dE2 = vec4(dEB, dEF, dEH, dED);
   vec4 dP = mix(dE1, dE2, sec), dL = mix(dE2, dE1, sec);
-  tint *= vec4(greaterThan(dP + pair, XBRZ_TINT_RAMP * dL));
+  tint *= (1.0 - geomRamp4(dP * dP, pair * pair, dL * dL, 0.24, 24.0));
   if (dot(tint, vec4(1.0)) <= 0.0)
     return res;
   bool lone = !(IsPixEqual(A, E) || IsPixEqual(B, E) || IsPixEqual(C, E) || IsPixEqual(D, E) ||
@@ -938,31 +934,17 @@ float holeInStroke(Win n, float r)
   return r;
 }
 
-// 32 & 35. Lone pixel test redone and edge of a thin band
+// 32. Lone pixel test redone on strong 2-color corners
 float lonePixelRedone(Win n, vec4 r, ivec4 b)
 {
   vec4 bl = mod(r, 4.0);
   float ln = mod(floor(r.z / 4.0), 2.0);
   float c4 = min(n.dE.y, n.dE.z) * 255.0;
-  float dEB = n.dE.x, dED = n.dE.w;
-  if ((bl.z > 0.0 && ln < 0.5 && !((eq(n.E,n.D) && !eq(n.E,n.m2_p0)) || (eq(n.E,n.B) && !eq(n.E,n.p0_m2))) && bl.y == 0.0 && bl.w == 0.0
-       && c4 >= 64.0 && b.z == BLEND_NORMAL && eq(n.F,n.H) && eq(n.F,n.C) && eq(n.H,n.G) && neq(n.F, n.p2_p0) && neq(n.H, n.p0_p2)
-       && cornerCut(b.z, BLEND_NONE, BLEND_NONE, min(n.dE.y, n.dE.z), n.E, n.G, n.H, n.I, n.F, n.C))
-      || (bl.z == 1.0 && ln < 0.5 && c4 >= 40.0 && c4 < XBRZ_GUARD_EDGE && eq(n.F,n.H) && !withinY255(n.I, n.F, 40.0)
-       && ((eq(n.G,n.H) && eq(n.F,n.p2_p0) && (dED * 255.0 < 30.0) && near(n.E,n.C) && !withinY255(n.p0_p2, n.H, 40.0))
-        || (eq(n.C,n.F) && eq(n.H,n.p0_p2) && (dEB * 255.0 < 30.0) && near(n.E,n.G) && !withinY255(n.p2_p0, n.F, 40.0)))
-       && cornerCut(b.z, b.y, b.w, 1.0, n.E, n.G, n.H, n.I, n.F, n.C)))
+  if (bl.z > 0.0 && ln < 0.5 && !((eq(n.E,n.D) && !eq(n.E,n.m2_p0)) || (eq(n.E,n.B) && !eq(n.E,n.p0_m2))) && bl.y == 0.0 && bl.w == 0.0
+      && c4 >= 64.0 && b.z == BLEND_NORMAL && eq(n.F,n.H) && eq(n.F,n.C) && eq(n.H,n.G) && neq(n.F, n.p2_p0) && neq(n.H, n.p0_p2)
+      && cornerCut(b.z, BLEND_NONE, BLEND_NONE, min(n.dE.y, n.dE.z), n.E, n.G, n.H, n.I, n.F, n.C))
     return cutFlags(n, cornerLines(n));
   return 0.0;
-}
-
-// 34. Small square of close shades
-float smallSquare(Win n, float r)
-{
-  if (min(n.dE.y, n.dE.z) * 255.0 >= 48.0 && (n.dE.w * 255.0 < 30.0) && (n.dE.x * 255.0 < 30.0) && near(n.E,n.A) && (n.E != n.D || n.E != n.B || n.E != n.A)
-      && eq(n.F,n.C) && eq(n.F,n.H) && eq(n.F,n.G) && eq(n.F,n.m2_p0) && eq(n.F,n.m2_m1) && eq(n.F,n.p0_m2) && eq(n.F,n.m1_m2))
-    return noLine(r);
-  return r;
 }
 
 void main()
@@ -1096,42 +1078,38 @@ void main()
   res = closedPixel(res, A, B, C, D, E, F, G, H, I);                            // 10
   res = tilesBetweenWalls(res, coord, A, B, C, D, E, F, G, H, I);               // 13
   res = lineInOtherColor(res, coord, A, B, C, D, E, F, G, H, I, pair, dEB, dED, dEF, dEH);  // 16, 18
-  if (CRISP_RULES)                                                              // 32 to 35
+  if (CRISP_RULES)                                                              // 32 & 33
   {
     vec4 eqPair = vec4(float(eq(B, D)), float(eq(B, F)), float(eq(F, H)), float(eq(H, D)));
     vec4 flankAny = vec4(float(eq(D, G) || eq(B, C)), float(eq(B, A) || eq(F, I)),
                          float(eq(F, C) || eq(H, G)), float(eq(H, I) || eq(D, A)));
     vec4 oppMax = max(vec4(dEH, dED, dEB, dEF), vec4(dEF, dEH, dED, dEB));
-    vec4 ok3235 = max(1.0 - FLAG(res, 4.0), vec4(lessThan(oppMax * 255.0, vec4(30.0))));
-    vec4 r32gate = vec4(greaterThan(BLEND(res), vec4(0.0))) * eqPair * flankAny * ok3235
-                 * vec4(greaterThanEqual(contrast, vec4(40.0)));
+    vec4 ok3233 = max(1.0 - FLAG(res, 4.0), vec4(lessThan(oppMax * 255.0, vec4(30.0))));
+    vec4 r32gate = vec4(greaterThan(BLEND(res), vec4(0.0))) * eqPair * flankAny * ok3233
+                 * vec4(greaterThanEqual(contrast, vec4(64.0)));
     if (dot(r32gate, vec4(1.0)) > 0.0)
     {
       Win w = Win(A, B, C, D, E, F, G, H, I, N_m1_m2, N_p0_m2, N_p1_m2, N_m2_m1, N_p2_m1, N_m2_p0, N_p2_p0, N_m2_p1, N_p2_p1, N_m1_p2, N_p0_p2, N_p1_p2,
                   vec4(dEB, dEF, dEH, dED), pairSq);
       vec4 r33 = res;
-      if (r32gate.z > 0.5) { r33.z = holeInStroke(w, res.z); res.z = smallSquare(w, r33.z + lonePixelRedone(w, r33, blendResult)); }
+      if (r32gate.z > 0.5) { r33.z = holeInStroke(w, res.z); res.z = r33.z + lonePixelRedone(w, r33, blendResult); }
       if (r32gate.w + r32gate.x + r32gate.y > 0.5)
       {
         w = turn(w);
-        if (r32gate.w > 0.5) { r33.w = holeInStroke(w, res.w); res.w = smallSquare(w, r33.w + lonePixelRedone(w, r33.yzwx, blendResult.yzwx)); }
+        if (r32gate.w > 0.5) { r33.w = holeInStroke(w, res.w); res.w = r33.w + lonePixelRedone(w, r33.yzwx, blendResult.yzwx); }
         if (r32gate.x + r32gate.y > 0.5)
         {
           w = turn(w);
-          if (r32gate.x > 0.5) { r33.x = holeInStroke(w, res.x); res.x = smallSquare(w, r33.x + lonePixelRedone(w, r33.zwxy, blendResult.zwxy)); }
+          if (r32gate.x > 0.5) { r33.x = holeInStroke(w, res.x); res.x = r33.x + lonePixelRedone(w, r33.zwxy, blendResult.zwxy); }
           if (r32gate.y > 0.5)
           {
             w = turn(w);
-            r33.y = holeInStroke(w, res.y); res.y = smallSquare(w, r33.y + lonePixelRedone(w, r33.wxyz, blendResult.wxyz));
+            r33.y = holeInStroke(w, res.y); res.y = r33.y + lonePixelRedone(w, r33.wxyz, blendResult.wxyz);
           }
         }
       }
     }
   }
-  vec4 band30 = band30Lo;
-  vec4 needBandHi = vec4(notEqual(res, xbrz)) * cutXbrz * (1.0 - low30);
-  if (XBRZ_MINC > 0.0 && dot(needBandHi, vec4(1.0)) > 0.0)
-    band30 = max(band30, diagonalBands(xbrz, needBandHi, coord, A, B, C, D, E, F, G, H, I));
-  res = mix(res, xbrz, band30);                                                 // 30, the band wins over the rules above
+  res = mix(res, xbrz, band30Lo);                                               // 30, the band wins over the rules above
   FRAG_OUT = res / 255.0;
 }

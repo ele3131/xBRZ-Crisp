@@ -1018,7 +1018,7 @@
           <div class="status-pill" id="status-pill" title="Clique na imagem (ou Tab) para alternar instantaneamente">
             <span class="status-dot" id="status-dot"></span>
             <span class="status-name" id="status-name">Crisp Novo</span>
-            <span class="status-hint" id="status-hint">Clique p/ alternar ↔ v3.6</span>
+            <span class="status-hint" id="status-hint">Clique p/ alternar ↔ Antes</span>
           </div>
           <div class="coord-hud" id="coord-hud">
             <span id="coord-xy">1× —</span>
@@ -1039,7 +1039,7 @@
           <div class="layer-pills" id="layer-pills" role="group" aria-label="Camada ativa">
             <button type="button" class="layer-btn" data-layer="orig" title="Original 1× (Tecla 1)"><span class="dot" style="background:var(--c-orig)"></span>Orig 1×<span class="kbd">1</span></button>
             <button type="button" class="layer-btn" data-layer="xbrz" title="xBRZ 1.9 Original (Tecla 2)"><span class="dot" style="background:var(--c-xbrz)"></span>xBRZ 1.9<span class="kbd">2</span></button>
-            <button type="button" class="layer-btn" data-layer="old" title="Crisp v3.6 Antes (Tecla 3)"><span class="dot" style="background:var(--c-old)"></span>v3.6<span class="kbd">3</span></button>
+            <button type="button" class="layer-btn" data-layer="old" title="Crisp Antes (Tecla 3)"><span class="dot" style="background:var(--c-old)"></span>Antes<span class="kbd">3</span></button>
             <button type="button" class="layer-btn active" data-layer="new" title="Crisp Novo Depois (Tecla 4)"><span class="dot" style="background:var(--c-new)"></span>Novo<span class="kbd">4</span></button>
             <button type="button" class="layer-btn" data-layer="diff" title="Mapa de diferenças (Tecla 5)"><span class="dot" style="background:var(--c-diff)"></span>Diff<span class="kbd">5</span></button>
           </div>
@@ -1048,7 +1048,7 @@
         <button type="button" id="btn-hold-orig" class="btn-hold" title="Segure este botão ou a tecla Espaço para espiar o Original 1×">👁 Orig 1×</button>
 
         <div class="dock-group" id="pair-presets" role="group" aria-label="Pares rápidos A/B">
-          <button type="button" class="pair-chip active" data-a="old" data-b="new" title="Alternar entre v3.6 e Novo ao clicar na imagem">v3.6 ↔ Novo</button>
+          <button type="button" class="pair-chip active" data-a="old" data-b="new" title="Alternar entre Antes e Novo ao clicar na imagem">Antes ↔ Novo</button>
           <button type="button" class="pair-chip" data-a="xbrz" data-b="new" title="Alternar entre xBRZ 1.9 e Novo ao clicar na imagem">xBRZ ↔ Novo</button>
           <button type="button" class="pair-chip" data-a="orig" data-b="new" title="Alternar entre Original 1× e Novo ao clicar na imagem">Orig ↔ Novo</button>
         </div>
@@ -1119,7 +1119,7 @@
       <span class="help-key">Scroll / Pinça</span><span>Zoom suave centrado no cursor / dedos</span>
       <span class="help-key">Tab</span><span>Alterna o par A ↔ B</span>
       <span class="help-key">Segurar Espaço</span><span>Espia o Original 1× (também tecla O)</span>
-      <span class="help-key">1 · 2 · 3 · 4 · 5</span><span>Orig 1× · xBRZ 1.9 · v3.6 · Novo · Diff</span>
+      <span class="help-key">1 · 2 · 3 · 4 · 5</span><span>Orig 1× · xBRZ 1.9 · Antes · Novo · Diff</span>
       <span class="help-key">P</span><span>Liga/desliga modo 📍 Marcar Spots</span>
       <span class="help-key">Alt+Clique / Dir.</span><span>Marca um spot na hora sem sair da comparação</span>
       <span class="help-key">G</span><span>Mostra/oculta grade de pixels 1× nativos</span>
@@ -1160,7 +1160,7 @@ window.__STUDIO_DATA_OK = true;
   const LAYERS = {
     orig: { label: "Original 1×", short: "Orig 1×", color: "#b88cff" },
     xbrz: { label: "xBRZ 1.9",    short: "xBRZ 1.9", color: "#58a6ff" },
-    old:  { label: "Crisp v3.6 (Antes)", short: "v3.6", color: "#ff8672" },
+    old:  { label: "Crisp (Antes)", short: "Antes", color: "#ff8672" },
     new:  { label: "Crisp Novo (Depois)", short: "Novo", color: "#3fd278" },
     diff: { label: "Mapa Diff",   short: "Diff",    color: "#ff5ca8" }
   };

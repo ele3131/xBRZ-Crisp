@@ -139,6 +139,20 @@ bool withinEqY255(vec3 a, vec3 b, float lim)
 {
   return distSqY(a, b) <= SQ255(lim);
 }
+
+// Unified geometric AA-ramp test from squared pairwise color distances (a2, b2, c2):
+// returns 1.0 when the middle color projects strictly onto the segment of length sqrt(c2)
+// and its exact perpendicular distance sits within min(relLim * sqrt(c2), absLim255/255).
+// Exact D4-symmetric in (a2, b2) and sqrt-free (reuses squared distances already in registers).
+vec4 geomRamp4(vec4 a2, vec4 b2, vec4 c2, float relLim, float absLim255)
+{
+  vec4 diff2 = a2 - b2;
+  vec4 safeC2 = max(c2, vec4(SAFE_EPS));
+  vec4 mono = vec4(lessThan(abs(diff2), c2));
+  vec4 perpSq = max(vec4(0.0), 0.5 * (a2 + b2) - 0.25 * c2 - (diff2 * diff2) / (4.0 * safeC2));
+  vec4 limSq = min(vec4(SQ255(absLim255)), (relLim * relLim) * c2);
+  return mono * vec4(lessThanEqual(perpSq, limSq));
+}
 // Decision-word bit layout (0..255 per corner: x = TL, y = TR, z = BR, w = BL):
 //   bits 0..1 (BLEND): 0 = none, 1 = normal, 2 = dominant (pass0) / thin sliver R14 (resolve+), 3 = weak (pass0) / small tip R23/R40 (resolve+)
 //   bit  2 (  4.0): BIT_LINE    - line blend (45-deg unless BIT_SHALLOW or BIT_STEEP is also set)
@@ -165,7 +179,6 @@ vec4 cut4(vec4 w)        { return vec4(greaterThan(BLEND(w), vec4(0.0))); }
 vec4 activeCutOf(vec4 w) { vec4 bl = BLEND(w); return vec4(greaterThan(bl, vec4(0.0))) * vec4(lessThan(bl, vec4(3.0))) * vec4(lessThan(w, vec4(BIT_BLOCKED))); }
 // A cut that is not weak (blend 3); keeps blocked (bit 128) when resolve may still rescue it
 vec4 cutNoWeak(vec4 w)   { vec4 bl = BLEND(w); return vec4(greaterThan(bl, vec4(0.0))) * vec4(lessThan(bl, vec4(3.0))); }
-float drawsLine(float r) { float bl = BLEND(r); return float(r < BIT_BLOCKED && bl > 0.0 && bl < 3.0 && FLAG(r, BIT_LINE) > 0.0); }
 vec4 drawsLine4(vec4 r)  { return activeCutOf(r) * FLAG(r, BIT_LINE); }
 vec4 isLine45(vec4 r)    { return FLAG(r, BIT_LINE) * (1.0 - FLAG(r, BIT_SHALLOW)) * (1.0 - FLAG(r, BIT_STEEP)) * vec4(equal(FLAG(r, BIT_LONG3) + FLAG(r, BIT_LONG4), vec4(0.0))); }
 float wordPlain(bool sec)  { return sec ? (1.0 + BIT_SEC) : 1.0; }
@@ -188,9 +201,8 @@ float wordLine45(bool sec) { return sec ? (1.0 + BIT_LINE + BIT_SEC) : (1.0 + BI
 #define XBRZ_ISO_FAR 60.0      // 19. a lone pixel keeps out of a plain cut whose other neighbor is this far from it
 #define XBRZ_JUNCTION 40.0     // 20. two neighbors this far apart do not make one edge across a corner
 #define XBRZ_JUNC_NEAR 20.0    // 20. a color this close to the next pixel goes on along the cut
-#define XBRZ_JUNC_RAMP 1.06    // 20. not a junction but a ramp
-#define XBRZ_JUNC_RAMP2 1.12   // 20. a looser ramp, where a cut goes on or E is a strip
-#define XBRZ_JUNC_RAMP3 1.15   // 20. looser still where E is the end of a strong ramp
+#define XBRZ_JUNC_RAMP 1.06    // 20. not a junction but a ramp (aa20)
+#define XBRZ_JUNC_RAMP3 1.15   // 19. not a ramp on an isolated non-line bevel
 #define XBRZ_JUNC_AA_MIN 40.0  // 20. dark outline with an antialiasing pixel: min distance
 #define XBRZ_JUNC_AA_MAX 70.0  // 20. and max distance
 #define XBRZ_JUNC_AA_DARK 0.35 // 20. and the darkest of the three is darker than this (luma)
@@ -206,12 +218,9 @@ float wordLine45(bool sec) { return sec ? (1.0 + BIT_LINE + BIT_SEC) : (1.0 + BI
 #define XBRZ_LINE_ALONG 20.0   // 21. E's color goes on along the cut when a pixel beside the corner is closer than this
 #define XBRZ_LINE_PAST 40.0    // 21. tip in an area: q differs from the pixel past E by this
 #define XBRZ_LINE_BACK 0.5     // 21. tip in an area: p and q are one background
-#define XBRZ_CROSS_MAX 64.0    // 22. E and the neighbor are close shades
-#define XBRZ_CROSS_RAMP 45.0   // 22. a faint step on a ramp toward a darker pixel stays
 #define XBRZ_LONE23 100.0      // 23b. a dot this far from all 8 neighbors is far from everything
 #define XBRZ_LOOSE 60.0        // 23. a pixel this far from each of its 4 side neighbors is loose
 #define XBRZ_HOOK 90.0         // 24. a line between two colors this far apart needs a corner to go on to
-#define XBRZ_POINT 60.0        // 25. the two pixels beside a pointed pixel differ by this
 
 // ---- Helpers of the Crisp rules ----
 
@@ -232,10 +241,6 @@ float sameF(vec3 a, vec3 b) { return float(sameColor(a, b)); }
 vec4 isCut(vec4 blend) { return vec4(greaterThan(blend, vec4(0.0))); }
 bool anyCut(vec4 blend) { return any(greaterThan(blend, vec4(0.0))); }
 float junctionNear(vec3 a, vec3 b) { return withinY255(a, b, XBRZ_JUNC_NEAR) ? 1.0 : 0.0; }
-float apartFrom4(vec3 c, vec3 a, vec3 b, vec3 d, vec3 e)
-{
-  return (!sameColor(c, a) && !sameColor(c, b) && !sameColor(c, d) && !sameColor(c, e)) ? 1.0 : 0.0;
-}
 float sameAsOne(vec3 c, vec3 a, vec3 b) { return (sameColor(c, a) || sameColor(c, b)) ? 1.0 : 0.0; }
 
 // ---- Rule 28: shared hold-score & tie-breaker helpers (used by resolve and match passes) ----
@@ -270,16 +275,8 @@ vec4 whole28Mask(float hE, vec4 hN, vec4 sec, vec3 E, vec3 B, vec3 D, vec3 F, ve
              vec4(lessThan(abs(hE - hN), vec4(0.5))) * tie);
 }
 // ============================================================================================
-// Resolve pass — Straight steps (Rule 14) & Point on a shared edge (Rule 25)
+// Resolve pass — Straight steps (Rule 14)
 // ============================================================================================
-
-float point25(vec3 E, vec3 N, vec3 s1, vec3 s2, vec3 a1, vec3 a2, vec3 notch, vec2 o1, vec2 o2, vec3 b1, vec3 b2)
-{
-  if (!(sameColor(E, a1) && sameColor(E, a2) && !sameColor(E, notch))) return 0.0;
-  if (withinY255(E, N, XBRZ_JUNCTION) || withinY255(s1, N, XBRZ_JUNC_NEAR) || withinY255(s2, N, XBRZ_JUNC_NEAR) || withinY255(s1, s2, XBRZ_POINT)) return 0.0;
-  if (!(sameColor(N, b1) || sameColor(N, b2))) return 0.0;
-  return (!sameColor(E, at(o1)) && !sameColor(E, at(o2))) ? 1.0 : 0.0;
-}
 
 bool lighterSide(vec3 side, vec3 stroke) { return side.x > stroke.x && !withinY255(side, stroke, XBRZ_STRAIGHT); }
 float sideTones(inout vec3 t1, inout vec3 t2, float n, vec3 c)
@@ -571,30 +568,6 @@ vec2 straight21(Roles r, vec3 E, float ln, float uwSq, float euSq, float ewSq)
   return vec2(1.0, takes ? 1.0 : 0.0);
 }
 
-// ---- 22. Crossed cuts ----
-float back22(Roles r, vec3 E, float eWord, float blocked, float loneE)
-{
-  float along = r.s > 0.5 ? BIT_SHALLOW : BIT_STEEP;
-  if (BLEND(r.ru) == 0.0 || abs(FLAG(r.ru, BIT_SEC) - r.s) > 0.5 || max(FLAG(r.ru, BIT_BLOCKED), blocked) < 0.5
-      || max(FLAG(r.ru, along), FLAG(eWord, along)) < 0.5) return 0.0;
-  float dnSq = distSqY(E, r.u);
-  if (dnSq >= SQ255(XBRZ_CROSS_MAX)) return 0.0;
-  if (r.u.x > E.x)
-  {
-    if (dnSq < SQ255(XBRZ_CROSS_RAMP) && r.mu.x < E.x) return 0.0;
-    return sameAsOne(r.u, r.w, r.u2mw) * loneE;
-  }
-  if (dnSq < SQ255(XBRZ_CROSS_RAMP) && r.u2.x < r.u.x) return 0.0;
-  return sameAsOne(E, r.umw, r.wmu) * apartFrom4(r.u, E, r.u2, r.uw, r.umw);
-}
-float tip22(Roles r, vec3 E)
-{
-  if (BLEND(r.ru) == 0.0 || BLEND(r.rumw) == 0.0 || max(FLAG(r.ru, BIT_BLOCKED), FLAG(r.rumw, BIT_BLOCKED)) < 0.5) return 0.0;
-  float dlSq = distSqY(r.umw, r.u);
-  if (dlSq < SQ255(XBRZ_SAME) || dlSq >= SQ255(XBRZ_CROSS_MAX) || r.umw.x <= r.u.x) return 0.0;
-  if (sameColor(r.u, r.w) || sameColor(r.u, r.uw) || sameColor(r.w, r.uw) || sameColor(E, r.uw) || sameColor(E, r.u) || sameColor(r.u, r.u2)) return 0.0;
-  return sameColor(r.umw, at(2.0 * (r.p - r.q))) ? 1.0 : 0.0;
-}
 #define ROLES_0(s) makeRoles(vX, hX, B, D, A, C, G, uu, ll, ruu, lld, llu, luu, H, F, I, iB.z, iD.z, iC.x, iG.x, s)
 #define ROLES_1(s) makeRoles(vY, hY, F, B, C, I, A, rr, uu, rrd, luu, ruu, rru, D, H, G, iF.w, iB.w, iI.y, iA.y, s)
 #define ROLES_2(s) makeRoles(vZ, hZ, H, F, I, G, C, dd, rr, ldd, rru, rrd, rdd, B, D, A, iH.x, iF.x, iG.z, iC.z, s)
@@ -708,7 +681,6 @@ void main()
 //#crisp{
   vec4 line = FLAG(info, 4.0);
   vec4 sec = FLAG(info, 8.0);
-  vec4 x22 = vec4(0.0);
   vec4 small23 = vec4(0.0);
   vec4 hook24 = vec4(0.0);
   vec4 nn = vec4(0.0), ty = vec4(0.0), thinN = vec4(0.0), thinSteep = vec4(0.0);
@@ -740,7 +712,7 @@ void main()
       vec4 sECard = vec4(lessThan(dE1Sq, vec4(SQ255(XBRZ_SAME))));
       vec4 cB = cutNoWeak(iB), cD = cutNoWeak(iD), cF = cutNoWeak(iF), cH = cutNoWeak(iH);
 
-      // Exact 0-fetch gate: skip the 12 outer-ring fetches (luu..rdd) and rules 17/19/20/21/37/22/29
+      // Exact 0-fetch gate: skip the 12 outer-ring fetches (luu..rdd) and rules 17/19/20/21/37/29
       // whenever none of those rules can fire (clean smooth edges with dLO < 24 and no special flags).
       // Diagonal INFO_AT/colors and sqrt() also defer off clean non-ring 2:1 edges.
       vec4 cutInit = isCut(blendResult);
@@ -756,20 +728,8 @@ void main()
       }
       float sqB = squareOf(iB), sqD = squareOf(iD), sqF = squareOf(iF), sqH = squareOf(iH);
       vec4 sq19 = vec4(sec.x > 0.5 ? sqB : sqD, sec.y > 0.5 ? sqF : sqB, sec.z > 0.5 ? sqH : sqF, sec.w > 0.5 ? sqD : sqH);
-      vec4 bk22 = max(blockedBit, max(FLAG(oSh17, 128.0), FLAG(oSt17, 128.0)));
       bool needRing = any(greaterThan(
-        cutInit * (vec4(greaterThanEqual(dLOSq, vec4(SQ255(24.0)))) + sq19 + bk22) + hit17, vec4(0.0)));
-      if (!needRing && any(greaterThan(cutInit * (1.0 - line), vec4(0.0))))
-      {
-        if (!haveDiagInfo)
-        {
-          iA = INFO_AT(-1.0, -1.0); iC = INFO_AT(1.0, -1.0); iG = INFO_AT(-1.0, 1.0); iI = INFO_AT(1.0, 1.0);
-          haveDiagInfo = true;
-        }
-        vec4 bk22D = max(FLAG(vec4(iC.x, iI.y, iG.z, iA.w), 128.0), FLAG(vec4(iG.x, iA.y, iC.z, iI.w), 128.0));
-        bk22 = max(bk22, bk22D);
-        needRing = any(greaterThan(cutInit * (1.0 - line) * bk22D, vec4(0.0)));
-      }
+        cutInit * (vec4(greaterThanEqual(dLOSq, vec4(SQ255(24.0)))) + sq19) + hit17, vec4(0.0)));
 
       if (needRing)
       {
@@ -778,7 +738,6 @@ void main()
           iA = INFO_AT(-1.0, -1.0); iC = INFO_AT(1.0, -1.0); iG = INFO_AT(-1.0, 1.0); iI = INFO_AT(1.0, 1.0);
           haveDiagInfo = true;
         }
-        bk22 = max(bk22, max(FLAG(vec4(iC.x, iI.y, iG.z, iA.w), 128.0), FLAG(vec4(iG.x, iA.y, iC.z, iI.w), 128.0)));
         cA = cutNoWeak(iA); cC = cutNoWeak(iC); cG = cutNoWeak(iG); cI = cutNoWeak(iI);
         haveDiagCut = true;
         if (!haveDiagPix)
@@ -815,12 +774,10 @@ void main()
           vec4 notRamp17 = vec4(greaterThan(dLE + dOE, XBRZ_LONE_RAMP * dLO_raw));
           if (any(greaterThan(oDraw * (1.0 - notRamp17), vec4(0.0))))
           {
-            // Also block when the line's paint pixel is 8-neighbor isolated (>= XBRZ_ISO)
-            // and E sits > 20/255 off the chromatic segment between the two neighbors (exact D4-symmetric altitude).
-            vec4 a2 = dE1Sq.yxzw, b2 = dE1Sq.xzwy, c2 = max(dLOSq, vec4(1e-6));
-            vec4 diff2 = a2 - b2;
-            vec4 perpSq = mix(0.5 * (a2 + b2) - 0.25 * c2 - (diff2 * diff2) / (4.0 * c2),
-                              min(a2, b2), vec4(greaterThan(abs(diff2), c2)));
+            // Also block when the line's paint pixel is non-black (>= 0.18), 8-neighbor isolated (>= XBRZ_ISO),
+            // >= 50 from E alongside the other neighbor, and E fails the unified geometric AA-ramp test.
+            vec4 a2 = dE1Sq.yxzw, b2 = dE1Sq.xzwy;
+            vec4 offRamp17 = 1.0 - geomRamp4(a2, b2, dLOSq, 0.35, 20.0);
             vec4 iso17 = vec4(
               sec.x > 0.5 ? isoSqOf5(B, min(dE1Sq.x, min(dLOSq.x, dLOSq.y)), luu, uu, ruu, A, C)
                           : isoSqOf5(D, min(dE1Sq.y, min(dLOSq.x, dLOSq.w)), llu, A, ll, lld, G),
@@ -833,7 +790,7 @@ void main()
             vec4 lumP17 = vec4(sec.x > 0.5 ? B.x : D.x, sec.y > 0.5 ? F.x : B.x,
                                sec.z > 0.5 ? H.x : F.x, sec.w > 0.5 ? D.x : H.x);
             notRamp17 = max(notRamp17, vec4(greaterThanEqual(iso17, vec4(SQ255(XBRZ_ISO))))
-                                     * vec4(greaterThan(perpSq, vec4(SQ255(20.0))))
+                                     * offRamp17
                                      * vec4(greaterThanEqual(lumP17, vec4(0.18)))
                                      * vec4(greaterThanEqual(min(a2, b2), vec4(SQ255(50.0)))));
           }
@@ -887,7 +844,11 @@ void main()
           vec4 gate20 = isCut(blendResult) * vec4(greaterThan(cand20, vec4(XBRZ_JUNCTION))) * vec4(greaterThanEqual(min(dE1, dE2), XBRZ_JUNC_TONE * cand20));
           if (any(greaterThan(gate20, vec4(0.0))))
           {
-            vec4 ramp20 = vec4(lessThan(dE1 + dE2 + cand20, (1.0 + XBRZ_JUNC_RAMP) * max(cand20, max(dE1, dE2))));
+            vec4 sE1_20 = dE1Sq.yxzw, sE2_20 = dE1Sq.xzwy, sC_20 = dLOSq;
+            vec4 maxS20 = max(sC_20, max(sE1_20, sE2_20));
+            vec4 sumS20 = sE1_20 + sE2_20 + sC_20 - maxS20;
+            vec4 aS20 = min(sE1_20, min(sE2_20, sC_20)), bS20 = sumS20 - aS20;
+            vec4 ramp20 = geomRamp4(aS20, bS20, maxS20, 0.16, 16.0);
             vec4 cr20 = max(vec4(junctionNear(B, lld), junctionNear(F, luu), junctionNear(H, rru), junctionNear(D, rdd)),
                             vec4(junctionNear(D, ruu), junctionNear(B, rrd), junctionNear(F, ldd), junctionNear(H, llu)));
             vec4 lu20 = vec4(D.x, B.x, F.x, H.x);
@@ -964,8 +925,8 @@ void main()
               vec4 runB = vec4(cG.x + cG.x * d2.x, cI.y + cI.y * p2.y, cG.z + cG.z * d2.z, cI.w + cI.w * p2.w);
               on20 *= max(vec4(lessThan(1.0 + runA + runB, vec4(3.0))), orthoBlock);
               vec4 maxE20 = max(dE1, dE2);
-              vec4 wide20 = max(vec4(lessThan(dE1 + dE2 + cand20, (1.0 + XBRZ_JUNC_RAMP2) * max(cand20, maxE20))),
-                                vec4(lessThan(dE1 + dE2 + cand20, (1.0 + XBRZ_JUNC_RAMP3) * maxE20)) * vec4(lessThan(cand20, maxE20))
+              vec4 wide20 = max(geomRamp4(aS20, bS20, maxS20, 0.22, 22.0),
+                                geomRamp4(aS20, bS20, maxS20, 0.26, 26.0) * vec4(lessThan(cand20, maxE20))
                                 * vec4(greaterThan(min(cand20, min(dE1, dE2)), XBRZ_JUNC_MID * maxE20)) * vec4(greaterThan(maxE20, vec4(XBRZ_JUNC_FAR))));
               vec4 keep20 = max(vec4(greaterThan(runA + runB, vec4(0.5))), (isCut(blendResult) * (1.0 - on20)).zwxy);
               on20 *= 1.0 - keep20 * wide20 * (1.0 - orthoBlock);
@@ -988,6 +949,33 @@ void main()
                   blendResult *= 1.0 - on20;
                 }
               }
+            }
+          }
+          // 20b (ex-38b). 3+ color corner on a 1px bar flush against an adjacent 4-color orthogonal crosshair
+          vec4 barGate = isCut(blendResult) * vec4(greaterThanEqual(dLOSq, vec4(SQ255(30.0))))
+                       * max(sECard.zwyx, sECard.wyxz);
+          if (any(greaterThan(barGate, vec4(0.0))))
+          {
+            vec4 nbASq = vec4(distSqY(D, A), distSqY(B, C), distSqY(F, I), distSqY(H, G));
+            vec4 nbBSq = vec4(distSqY(B, A), distSqY(F, C), distSqY(H, I), distSqY(D, G));
+            vec4 dgESq = vec4(distSqY(E, A), distSqY(E, C), distSqY(E, I), distSqY(E, G));
+            vec4 qBase = vec4(greaterThan(dLOSq, vec4(SQ255(XBRZ_JUNCTION))))
+                       * vec4(greaterThan(min(dE1Sq.yxzw, dE1Sq.xzwy), vec4(SQ255(XBRZ_JUNCTION))))
+                       * vec4(greaterThan(dgESq, vec4(SQ255(XBRZ_JUNCTION))));
+            vec4 qC1 = qBase * vec4(greaterThan(nbASq, vec4(SQ255(XBRZ_JUNCTION)))) * vec4(greaterThan(nbBSq, vec4(SQ255(30.0))));
+            vec4 qC2 = qBase * vec4(greaterThan(nbBSq, vec4(SQ255(XBRZ_JUNCTION)))) * vec4(greaterThan(nbASq, vec4(SQ255(30.0))));
+            if (any(greaterThan(max(qC1, qC2), vec4(0.0))))
+            {
+              float sDll = sameF(D, ll), sBuu = sameF(B, uu), sFrr = sameF(F, rr), sHdd = sameF(H, dd);
+              vec4 sNbA = vec4(lessThan(nbASq, vec4(SQ255(XBRZ_SAME))));
+              vec4 sNbB = vec4(lessThan(nbBSq, vec4(SQ255(XBRZ_SAME))));
+              vec4 blkC = vec4(sameF(A, llu) * sameF(A, luu), sameF(C, ruu) * sameF(C, rru), sameF(I, rrd) * sameF(I, rdd), sameF(G, ldd) * sameF(G, lld));
+              vec4 blk1 = sNbB.wxyz * vec4(sDll, sBuu, sFrr, sHdd);
+              vec4 blk2 = sNbA.yzwx * vec4(sBuu, sFrr, sHdd, sDll);
+              vec4 vOrt = vec4(sBuu * sECard.w, sFrr * sECard.y, sHdd * sECard.x, sDll * sECard.z);
+              vec4 oBar1 = qC1 * blkC * vOrt * blk1;
+              vec4 oBar2 = qC2 * blkC * vOrt.wxyz * blk2;
+              blendResult *= 1.0 - barGate * max(oBar1.wxyz, oBar2.yzwx);
             }
           }
         }
@@ -1035,17 +1023,6 @@ void main()
             haveShallowLine *= 1.0 - flipK * sec;
             haveSteepLine   *= 1.0 - flipK * (1.0 - sec);
           }
-        }
-
-        // ---- 22. Crossed cuts ----
-        if (any(greaterThan(bk22 * isCut(blendResult), vec4(0.0))))
-        {
-          float loneE = float(min(min(dE4.x, dE4.y), min(dE4.z, dE4.w)) >= XBRZ_SAME);
-          if (blendResult.x > 0.0 && bk22.x > 0.0) { Roles r = ROLES_0(sec.x); float b = back22(r, E, info.x, blockedBit.x, loneE); if (b < 0.5 && line.x < 0.5) b = tip22(r, E); x22.x = b; }
-          if (blendResult.y > 0.0 && bk22.y > 0.0) { Roles r = ROLES_1(sec.y); float b = back22(r, E, info.y, blockedBit.y, loneE); if (b < 0.5 && line.y < 0.5) b = tip22(r, E); x22.y = b; }
-          if (blendResult.z > 0.0 && bk22.z > 0.0) { Roles r = ROLES_2(sec.z); float b = back22(r, E, info.z, blockedBit.z, loneE); if (b < 0.5 && line.z < 0.5) b = tip22(r, E); x22.z = b; }
-          if (blendResult.w > 0.0 && bk22.w > 0.0) { Roles r = ROLES_3(sec.w); float b = back22(r, E, info.w, blockedBit.w, loneE); if (b < 0.5 && line.w < 0.5) b = tip22(r, E); x22.w = b; }
-          blendResult *= 1.0 - x22;
         }
 
         // ---- 28. Two 2:1 cuts that cross ----
@@ -1141,31 +1118,6 @@ void main()
                       * vec4(equal(FLAG(dW24, BIT_STEEP), haveSteepLine))
                       * vec4(lessThan(dLOSq, vec4(SQ255(XBRZ_SAME))));
           hook24 = lone24 * (1.0 - max(part, diag24));
-        }
-      }
-
-      // ---- 25. A point on a shared edge ----
-      {
-        vec4 pl = isCut(blendResult) * line * (1.0 - haveShallowLine) * (1.0 - haveSteepLine);
-        if (pl.x + pl.y + pl.z + pl.w > 1.5)
-        {
-          float pB = pl.x * pl.y * sec.x * (1.0 - sec.y), pF = pl.y * pl.z * sec.y * (1.0 - sec.z);
-          float pH = pl.z * pl.w * sec.z * (1.0 - sec.w), pD = pl.w * pl.x * sec.w * (1.0 - sec.x);
-          if (pB + pF + pH + pD > 0.0)
-          {
-            if (!haveDiagPix)
-            {
-              cachedA = toYCbCr(P(-1., -1.)); cachedC = toYCbCr(P(1., -1.));
-              cachedG = toYCbCr(P(-1.,  1.)); cachedI = toYCbCr(P(1.,  1.));
-              haveDiagPix = true;
-            }
-            A = cachedA; C = cachedC; G = cachedG; I = cachedI;
-            if (pB > 0.0) pB = point25(E, B, D, F, G, I, H, vec2(-2., 2.), vec2( 2., 2.), A, C);
-            if (pF > 0.0) pF = point25(E, F, B, H, A, G, D, vec2(-2.,-2.), vec2(-2., 2.), C, I);
-            if (pH > 0.0) pH = point25(E, H, F, D, A, C, B, vec2(-2.,-2.), vec2( 2.,-2.), G, I);
-            if (pD > 0.0) pD = point25(E, D, H, B, C, I, F, vec2( 2.,-2.), vec2( 2., 2.), A, G);
-            blendResult *= 1.0 - min(vec4(pB + pD, pB + pF, pF + pH, pH + pD), vec4(1.0));
-          }
         }
       }
 
@@ -1299,32 +1251,6 @@ void main()
           haveShallowLine = max(haveShallowLine, pSh);
           haveSteepLine   = max(haveSteepLine,   pSt);
         }
-        vec4 plain45 = cutB * line * (1.0 - haveShallowLine) * (1.0 - haveSteepLine)
-                     * vec4(lessThan(dLOSq, vec4(SQ255(XBRZ_SAME))));
-        if (any(greaterThan(plain45, vec4(0.5))))
-        {
-          if (!haveDiagPix)
-          {
-            cachedA = toYCbCr(P(-1., -1.)); cachedC = toYCbCr(P(1., -1.));
-            cachedG = toYCbCr(P(-1.,  1.)); cachedI = toYCbCr(P(1.,  1.));
-            haveDiagPix = true;
-          }
-          A = cachedA; C = cachedC; G = cachedG; I = cachedI;
-          if (!haveDiagInfo)
-          {
-            iA = INFO_AT(-1.0, -1.0); iC = INFO_AT(1.0, -1.0); iG = INFO_AT(-1.0, 1.0); iI = INFO_AT(1.0, 1.0);
-            haveDiagInfo = true;
-          }
-          vec4 sameDiag = vec4(sameF(E, C) * sameF(E, G), sameF(E, A) * sameF(E, I),
-                               sameF(E, C) * sameF(E, G), sameF(E, A) * sameF(E, I));
-          vec4 d1 = vec4(iC.x, iA.y, iC.z, iA.w);
-          vec4 d2 = vec4(iG.x, iI.y, iG.z, iI.w);
-          vec4 dAct = drawsLine4(d1) * drawsLine4(d2);
-          vec4 dSh = plain45 * sameDiag * dAct * FLAG(d1, BIT_SHALLOW) * FLAG(d2, BIT_SHALLOW) * (1.0 - FLAG(d1, BIT_STEEP)) * (1.0 - FLAG(d2, BIT_STEEP));
-          vec4 dSt = plain45 * sameDiag * dAct * FLAG(d1, BIT_STEEP) * FLAG(d2, BIT_STEEP) * (1.0 - FLAG(d1, BIT_SHALLOW)) * (1.0 - FLAG(d2, BIT_SHALLOW));
-          haveShallowLine = max(haveShallowLine, dSh);
-          haveSteepLine   = max(haveSteepLine,   dSt);
-        }
       }
     }
 
@@ -1340,7 +1266,6 @@ void main()
   haveShallowLine = mix(haveShallowLine, vec4(equal(ty, vec4(2.0))), over);
   hook24 *= 1.0 - over;
   line *= 1.0 - hook24; haveShallowLine *= 1.0 - hook24; haveSteepLine *= 1.0 - hook24;
-  thinN *= 1.0 - x22;
   vec4 isThin = vec4(greaterThan(thinN, vec4(0.0)));
   vec4 slope = mix(nn, thinN, isThin);
   vec4 cutFinal = isCut(blendResult);

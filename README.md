@@ -6,7 +6,7 @@
   <p><b>Pixel-faithful edge smoothing for RetroArch — smooth outlines and typography without melting checkerboards, textures, or faces.</b></p>
   <p>
     <img src="https://img.shields.io/badge/RetroArch-GLSL%20%26%20Slang-238636?style=flat-square" alt="RetroArch GLSL & Slang">
-    <img src="https://img.shields.io/badge/Pipeline-5%20Passes%20(49%20Rules)-6e7681?style=flat-square" alt="5-Pass Pipeline (49 Rules)">
+    <img src="https://img.shields.io/badge/Pipeline-5%20Passes%20(42%20Rules%20%2B%20C1%20Arcs)-6e7681?style=flat-square" alt="5-Pass Pipeline (42 Rules + C1 Arcs)">
     <img src="https://img.shields.io/badge/Verified-100%20Scenes%20%C2%B7%20D4%200%2F0%2F0-8957e5?style=flat-square" alt="100-Scene Suite & D4 Symmetry">
     <img src="https://img.shields.io/badge/License-GPLv3-d29922?style=flat-square" alt="GPLv3">
   </p>
@@ -145,14 +145,14 @@ libretro's `xbrz-freescale-multipass` uses the same tolerance, steep, and domina
 </details>
 
 <details>
-<summary>How the 49 Crisp rules work (4 core pillars)</summary>
+<summary>How the 42 Crisp rules & C1 circular fillets work (4 core pillars)</summary>
 
 <br>
 
 - **🌿 Soft shading, checkerboards & 50% mesh (`XBRZ_MINC`):** Low-contrast shading, exact/shaded checkerboard textures, 2×N checker strips, and 50% transparency meshes keep their crisp square pixels while strong outlines, antialiasing bands, and crossing strokes stay smooth.
-- **🎨 Color junction protection (`XBRZ_DIAG`):** High-contrast 3- and 4-color junctions (eyes, eyebrows, outlines) are never bridged by fake diagonals, while intentional shade ramps and 45° corners stay continuous.
+- **🎨 Color junction protection (`XBRZ_DIAG`):** High-contrast 3- and 4-color junctions (eyes, eyebrows, outlines, orthogonal HUD crosshairs) are never bridged by fake diagonals, while intentional shade ramps (`geomRamp4`) and 45° corners stay continuous.
 - **📏 Clean endings & 1px geometry:** Stacked bars end square, HUD frames stay straight, convex 8-bit icon corners bevel cleanly, and isolated 1px glints and 1px diagonal strokes keep their exact artist intent.
-- **📐 Straight stepped slopes:** Regular 2–6px staircases (italic fonts, parallel drop shadows, roofs, rails) smooth along their true angle (2:1, 3:1, 4:1) instead of wobbling at each step.
+- **📐 Straight stepped slopes & C¹ circular fillets:** Regular 2–6px staircases (italic fonts, parallel drop shadows, roofs, rails) smooth along their true angle (2:1, 3:1, 4:1), while plain bevels and isolated 45° corners meeting flat H/V walls render as true C¹ circular arcs in `pass1`.
 
 See the [interactive comparison page](https://ele3131.github.io/xBRZ-Crisp/#how) for visual diagrams of the core rules.
 
@@ -163,7 +163,7 @@ See the [interactive comparison page](https://ele3131.github.io/xBRZ-Crisp/#how)
 
 <br>
 
-xBRZ Crisp started as a set of fixes to libretro's `xbrz-freescale-multipass` and has since been largely rewritten around **49 documented visual rules**. Blend color ties, exact corner ties, dual shallow/steep corners, and corner processing order follow Zenju's C++ xBRZ 1.9, while the output pass reads directly from the pass preceding xBRZ so it chains cleanly after color-correction shaders.
+xBRZ Crisp started as a set of fixes to libretro's `xbrz-freescale-multipass` and has since been largely rewritten around **42 streamlined visual rules** (indexed across the 1–49 catalog) plus C¹ circular corner fillets. Blend color ties, exact corner ties, dual shallow/steep corners, and corner processing order follow Zenju's C++ xBRZ 1.9, while the output pass reads directly from the pass preceding xBRZ so it chains cleanly after color-correction shaders.
 
 It runs in **five passes** — four at native 1× game resolution (`point` → `pass0` → `resolve` → `match`) and one lightweight output rasterization pass (`pass1`) that only draws the resolved corners, with dual-path GLES 3.0+ / Slang `texelFetch` & `uvec4` support and full GLSL ES 1.00 compatibility.
 

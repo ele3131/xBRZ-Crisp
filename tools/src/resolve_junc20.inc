@@ -110,30 +110,6 @@ vec2 straight21(Roles r, vec3 E, float ln, float uwSq, float euSq, float ewSq)
   return vec2(1.0, takes ? 1.0 : 0.0);
 }
 
-// ---- 22. Crossed cuts ----
-float back22(Roles r, vec3 E, float eWord, float blocked, float loneE)
-{
-  float along = r.s > 0.5 ? BIT_SHALLOW : BIT_STEEP;
-  if (BLEND(r.ru) == 0.0 || abs(FLAG(r.ru, BIT_SEC) - r.s) > 0.5 || max(FLAG(r.ru, BIT_BLOCKED), blocked) < 0.5
-      || max(FLAG(r.ru, along), FLAG(eWord, along)) < 0.5) return 0.0;
-  float dnSq = distSqY(E, r.u);
-  if (dnSq >= SQ255(XBRZ_CROSS_MAX)) return 0.0;
-  if (r.u.x > E.x)
-  {
-    if (dnSq < SQ255(XBRZ_CROSS_RAMP) && r.mu.x < E.x) return 0.0;
-    return sameAsOne(r.u, r.w, r.u2mw) * loneE;
-  }
-  if (dnSq < SQ255(XBRZ_CROSS_RAMP) && r.u2.x < r.u.x) return 0.0;
-  return sameAsOne(E, r.umw, r.wmu) * apartFrom4(r.u, E, r.u2, r.uw, r.umw);
-}
-float tip22(Roles r, vec3 E)
-{
-  if (BLEND(r.ru) == 0.0 || BLEND(r.rumw) == 0.0 || max(FLAG(r.ru, BIT_BLOCKED), FLAG(r.rumw, BIT_BLOCKED)) < 0.5) return 0.0;
-  float dlSq = distSqY(r.umw, r.u);
-  if (dlSq < SQ255(XBRZ_SAME) || dlSq >= SQ255(XBRZ_CROSS_MAX) || r.umw.x <= r.u.x) return 0.0;
-  if (sameColor(r.u, r.w) || sameColor(r.u, r.uw) || sameColor(r.w, r.uw) || sameColor(E, r.uw) || sameColor(E, r.u) || sameColor(r.u, r.u2)) return 0.0;
-  return sameColor(r.umw, at(2.0 * (r.p - r.q))) ? 1.0 : 0.0;
-}
 #define ROLES_0(s) makeRoles(vX, hX, B, D, A, C, G, uu, ll, ruu, lld, llu, luu, H, F, I, iB.z, iD.z, iC.x, iG.x, s)
 #define ROLES_1(s) makeRoles(vY, hY, F, B, C, I, A, rr, uu, rrd, luu, ruu, rru, D, H, G, iF.w, iB.w, iI.y, iA.y, s)
 #define ROLES_2(s) makeRoles(vZ, hZ, H, F, I, G, C, dd, rr, ldd, rru, rrd, rdd, B, D, A, iH.x, iF.x, iG.z, iC.z, s)

@@ -1,5 +1,5 @@
 // ============================================================================================
-// Match pass — 1-pixel strokes, domes, notches, slopes, and diagonal bars (Rules 41, 43-45, 47-49)
+// Match pass — 1-pixel strokes, domes, slopes, and diagonal bars (Rules 41, 43-45, 48, 49)
 // ============================================================================================
 
 // ---- Rule 41: a 1-pixel diagonal stroke keeps an even edge ----
@@ -261,9 +261,7 @@ vec4 apex41(vec4 res, vec4 pairSq, vec4 minCornerSq)
   return res;
 }
 
-// ---- Rules 47 and 48: lone shades along a stroke ----
-#define XBRZ_NOTCH47 60.0
-#define XBRZ_FAR47 80.0
+// ---- Rule 48: lone shades along a stroke ----
 #define XBRZ_SHADE48 60.0
 float adjPairMinSq(vec2 a, vec4 pairSq)
 {
@@ -279,34 +277,6 @@ bool isLone3x3Card(vec3 Q, vec2 a)
   return !withinY255(Q, diagColor(a + s), XBRZ_SAME_M) && !withinY255(Q, diagColor(a - s), XBRZ_SAME_M)
       && !withinY255(Q, at3(2.0 * a + s), XBRZ_SAME_M) && !withinY255(Q, at3(2.0 * a), XBRZ_SAME_M)
       && !withinY255(Q, at3(2.0 * a - s), XBRZ_SAME_M);
-}
-
-// 47. a notch in the straight side of a stroke in shades
-vec4 applyRule47(vec4 res, vec4 pairSq, vec4 maxCornerSq)
-{
-  vec4 cutM = cut4(res) * vec4(lessThan(maxCornerSq, vec4(SQ255(XBRZ_NOTCH47))))
-            * vec4(greaterThanEqual(maxCornerSq, vec4(SQ255(XBRZ_SAME_M))));
-  if (dot(cutM, vec4(1.0)) <= 0.5) return res;
-  vec4 secM = FLAG(res, BIT_SEC), sqM = vec4(0.0);
-  for (int k = 0; k < 4; k++)
-  {
-    vec2 c = cornerOff(k);
-    vec4 m = vtxCorner(c);
-    if (dot(cutM, m) < 0.5) continue;
-    vec2 a, b;
-    paintPairOffsets(k, c, dot(secM, m) > 0.5, a, b);
-    float dBSq = sideSq(b), dASq = sideSq(a);
-    if (dASq < SQ255(XBRZ_SAME_M) || dBSq >= 1.44 * dASq
-        || sideSq(-a) < SQ255(XBRZ_FAR47) || adjPairMinSq(a, pairSq) < SQ255(XBRZ_SAME_M))
-      continue;
-    vec3 Ac = cardColor(a);
-    if (!withinY255(nE, diagColor(a - b), XBRZ_SAME_M) || withinY255(Ac, diagColor(c), XBRZ_SAME_M)
-        || BLEND(dot(cardInfo(b), vtxCorner(c - 2.0 * b))) > 0.5 || !withinY255(nE, at3(2.0 * b), XBRZ_SAME_M)
-        || !isLone3x3Card(Ac, a))
-      continue;
-    sqM += m;
-  }
-  return res * (1.0 - min(sqM, vec4(1.0)));
 }
 
 // 45. the dark side of a mid-tone stroke's end

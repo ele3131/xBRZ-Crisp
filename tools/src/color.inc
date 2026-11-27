@@ -37,3 +37,18 @@ bool withinEqY255(vec3 a, vec3 b, float lim)
 {
   return distSqY(a, b) <= SQ255(lim);
 }
+
+// Unified geometric AA-ramp test from squared pairwise color distances (a2, b2, c2):
+// returns 1.0 when the middle color projects strictly onto the segment of length sqrt(c2)
+// and its exact perpendicular distance sits within min(relLim * sqrt(c2), absLim255/255).
+// Exact D4-symmetric in (a2, b2) and sqrt-free (reuses squared distances already in registers).
+vec4 geomRamp4(vec4 a2, vec4 b2, vec4 c2, float relLim, float absLim255)
+{
+  vec4 diff2 = a2 - b2;
+  vec4 safeC2 = max(c2, vec4(SAFE_EPS));
+  vec4 mono = vec4(lessThan(abs(diff2), c2));
+  vec4 perpSq = max(vec4(0.0), 0.5 * (a2 + b2) - 0.25 * c2 - (diff2 * diff2) / (4.0 * safeC2));
+  vec4 limSq = min(vec4(SQ255(absLim255)), (relLim * relLim) * c2);
+  return mono * vec4(lessThanEqual(perpSq, limSq));
+}
+

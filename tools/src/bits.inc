@@ -24,7 +24,6 @@ vec4 cut4(vec4 w)        { return vec4(greaterThan(BLEND(w), vec4(0.0))); }
 vec4 activeCutOf(vec4 w) { vec4 bl = BLEND(w); return vec4(greaterThan(bl, vec4(0.0))) * vec4(lessThan(bl, vec4(3.0))) * vec4(lessThan(w, vec4(BIT_BLOCKED))); }
 // A cut that is not weak (blend 3); keeps blocked (bit 128) when resolve may still rescue it
 vec4 cutNoWeak(vec4 w)   { vec4 bl = BLEND(w); return vec4(greaterThan(bl, vec4(0.0))) * vec4(lessThan(bl, vec4(3.0))); }
-float drawsLine(float r) { float bl = BLEND(r); return float(r < BIT_BLOCKED && bl > 0.0 && bl < 3.0 && FLAG(r, BIT_LINE) > 0.0); }
 vec4 drawsLine4(vec4 r)  { return activeCutOf(r) * FLAG(r, BIT_LINE); }
 vec4 isLine45(vec4 r)    { return FLAG(r, BIT_LINE) * (1.0 - FLAG(r, BIT_SHALLOW)) * (1.0 - FLAG(r, BIT_STEEP)) * vec4(equal(FLAG(r, BIT_LONG3) + FLAG(r, BIT_LONG4), vec4(0.0))); }
 float wordPlain(bool sec)  { return sec ? (1.0 + BIT_SEC) : 1.0; }

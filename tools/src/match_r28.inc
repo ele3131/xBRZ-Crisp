@@ -11,7 +11,8 @@ vec4 applyRule28Match(vec4 res, vec4 pairSq)
   vec4 p28 = base28 * mix(st28, sh28, sec28);
   if (dot(p28, vec4(1.0)) > 0.5)
   {
-    vec4 iB = INFO_AT(0.0, -1.0), iD = INFO_AT(-1.0, 0.0), iF = INFO_AT(1.0, 0.0), iH = INFO_AT(0.0, 1.0);
+    ensureCardInfo();
+    vec4 iB = gIB, iD = gID, iF = gIF, iH = gIH;
     vec4 nW = mix(vec4(iD.z, iB.w, iF.x, iH.y), vec4(iB.z, iF.w, iH.x, iD.y), sec28);
     vec4 pair28 = p28 * cut4(nW) * FLAG(nW, BIT_LINE) * (1.0 - FLAG(nW, BIT_LONG3)) * (1.0 - FLAG(nW, BIT_LONG4))
                 * vec4(equal(FLAG(nW, BIT_SEC), sec28)) * mix(FLAG(nW, BIT_STEEP), FLAG(nW, BIT_SHALLOW), sec28);

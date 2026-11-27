@@ -1,7 +1,7 @@
 @include "header_short.inc"
 @include "license.inc"
 
-// Matching pass of xbrz-crisp (@BACKEND_LABEL@): once per input pixel, between resolve and pass 1 (rules 26-28, 38-45, 47-49)
+// Matching pass of xbrz-crisp (@BACKEND_LABEL@): once per input pixel, between resolve and pass 1 (rules 26, 28, 38-45, 48, 49)
 @STAGE_MATCH@
 
 @include "bits.inc"
@@ -17,11 +17,6 @@
 #define XBRZ_MATCH_WRAP 50.0  // gap: the corner's two neighbors are within this of each other
 #define XBRZ_MATCH_LINE 30.0  // gap: so are the same two pixels of both neighbors along the cut
 
-// ---- Rule 27: a bar at a vertex ----
-#define XBRZ_VERTEX_TOL 15.0  // the arms' pixels have C within this
-#define XBRZ_VERTEX_EDGE 40.0 // G and T differ from C by more than this
-#define XBRZ_VERTEX_BAR 15.0  // the bar's pixels have T's color within this
-
 // ---- Rule 38: 4-color junction threshold ----
 #define XBRZ_JUNC4 30.0
 
@@ -29,6 +24,39 @@
 vec3 nB, nD, nE, nF, nH;
 float sBSq, sDSq, sFSq, sHSq;
 float mincSq;
+
+// Lazy-cached 3x3 neighbor decision words and diagonal YCbCr colors (shared across all match rules)
+vec4 gIB, gID, gIF, gIH, gIA, gIC, gIG, gII;
+vec3 gCA, gCC, gCG, gCI;
+bool gHaveCardI, gHaveDiagI, gHaveDiagC;
+
+void ensureCardInfo()
+{
+  if (!gHaveCardI)
+  {
+    gIB = INFO_AT(0.0, -1.0); gID = INFO_AT(-1.0, 0.0);
+    gIF = INFO_AT(1.0,  0.0); gIH = INFO_AT( 0.0, 1.0);
+    gHaveCardI = true;
+  }
+}
+void ensureDiagInfo()
+{
+  if (!gHaveDiagI)
+  {
+    gIA = INFO_AT(-1.0, -1.0); gIC = INFO_AT(1.0, -1.0);
+    gIG = INFO_AT(-1.0,  1.0); gII = INFO_AT(1.0,  1.0);
+    gHaveDiagI = true;
+  }
+}
+void ensureDiagColor()
+{
+  if (!gHaveDiagC)
+  {
+    gCA = toYCbCr(P(-1.0, -1.0)); gCC = toYCbCr(P(1.0, -1.0));
+    gCG = toYCbCr(P(-1.0,  1.0)); gCI = toYCbCr(P(1.0,  1.0));
+    gHaveDiagC = true;
+  }
+}
 
 float sideSq(vec2 n)
 {
@@ -38,18 +66,31 @@ vec3 cardColor(vec2 n)
 {
   return n.y < -0.5 ? nB : (n.y > 0.5 ? nH : (n.x < 0.0 ? nD : nF));
 }
+vec4 cardInfo(vec2 n)
+{
+  ensureCardInfo();
+  return n.y < -0.5 ? gIB : (n.y > 0.5 ? gIH : (n.x < 0.0 ? gID : gIF));
+}
+vec4 diagInfo(vec2 c)
+{
+  ensureDiagInfo();
+  return c.y < 0.0 ? (c.x < 0.0 ? gIA : gIC) : (c.x < 0.0 ? gIG : gII);
+}
+vec3 diagColor(vec2 c)
+{
+  ensureDiagColor();
+  return c.y < 0.0 ? (c.x < 0.0 ? gCA : gCC) : (c.x < 0.0 ? gCG : gCI);
+}
 
 #define infoAt(o) INFO_AT((o).x, (o).y)
 #define at3(o) toYCbCr(P((o).x, (o).y))
-#define cardInfo(n) INFO_AT((n).x, (n).y)
-#define diagInfo(c) INFO_AT((c).x, (c).y)
-#define diagColor(c) toYCbCr(P((c).x, (c).y))
 
 vec3 at3x3(vec2 o)
 {
   float d1 = abs(o.x) + abs(o.y);
   if (d1 < 0.5) return nE;
   if (d1 < 1.5) return cardColor(o);
+  if (abs(o.x) < 1.5 && abs(o.y) < 1.5) return diagColor(o);
   return at3(o);
 }
 
@@ -141,26 +182,22 @@ void main()
   }
 
 
+  gHaveCardI = false; gHaveDiagI = false; gHaveDiagC = false;
   float minSideSq = min(min(sBSq, sDSq), min(sFSq, sHSq));
   float maxSideSq = max(max(sBSq, sDSq), max(sFSq, sHSq));
   vec4 pairSq = vec4(distSqY(nB, nD), distSqY(nB, nF), distSqY(nF, nH), distSqY(nH, nD));
   vec4 maxCornerSq = max(vec4(sBSq, sBSq, sFSq, sHSq), vec4(sDSq, sFSq, sHSq, sDSq));
   vec4 minCornerSq = min(vec4(sBSq, sBSq, sFSq, sHSq), vec4(sDSq, sFSq, sHSq, sDSq));
 
-  // ---- Rules 26, 28, 27: matching corners, post-resolve 2:1 fixes, and vertex bars ----
+  // ---- Rules 26, 28: matching corners and post-resolve 2:1 fixes ----
   res = applyRule26Lost(res, w0, aW0, pairSq, minCornerSq, maxCornerSq);
   res = applyRule26b(res, pairSq, minCornerSq, maxCornerSq, minSideSq);
   res = applyRule26d(res, pairSq, minCornerSq);
   res = applyRule28Match(res, pairSq);
   res = applyRule26ef(res, pairSq, minCornerSq);
   if (nE.x <= 0.30) res = applyRule26c(res, pairSq);
-  res = applyRule27(res, pairSq, maxSideSq);
 
-  // ---- Rules 42, 38-41: 45-deg edge steps, 4-color junctions, ramp ties, dots, diagonal strokes ----
-  vec4 m42 = (1.0 - cut4(res))
-           * vec4(greaterThanEqual(minCornerSq, vec4(mincSq)))
-           * vec4(lessThan(pairSq, vec4(SQ255(XBRZ_SAME_M))));
-  if (dot(m42, vec4(1.0)) > 0.5) res = edgeStep42(res, m42);
+  // ---- Rules 38-41: 4-color junctions, ramp ties, dots, diagonal strokes ----
   if (dot(cut4(res), vec4(1.0)) > 0.0) res = junc4(res, pairSq, minCornerSq);
   if (dot(cut4(res), vec4(1.0)) > 0.0)
   {
@@ -182,18 +219,15 @@ void main()
           * vec4(greaterThanEqual(minCornerSq, vec4(SQ255(XBRZ_SAME_M)))), vec4(1.0)) > 0.0))
     res = diagStroke41(res, loneE, pairSq);
 
-  // ---- Rules 44, 47, 45, 48, 49, 41b/c, 38b, 42b: stroke ends, notches, slopes, bars, crosshairs ----
+  // ---- Rules 44, 45, 48, 49, 41b/c, 42b: stroke ends, slopes, bars, convex bevels ----
   if (nE.x <= 0.35 && maxSideSq >= SQ255(XBRZ_END44) && minSideSq < SQ255(XBRZ_SAME_M)) res = strokeEnd44(res);
   if (dot(cut4(res), vec4(1.0)) > 0.0)
   {
-    if (maxSideSq >= SQ255(XBRZ_FAR47) && minSideSq < SQ255(XBRZ_NOTCH47)) res = applyRule47(res, pairSq, maxCornerSq);
     if (maxSideSq >= SQ255(80.0) && minSideSq < SQ255(XBRZ_SAME_M)) res = applyRule45(res, pairSq, minCornerSq, maxCornerSq);
     res = applyRule48(res, pairSq, minSideSq, maxSideSq, loneE);
   }
   res = applyRule49(res, res0, pairSq, minSideSq, maxSideSq);
   if (loneE && dot(cut4(res), vec4(1.0)) > 0.0) res = apex41(res, pairSq, minCornerSq);
-  if (!loneE && min(max(sDSq, sFSq), max(sBSq, sHSq)) > SQ255(40.0) && dot(cut4(res), vec4(1.0)) > 0.0)
-    res = applyRule38b(res, pairSq);
   if (!loneE && maxSideSq >= mincSq)
     res = applyRule42b(res, pairSq, minCornerSq);
 

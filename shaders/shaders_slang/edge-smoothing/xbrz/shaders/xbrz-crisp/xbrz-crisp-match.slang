@@ -42,7 +42,7 @@ precision highp int;
 // * of the file, but you are not obligated to do so. If you do not wish to   *
 // * do so, delete this exception statement from your version.                *
 // ****************************************************************************
-// Matching pass of xbrz-crisp (Vulkan / slang): once per input pixel, between resolve and pass 1 (rules 26-28, 38-45, 47-49)
+// Matching pass of xbrz-crisp (Vulkan / slang): once per input pixel, between resolve and pass 1 (rules 26, 28, 38-45, 48, 49)
 
 layout(push_constant) uniform Push
 {
@@ -116,7 +116,6 @@ vec4 cut4(vec4 w)        { return vec4(greaterThan(BLEND(w), vec4(0.0))); }
 vec4 activeCutOf(vec4 w) { vec4 bl = BLEND(w); return vec4(greaterThan(bl, vec4(0.0))) * vec4(lessThan(bl, vec4(3.0))) * vec4(lessThan(w, vec4(BIT_BLOCKED))); }
 // A cut that is not weak (blend 3); keeps blocked (bit 128) when resolve may still rescue it
 vec4 cutNoWeak(vec4 w)   { vec4 bl = BLEND(w); return vec4(greaterThan(bl, vec4(0.0))) * vec4(lessThan(bl, vec4(3.0))); }
-float drawsLine(float r) { float bl = BLEND(r); return float(r < BIT_BLOCKED && bl > 0.0 && bl < 3.0 && FLAG(r, BIT_LINE) > 0.0); }
 vec4 drawsLine4(vec4 r)  { return activeCutOf(r) * FLAG(r, BIT_LINE); }
 vec4 isLine45(vec4 r)    { return FLAG(r, BIT_LINE) * (1.0 - FLAG(r, BIT_SHALLOW)) * (1.0 - FLAG(r, BIT_STEEP)) * vec4(equal(FLAG(r, BIT_LONG3) + FLAG(r, BIT_LONG4), vec4(0.0))); }
 float wordPlain(bool sec)  { return sec ? (1.0 + BIT_SEC) : 1.0; }
@@ -159,6 +158,20 @@ bool withinY255(vec3 a, vec3 b, float lim)
 bool withinEqY255(vec3 a, vec3 b, float lim)
 {
   return distSqY(a, b) <= SQ255(lim);
+}
+
+// Unified geometric AA-ramp test from squared pairwise color distances (a2, b2, c2):
+// returns 1.0 when the middle color projects strictly onto the segment of length sqrt(c2)
+// and its exact perpendicular distance sits within min(relLim * sqrt(c2), absLim255/255).
+// Exact D4-symmetric in (a2, b2) and sqrt-free (reuses squared distances already in registers).
+vec4 geomRamp4(vec4 a2, vec4 b2, vec4 c2, float relLim, float absLim255)
+{
+  vec4 diff2 = a2 - b2;
+  vec4 safeC2 = max(c2, vec4(SAFE_EPS));
+  vec4 mono = vec4(lessThan(abs(diff2), c2));
+  vec4 perpSq = max(vec4(0.0), 0.5 * (a2 + b2) - 0.25 * c2 - (diff2 * diff2) / (4.0 * safeC2));
+  vec4 limSq = min(vec4(SQ255(absLim255)), (relLim * relLim) * c2);
+  return mono * vec4(lessThanEqual(perpSq, limSq));
 }
 // ---- Shared corner/axis geometry helpers for the match pass ----
 // Corner index order matches decision-word channels: 0 = TL (-1,-1), 1 = TR (1,-1), 2 = BR (1,1), 3 = BL (-1,1)
@@ -240,11 +253,6 @@ vec4 whole28Mask(float hE, vec4 hN, vec4 sec, vec3 E, vec3 B, vec3 D, vec3 F, ve
 #define XBRZ_MATCH_WRAP 50.0  // gap: the corner's two neighbors are within this of each other
 #define XBRZ_MATCH_LINE 30.0  // gap: so are the same two pixels of both neighbors along the cut
 
-// ---- Rule 27: a bar at a vertex ----
-#define XBRZ_VERTEX_TOL 15.0  // the arms' pixels have C within this
-#define XBRZ_VERTEX_EDGE 40.0 // G and T differ from C by more than this
-#define XBRZ_VERTEX_BAR 15.0  // the bar's pixels have T's color within this
-
 // ---- Rule 38: 4-color junction threshold ----
 #define XBRZ_JUNC4 30.0
 
@@ -252,6 +260,39 @@ vec4 whole28Mask(float hE, vec4 hN, vec4 sec, vec3 E, vec3 B, vec3 D, vec3 F, ve
 vec3 nB, nD, nE, nF, nH;
 float sBSq, sDSq, sFSq, sHSq;
 float mincSq;
+
+// Lazy-cached 3x3 neighbor decision words and diagonal YCbCr colors (shared across all match rules)
+vec4 gIB, gID, gIF, gIH, gIA, gIC, gIG, gII;
+vec3 gCA, gCC, gCG, gCI;
+bool gHaveCardI, gHaveDiagI, gHaveDiagC;
+
+void ensureCardInfo()
+{
+  if (!gHaveCardI)
+  {
+    gIB = INFO_AT(0.0, -1.0); gID = INFO_AT(-1.0, 0.0);
+    gIF = INFO_AT(1.0,  0.0); gIH = INFO_AT( 0.0, 1.0);
+    gHaveCardI = true;
+  }
+}
+void ensureDiagInfo()
+{
+  if (!gHaveDiagI)
+  {
+    gIA = INFO_AT(-1.0, -1.0); gIC = INFO_AT(1.0, -1.0);
+    gIG = INFO_AT(-1.0,  1.0); gII = INFO_AT(1.0,  1.0);
+    gHaveDiagI = true;
+  }
+}
+void ensureDiagColor()
+{
+  if (!gHaveDiagC)
+  {
+    gCA = toYCbCr(P(-1.0, -1.0)); gCC = toYCbCr(P(1.0, -1.0));
+    gCG = toYCbCr(P(-1.0,  1.0)); gCI = toYCbCr(P(1.0,  1.0));
+    gHaveDiagC = true;
+  }
+}
 
 float sideSq(vec2 n)
 {
@@ -261,18 +302,31 @@ vec3 cardColor(vec2 n)
 {
   return n.y < -0.5 ? nB : (n.y > 0.5 ? nH : (n.x < 0.0 ? nD : nF));
 }
+vec4 cardInfo(vec2 n)
+{
+  ensureCardInfo();
+  return n.y < -0.5 ? gIB : (n.y > 0.5 ? gIH : (n.x < 0.0 ? gID : gIF));
+}
+vec4 diagInfo(vec2 c)
+{
+  ensureDiagInfo();
+  return c.y < 0.0 ? (c.x < 0.0 ? gIA : gIC) : (c.x < 0.0 ? gIG : gII);
+}
+vec3 diagColor(vec2 c)
+{
+  ensureDiagColor();
+  return c.y < 0.0 ? (c.x < 0.0 ? gCA : gCC) : (c.x < 0.0 ? gCG : gCI);
+}
 
 #define infoAt(o) INFO_AT((o).x, (o).y)
 #define at3(o) toYCbCr(P((o).x, (o).y))
-#define cardInfo(n) INFO_AT((n).x, (n).y)
-#define diagInfo(c) INFO_AT((c).x, (c).y)
-#define diagColor(c) toYCbCr(P((c).x, (c).y))
 
 vec3 at3x3(vec2 o)
 {
   float d1 = abs(o.x) + abs(o.y);
   if (d1 < 0.5) return nE;
   if (d1 < 1.5) return cardColor(o);
+  if (abs(o.x) < 1.5 && abs(o.y) < 1.5) return diagColor(o);
   return at3(o);
 }
 
@@ -311,7 +365,7 @@ bool pickCornerSec(vec2 c)
 }
 
 // ============================================================================================
-// Match pass — 1-pixel strokes, domes, notches, slopes, and diagonal bars (Rules 41, 43-45, 47-49)
+// Match pass — 1-pixel strokes, domes, slopes, and diagonal bars (Rules 41, 43-45, 48, 49)
 // ============================================================================================
 
 // ---- Rule 41: a 1-pixel diagonal stroke keeps an even edge ----
@@ -573,9 +627,7 @@ vec4 apex41(vec4 res, vec4 pairSq, vec4 minCornerSq)
   return res;
 }
 
-// ---- Rules 47 and 48: lone shades along a stroke ----
-#define XBRZ_NOTCH47 60.0
-#define XBRZ_FAR47 80.0
+// ---- Rule 48: lone shades along a stroke ----
 #define XBRZ_SHADE48 60.0
 float adjPairMinSq(vec2 a, vec4 pairSq)
 {
@@ -591,34 +643,6 @@ bool isLone3x3Card(vec3 Q, vec2 a)
   return !withinY255(Q, diagColor(a + s), XBRZ_SAME_M) && !withinY255(Q, diagColor(a - s), XBRZ_SAME_M)
       && !withinY255(Q, at3(2.0 * a + s), XBRZ_SAME_M) && !withinY255(Q, at3(2.0 * a), XBRZ_SAME_M)
       && !withinY255(Q, at3(2.0 * a - s), XBRZ_SAME_M);
-}
-
-// 47. a notch in the straight side of a stroke in shades
-vec4 applyRule47(vec4 res, vec4 pairSq, vec4 maxCornerSq)
-{
-  vec4 cutM = cut4(res) * vec4(lessThan(maxCornerSq, vec4(SQ255(XBRZ_NOTCH47))))
-            * vec4(greaterThanEqual(maxCornerSq, vec4(SQ255(XBRZ_SAME_M))));
-  if (dot(cutM, vec4(1.0)) <= 0.5) return res;
-  vec4 secM = FLAG(res, BIT_SEC), sqM = vec4(0.0);
-  for (int k = 0; k < 4; k++)
-  {
-    vec2 c = cornerOff(k);
-    vec4 m = vtxCorner(c);
-    if (dot(cutM, m) < 0.5) continue;
-    vec2 a, b;
-    paintPairOffsets(k, c, dot(secM, m) > 0.5, a, b);
-    float dBSq = sideSq(b), dASq = sideSq(a);
-    if (dASq < SQ255(XBRZ_SAME_M) || dBSq >= 1.44 * dASq
-        || sideSq(-a) < SQ255(XBRZ_FAR47) || adjPairMinSq(a, pairSq) < SQ255(XBRZ_SAME_M))
-      continue;
-    vec3 Ac = cardColor(a);
-    if (!withinY255(nE, diagColor(a - b), XBRZ_SAME_M) || withinY255(Ac, diagColor(c), XBRZ_SAME_M)
-        || BLEND(dot(cardInfo(b), vtxCorner(c - 2.0 * b))) > 0.5 || !withinY255(nE, at3(2.0 * b), XBRZ_SAME_M)
-        || !isLone3x3Card(Ac, a))
-      continue;
-    sqM += m;
-  }
-  return res * (1.0 - min(sqM, vec4(1.0)));
 }
 
 // 45. the dark side of a mid-tone stroke's end
@@ -833,60 +857,10 @@ vec4 applyRule49(vec4 res, vec4 res0, vec4 pairSq, float minSideSq, float maxSid
   return res;
 }
 // ============================================================================================
-// Match pass — Vertex, 4-color junction, ramp, dot, and 45-degree edge rules (Rules 27, 38-40, 42)
+// Match pass — 4-color junction, ramp, dot, and convex bevel rules (Rules 38-40, 42b)
 // ============================================================================================
 
-// ---- Rule 27: a bar at a vertex ----
-bool vtxSame(vec3 a, vec3 b) { return withinEqY255(a, b, XBRZ_VERTEX_TOL); }
-bool vtxAt(vec2 u, vec2 v)
-{
-  if (sideSq(-u) <= SQ255(XBRZ_VERTEX_EDGE)) return false;
-  vec3 C = cardColor(-u), T = cardColor(-v);
-  if (vtxSame(C, cardColor(u))) return false;
-  return vtxSame(C, at3(u - v)) && !vtxSame(C, at3(-u - v))
-      && vtxSame(C, toYCbCr(P(v.x - 2.0 * u.x, v.y - 2.0 * u.y))) && vtxSame(C, toYCbCr(P(2.0 * u.x, 2.0 * u.y)))
-      && withinEqY255(T, toYCbCr(P(-2.0 * v.x, -2.0 * v.y)), XBRZ_VERTEX_BAR)
-      && withinEqY255(T, toYCbCr(P(-3.0 * v.x, -3.0 * v.y)), XBRZ_VERTEX_BAR);
-}
-bool vtxBetween(vec3 g, vec3 t, vec3 c)
-{
-  vec3 tc = t - c;
-  float k = dot(g - c, tc) / max(dot(tc, tc), SAFE_EPS);
-  float yt = t.x, yc = c.x, kY = (g.x - yc) / (abs(yt - yc) > 1e-3 ? yt - yc : 1e-3);
-  return k > 0.15 && k < 0.85 && withinY255(c + k * tc, g, 24.0) && abs(yt - yc) > 1e-3 && kY > 0.15 && kY < 0.85;
-}
-void vtx(vec2 u, vec2 v, vec4 pairSq, inout vec4 res)
-{
-  vec2 c = -u - v;
-  vec4 m = vtxCorner(c);
-  float w = dot(res, m);
-  if (BLEND(w) < 0.5 || FLAG(w, BIT_LINE) < 0.5 || (FLAG(w, BIT_SEC) > 0.5) != vtxSec(c, -v)
-      || dot(pairSq, m) <= SQ255(XBRZ_VERTEX_EDGE) || !vtxAt(u, v)) return;
-  if (vtxBetween(nE, cardColor(-v), cardColor(-u)))
-    res = mix(res, vec4(wordPlain(vtxSec(c, -v))), m);
-  else
-  {
-    res = mix(res, vec4(0.0), m);
-    vec2 c2 = u - v;
-    vec4 m2 = vtxCorner(c2);
-    if ((FLAG(dot(res, m2), BIT_SEC) > 0.5) == vtxSec(c2, -v)) res = mix(res, vec4(0.0), m2);
-  }
-}
-vec4 applyRule27(vec4 res, vec4 pairSq, float maxSideSq)
-{
-  if (maxSideSq <= SQ255(XBRZ_VERTEX_EDGE)
-      || dot(cut4(res) * FLAG(res, BIT_LINE) * vec4(greaterThan(pairSq, vec4(SQ255(XBRZ_VERTEX_EDGE)))), vec4(1.0)) <= 0.5)
-    return res;
-  for (int i = 0; i < 8; i++)
-  {
-    vec2 u = i == 0 || i == 2 ? vec2(1.0, 0.0) : i == 1 || i == 3 ? vec2(-1.0, 0.0) : i == 4 || i == 6 ? vec2(0.0, 1.0) : vec2(0.0, -1.0);
-    vec2 v = i < 2 ? vec2(0.0, 1.0) : i < 4 ? vec2(0.0, -1.0) : i < 6 ? vec2(1.0, 0.0) : vec2(-1.0, 0.0);
-    vtx(u, v, pairSq, res);
-  }
-  return res;
-}
-
-// ---- Rule 38 & 38b: a pixel kept whole at a junction of four colors ----
+// ---- Rule 38: a pixel kept whole at a junction of four colors ----
 bool keptWhole(vec2 n)
 {
   if (dot(cut4(cardInfo(n)), vec4(1.0)) > 0.5) return false;
@@ -916,33 +890,6 @@ vec4 junc4(vec4 res, vec4 pairSq, vec4 minCornerSq)
     if ((withinY255(diagColor(vec2(c.x, -c.y)), Ch, XBRZ_SAME_M) && withinY255(toYCbCr(P(0.0, 2.0 * c.y)), Cv, XBRZ_SAME_M))
         || (withinY255(diagColor(vec2(-c.x, c.y)), Cv, XBRZ_SAME_M) && withinY255(toYCbCr(P(2.0 * c.x, 0.0)), Ch, XBRZ_SAME_M)))
       continue;
-    res = mix(res, vec4(0.0), m);
-  }
-  return res;
-}
-// 38b. 3+ color corner on a 1px bar flush against a 4-color orthogonal crosshair
-vec4 applyRule38b(vec4 res, vec4 pairSq)
-{
-  vec4 sec38 = FLAG(res, BIT_SEC);
-  vec4 hz38 = vec4(1.0 - sec38.x, sec38.y, 1.0 - sec38.z, sec38.w);
-  vec4 m38b = cut4(res) * vec4(greaterThanEqual(pairSq, vec4(SQ255(XBRZ_JUNC4))))
-            * vec4(lessThan(mix(vec4(sHSq, sHSq, sBSq, sBSq), vec4(sFSq, sDSq, sDSq, sFSq), hz38), vec4(SQ255(XBRZ_SAME_M))))
-            * vec4(greaterThan(mix(vec4(sBSq, sBSq, sHSq, sHSq), vec4(sDSq, sFSq, sFSq, sDSq), hz38), vec4(SQ255(40.0))))
-            * vec4(greaterThan(mix(vec4(sFSq, sDSq, sDSq, sFSq), vec4(sHSq, sHSq, sBSq, sBSq), hz38), vec4(SQ255(40.0))))
-            * vec4(greaterThan(mix(pairSq.yxwz, pairSq.wzyx, hz38), vec4(SQ255(40.0))));
-  if (dot(m38b, vec4(1.0)) <= 0.5) return res;
-  for (int i = 0; i < 4; i++)
-  {
-    vec2 c = cornerOff(i);
-    vec4 m = vtxCorner(c);
-    if (dot(m38b, m) < 0.5) continue;
-    vec2 h = dot(hz38, m) > 0.5 ? vec2(c.x, 0.0) : vec2(0.0, c.y), v = c - h;
-    vec3 Hc = cardColor(h), Bc = cardColor(-v);
-    vec3 Cc = diagColor(h - v);
-    if (distSqY(Bc, Cc) <= SQ255(40.0) || distSqY(Hc, Cc) <= SQ255(XBRZ_JUNC4) || distSqY(nE, Cc) <= SQ255(40.0)) continue;
-    if (!withinY255(Hc, at3(2.0 * h), XBRZ_SAME_M)) continue;
-    if (!withinY255(Bc, diagColor(-v - h), XBRZ_SAME_M) || !withinY255(Bc, at3(-2.0 * v), XBRZ_SAME_M)) continue;
-    if (!withinY255(Cc, at3(2.0 * h - v), XBRZ_SAME_M) || !withinY255(Cc, at3(h - 2.0 * v), XBRZ_SAME_M)) continue;
     res = mix(res, vec4(0.0), m);
   }
   return res;
@@ -1041,37 +988,7 @@ vec4 dots40(vec4 res, float minSideSq, vec4 pairSq)
   return res;
 }
 
-// ---- Rule 42 & 42b: a step in a 45-degree edge & convex corner bevel ----
-vec2 paintOf(vec2 c, float w) { return ((c.x * c.y > 0.0) != (FLAG(w, BIT_SEC) > 0.5)) ? vec2(c.x, 0.0) : vec2(0.0, c.y); }
-vec4 edgeStep42(vec4 res, vec4 m42)
-{
-  for (int i = 0; i < 4; i++)
-  {
-    vec2 c = cornerOff(i);
-    vec4 m = vtxCorner(c);
-    if (dot(m42, m) < 0.5) continue;
-    vec3 Kh = c.x > 0.0 ? nF : nD, Kv = c.y > 0.0 ? nH : nB;
-    vec3 K = 0.5 * (Kh + Kv);
-    if (withinY255(K, c.x > 0.0 ? nD : nF, XBRZ_SAME_M) || withinY255(K, c.y > 0.0 ? nB : nH, XBRZ_SAME_M)) continue;
-    if (!withinY255(K, diagColor(c), XBRZ_SAME_M)) continue;
-    float ok = 1.0;
-    for (int j = 0; j < 2; j++)
-    {
-      vec2 q = j == 0 ? vec2(c.x, -c.y) : vec2(-c.x, c.y);
-      float wq = dot(diagInfo(q), m);
-      if (BLEND(wq) < 0.5 || FLAG(wq, BIT_LINE) < 0.5 || FLAG(wq, BIT_SHALLOW) + FLAG(wq, BIT_STEEP) + FLAG(wq, BIT_LONG3) + FLAG(wq, BIT_LONG4) > 0.5)
-      { ok = 0.0; break; }
-      vec2 pOff = paintOf(c, wq);
-      // When dot(q, pOff) < -0.5, q + pOff is Kh or Kv, whose distance to K = 0.5*(Kh+Kv) is 0.5*pair < 7.5 < XBRZ_SAME_M
-      if (dot(q, pOff) > -0.5 && !withinY255(at3(q + pOff), K, XBRZ_SAME_M))
-      { ok = 0.0; break; }
-    }
-    if (ok > 0.5)
-      res = mix(res, vec4(wordLine45(pickCornerSec(c))), m);
-  }
-  return res;
-}
-// 42b. Convex corner bevel painting a shared darker background beside an adjacent brighter wall
+// ---- Rule 42b: convex corner bevel painting a shared darker background beside an adjacent brighter wall ----
 vec4 applyRule42b(vec4 res, vec4 pairSq, vec4 minCornerSq)
 {
   vec4 uSq42b = vec4(nD.x < nB.x ? sFSq : sHSq, nF.x < nB.x ? sDSq : sHSq,
@@ -1115,7 +1032,8 @@ vec4 applyRule26Lost(vec4 res, vec4 w0, vec4 aW0, vec4 pairSq, vec4 minCornerSq,
   vec4 fix = vec4(0.0);
   if (dot(lostStrong, vec4(1.0)) > 0.0)
   {
-    vec4 iA = INFO_AT(-1.0, -1.0), iC = INFO_AT(1.0, -1.0), iI = INFO_AT(1.0, 1.0), iG = INFO_AT(-1.0, 1.0);
+    ensureDiagInfo();
+    vec4 iA = gIA, iC = gIC, iI = gII, iG = gIG;
     vec4 gap = vec4(cut4(iC).x * cut4(iG).x, cut4(iI).y * cut4(iA).y, cut4(iC).z * cut4(iG).z, cut4(iI).w * cut4(iA).w);
     vec4 wrapE = vec4(lessThan(pairSq, vec4(SQ255(XBRZ_MATCH_WRAP))));
     vec4 needGap = lostStrong * gap * wrapE;
@@ -1155,7 +1073,8 @@ vec4 applyRule26Lost(vec4 res, vec4 w0, vec4 aW0, vec4 pairSq, vec4 minCornerSq,
   if (dot(cont45, vec4(1.0)) > 0.5)
   {
     vec4 w0Sec = FLAG(w0, BIT_SEC);
-    vec4 iB = INFO_AT(0.0, -1.0), iD = INFO_AT(-1.0, 0.0), iF = INFO_AT(1.0, 0.0), iH = INFO_AT(0.0, 1.0);
+    ensureCardInfo();
+    vec4 iB = gIB, iD = gID, iF = gIF, iH = gIH;
     vec4 pOpp = mix(vec4(iD.z, iB.w, iF.x, iH.y), vec4(iB.z, iF.w, iH.x, iD.y), w0Sec);
     vec4 base45 = cont45 * cut4(pOpp) * isLine45(pOpp);
     vec4 secOk = vec4(equal(FLAG(pOpp, BIT_SEC), w0Sec));
@@ -1182,7 +1101,8 @@ vec4 applyRule26b(vec4 res, vec4 pairSq, vec4 minCornerSq, vec4 maxCornerSq, flo
            * vec4(greaterThanEqual(pairSq, vec4(SQ255(XBRZ_JUNC4))));
   if (dot(nb1, vec4(1.0)) > 0.5)
   {
-    vec4 dA = INFO_AT(-1.0, -1.0), dC = INFO_AT(1.0, -1.0), dI = INFO_AT(1.0, 1.0), dG = INFO_AT(-1.0, 1.0);
+    ensureDiagInfo();
+    vec4 dA = gIA, dC = gIC, dI = gII, dG = gIG;
     vec4 oInfo = vec4(dA.z, dC.w, dI.x, dG.y);
     vec4 oR = cut4(oInfo);
     vec4 nb1Orph = nb1 * vec4(greaterThan(pairSq, vec4(SQ255(XBRZ_MATCH_EDGE)))) * (1.0 - oR);
@@ -1226,7 +1146,8 @@ vec4 applyRule26b(vec4 res, vec4 pairSq, vec4 minCornerSq, vec4 maxCornerSq, flo
     }
     if (dot(candB + candB2ok + obt26 + isoOff + isoBar, vec4(1.0)) > 0.5)
     {
-      vec4 iB = INFO_AT(0.0, -1.0), iD = INFO_AT(-1.0, 0.0), iF = INFO_AT(1.0, 0.0), iH = INFO_AT(0.0, 1.0);
+      ensureCardInfo();
+      vec4 iB = gIB, iD = gID, iF = gIF, iH = gIH;
       vec4 cB = cut4(iB), cD = cut4(iD), cF = cut4(iF), cH = cut4(iH);
       vec4 edgeCut = vec4(max(cB.z, cD.z), max(cB.w, cF.w), max(cF.x, cH.x), max(cH.y, cD.y));
       drop = max(drop, candB * (1.0 - edgeCut));
@@ -1294,7 +1215,8 @@ vec4 applyRule26b(vec4 res, vec4 pairSq, vec4 minCornerSq, vec4 maxCornerSq, flo
     ph26 *= triGe4(minCornerSq, maxCornerSq, 1.12 * 1.12, pairSq);
     if (dot(ph26, vec4(1.0)) > 0.5)
     {
-      vec4 iA = INFO_AT(-1.0, -1.0), iC = INFO_AT(1.0, -1.0), iI = INFO_AT(1.0, 1.0), iG = INFO_AT(-1.0, 1.0);
+      ensureDiagInfo();
+      vec4 iA = gIA, iC = gIC, iI = gII, iG = gIG;
       vec4 oR = vec4(cut4(iA).z, cut4(iC).w, cut4(iI).x, cut4(iG).y);
       vec4 runLive = vec4(max(cut4(iC).x, cut4(iG).x), max(cut4(iA).y, cut4(iI).y),
                           max(cut4(iC).z, cut4(iG).z), max(cut4(iA).w, cut4(iI).w));
@@ -1517,7 +1439,8 @@ vec4 applyRule28Match(vec4 res, vec4 pairSq)
   vec4 p28 = base28 * mix(st28, sh28, sec28);
   if (dot(p28, vec4(1.0)) > 0.5)
   {
-    vec4 iB = INFO_AT(0.0, -1.0), iD = INFO_AT(-1.0, 0.0), iF = INFO_AT(1.0, 0.0), iH = INFO_AT(0.0, 1.0);
+    ensureCardInfo();
+    vec4 iB = gIB, iD = gID, iF = gIF, iH = gIH;
     vec4 nW = mix(vec4(iD.z, iB.w, iF.x, iH.y), vec4(iB.z, iF.w, iH.x, iD.y), sec28);
     vec4 pair28 = p28 * cut4(nW) * FLAG(nW, BIT_LINE) * (1.0 - FLAG(nW, BIT_LONG3)) * (1.0 - FLAG(nW, BIT_LONG4))
                 * vec4(equal(FLAG(nW, BIT_SEC), sec28)) * mix(FLAG(nW, BIT_STEEP), FLAG(nW, BIT_SHALLOW), sec28);
@@ -1636,26 +1559,22 @@ void main()
   }
 
 
+  gHaveCardI = false; gHaveDiagI = false; gHaveDiagC = false;
   float minSideSq = min(min(sBSq, sDSq), min(sFSq, sHSq));
   float maxSideSq = max(max(sBSq, sDSq), max(sFSq, sHSq));
   vec4 pairSq = vec4(distSqY(nB, nD), distSqY(nB, nF), distSqY(nF, nH), distSqY(nH, nD));
   vec4 maxCornerSq = max(vec4(sBSq, sBSq, sFSq, sHSq), vec4(sDSq, sFSq, sHSq, sDSq));
   vec4 minCornerSq = min(vec4(sBSq, sBSq, sFSq, sHSq), vec4(sDSq, sFSq, sHSq, sDSq));
 
-  // ---- Rules 26, 28, 27: matching corners, post-resolve 2:1 fixes, and vertex bars ----
+  // ---- Rules 26, 28: matching corners and post-resolve 2:1 fixes ----
   res = applyRule26Lost(res, w0, aW0, pairSq, minCornerSq, maxCornerSq);
   res = applyRule26b(res, pairSq, minCornerSq, maxCornerSq, minSideSq);
   res = applyRule26d(res, pairSq, minCornerSq);
   res = applyRule28Match(res, pairSq);
   res = applyRule26ef(res, pairSq, minCornerSq);
   if (nE.x <= 0.30) res = applyRule26c(res, pairSq);
-  res = applyRule27(res, pairSq, maxSideSq);
 
-  // ---- Rules 42, 38-41: 45-deg edge steps, 4-color junctions, ramp ties, dots, diagonal strokes ----
-  vec4 m42 = (1.0 - cut4(res))
-           * vec4(greaterThanEqual(minCornerSq, vec4(mincSq)))
-           * vec4(lessThan(pairSq, vec4(SQ255(XBRZ_SAME_M))));
-  if (dot(m42, vec4(1.0)) > 0.5) res = edgeStep42(res, m42);
+  // ---- Rules 38-41: 4-color junctions, ramp ties, dots, diagonal strokes ----
   if (dot(cut4(res), vec4(1.0)) > 0.0) res = junc4(res, pairSq, minCornerSq);
   if (dot(cut4(res), vec4(1.0)) > 0.0)
   {
@@ -1677,18 +1596,15 @@ void main()
           * vec4(greaterThanEqual(minCornerSq, vec4(SQ255(XBRZ_SAME_M)))), vec4(1.0)) > 0.0))
     res = diagStroke41(res, loneE, pairSq);
 
-  // ---- Rules 44, 47, 45, 48, 49, 41b/c, 38b, 42b: stroke ends, notches, slopes, bars, crosshairs ----
+  // ---- Rules 44, 45, 48, 49, 41b/c, 42b: stroke ends, slopes, bars, convex bevels ----
   if (nE.x <= 0.35 && maxSideSq >= SQ255(XBRZ_END44) && minSideSq < SQ255(XBRZ_SAME_M)) res = strokeEnd44(res);
   if (dot(cut4(res), vec4(1.0)) > 0.0)
   {
-    if (maxSideSq >= SQ255(XBRZ_FAR47) && minSideSq < SQ255(XBRZ_NOTCH47)) res = applyRule47(res, pairSq, maxCornerSq);
     if (maxSideSq >= SQ255(80.0) && minSideSq < SQ255(XBRZ_SAME_M)) res = applyRule45(res, pairSq, minCornerSq, maxCornerSq);
     res = applyRule48(res, pairSq, minSideSq, maxSideSq, loneE);
   }
   res = applyRule49(res, res0, pairSq, minSideSq, maxSideSq);
   if (loneE && dot(cut4(res), vec4(1.0)) > 0.0) res = apex41(res, pairSq, minCornerSq);
-  if (!loneE && min(max(sDSq, sFSq), max(sBSq, sHSq)) > SQ255(40.0) && dot(cut4(res), vec4(1.0)) > 0.0)
-    res = applyRule38b(res, pairSq);
   if (!loneE && maxSideSq >= mincSq)
     res = applyRule42b(res, pairSq, minCornerSq);
 

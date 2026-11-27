@@ -106,6 +106,9 @@ layout(set = 0, binding = 3) uniform sampler2D xbrz_crisp_refpass;
 //#plain #define P(x,y) texelFetch(xbrz_fs_refpass, clamp(ipx + ivec2(int(x), int(y)), ivec2(0), maxOrig), 0).rgb
 #define OUT_SIZE params.OutputSize
 #define INFO_CENTER texelFetch(Source, ipx, 0)
+//#crisp{
+#define INFO_AT(x, y) texelFetch(Source, clamp(ipx + ivec2(int(x), int(y)), ivec2(0), maxOrig), 0)
+//#crisp}
 
 const float INV_SQRT2 = 0.7071067811865475;
 
@@ -117,6 +120,41 @@ const float INV_SQRT2 = 0.7071067811865475;
 #endif
 //#crisp{
 #define XBRZ_TIPK 0.1  // 23. a loose pixel's tip: the cut line moves out by this
+
+// Exact C1 signed distance to the corner chip outside a quarter-circle of radius r
+// centered at (c, c) where c = 0.5 - r, tangent to y = 0.5 at (c, 0.5) and x = 0.5 at (0.5, c).
+// Exact D4-symmetric in (cpx, cpy) with zero AA bleed along flat walls.
+float sdCornerArc(float cpx, float cpy, float r)
+{
+  float c = 0.5 - r;
+  float dx = cpx - c, dy = cpy - c;
+  if (dx >= 0.0 && dy >= 0.0) return length(vec2(dx, dy)) - r;
+  if (dx <  0.0 && dy >= 0.0) return -length(vec2(dx, cpy - 0.5));
+  if (dy <  0.0 && dx >= 0.0) return -length(vec2(cpx - 0.5, dy));
+  return -min(length(vec2(dx, cpy - 0.5)), length(vec2(cpx - 0.5, dy)));
+}
+
+#if __VERSION__ >= 300
+bool cIs45U(uint w)  { return (w & 3u) != 0u && ((w >> 2u) & 1u) != 0u && (w & 240u) == 0u; }
+bool cIsShLU(uint w) { return (w & 3u) != 0u && ((w >> 2u) & 1u) != 0u && ((w >> 4u) & 1u) != 0u && ((w >> 6u) & 1u) == 0u; }
+bool cIsStLU(uint w) { return (w & 3u) != 0u && ((w >> 2u) & 1u) != 0u && ((w >> 6u) & 1u) != 0u && ((w >> 4u) & 1u) == 0u; }
+bool flat45ArcU(uint wx, uint wy, uint wxr, uint wyr)
+{
+  bool p0Cont = cIs45U(wy) || cIsStLU(wy) || cIs45U(wyr) || cIsShLU(wyr);
+  bool p1Cont = cIs45U(wx) || cIsShLU(wx) || cIs45U(wxr) || cIsStLU(wxr);
+  return !p0Cont && !p1Cont;
+}
+#else
+bool cIs45F(float w)  { return BLEND(w) > 0.0 && FLAG(w, 4.0) > 0.5 && (FLAG(w, 16.0) + FLAG(w, 32.0) + FLAG(w, 64.0) + FLAG(w, 128.0)) < 0.5; }
+bool cIsShLF(float w) { return BLEND(w) > 0.0 && FLAG(w, 4.0) > 0.5 && FLAG(w, 16.0) > 0.5 && FLAG(w, 64.0) < 0.5; }
+bool cIsStLF(float w) { return BLEND(w) > 0.0 && FLAG(w, 4.0) > 0.5 && FLAG(w, 64.0) > 0.5 && FLAG(w, 16.0) < 0.5; }
+bool flat45ArcF(float wx, float wy, float wxr, float wyr)
+{
+  bool p0Cont = cIs45F(wy) || cIsStLF(wy) || cIs45F(wyr) || cIsShLF(wyr);
+  bool p1Cont = cIs45F(wx) || cIsShLF(wx) || cIs45F(wxr) || cIsStLF(wxr);
+  return !p0Cont && !p1Cont;
+}
+#endif
 //#crisp}
 
 void main()
@@ -218,13 +256,97 @@ void main()
 #endif
 //#crisp}
 
-  // Exact smoothstep(-INV_SQRT2, INV_SQRT2, d_raw): d is already multiplied by INV_SQRT2
+  // Exact smoothstep(-INV_SQRT2, INV_SQRT2, d_raw): d is already multiplied by INV_SQRT2.
+  // Because sdCornerArc(px, py, r) * scArc <= d_lin wherever d_lin <= -0.5 (Cauchy-Schwarz),
+  // any corner already at t == 0 can skip B1-arc and its neighbor fetches bit-exactly.
   MP vec4 t = isCut * clamp(d + 0.5, 0.0, 1.0);
   if (dot(t, vec4(1.0)) <= 1e-4)
   {
     FRAG_OUT = vec4(P_CENTER, 1.0);
     return;
   }
+
+//#crisp{
+  // C1 circular fillets on surviving corners only: plain bevels (0 neighbor fetches)
+  // and isolated 45-deg corners meeting flat H & V walls (only the 2 neighbors of the active corner).
+  MP float scArc = scK.x * 1.4142135623730951;
+  MP vec4 actBev = vec4(greaterThan(t, vec4(0.0))) * (1.0 - doLineBlend);
+  if (dot(actBev, vec4(1.0)) > 0.0)
+  {
+    MP vec4 rBev = max(vec4(0.05), 1.0 - INV_SQRT2 * tip);
+    if (actBev.x > 0.5) d.x = sdCornerArc(px.x, py.x, rBev.x) * scArc;
+    if (actBev.y > 0.5) d.y = sdCornerArc(px.y, py.y, rBev.y) * scArc;
+    if (actBev.z > 0.5) d.z = sdCornerArc(px.z, py.z, rBev.z) * scArc;
+    if (actBev.w > 0.5) d.w = sdCornerArc(px.w, py.w, rBev.w) * scArc;
+    t = isCut * clamp(d + 0.5, 0.0, 1.0);
+  }
+#if __VERSION__ >= 300
+  uvec4 act45U = uvec4(greaterThan(t, vec4(0.0))) * ((iw >> 2u) & 1u) * uvec4(equal(iw & uvec4(240u), uvec4(0u)));
+  if (any(notEqual(act45U, uvec4(0u))))
+  {
+    if (act45U.x != 0u)
+    {
+      uvec4 iD = uvec4(INFO_AT(-1.0,  0.0) * 255.0 + 0.5);
+      uvec4 iB = uvec4(INFO_AT( 0.0, -1.0) * 255.0 + 0.5);
+      if (flat45ArcU(iD.z, iB.z, iD.y, iB.w)) d.x = sdCornerArc(px.x, py.x, 0.5) * scArc;
+    }
+    if (act45U.y != 0u)
+    {
+      uvec4 iB = uvec4(INFO_AT( 0.0, -1.0) * 255.0 + 0.5);
+      uvec4 iF = uvec4(INFO_AT( 1.0,  0.0) * 255.0 + 0.5);
+      if (flat45ArcU(iB.w, iF.w, iB.z, iF.x)) d.y = sdCornerArc(px.y, py.y, 0.5) * scArc;
+    }
+    if (act45U.z != 0u)
+    {
+      uvec4 iF = uvec4(INFO_AT( 1.0,  0.0) * 255.0 + 0.5);
+      uvec4 iH = uvec4(INFO_AT( 0.0,  1.0) * 255.0 + 0.5);
+      if (flat45ArcU(iF.x, iH.x, iF.w, iH.y)) d.z = sdCornerArc(px.z, py.z, 0.5) * scArc;
+    }
+    if (act45U.w != 0u)
+    {
+      uvec4 iH = uvec4(INFO_AT( 0.0,  1.0) * 255.0 + 0.5);
+      uvec4 iD = uvec4(INFO_AT(-1.0,  0.0) * 255.0 + 0.5);
+      if (flat45ArcU(iH.y, iD.y, iH.x, iD.z)) d.w = sdCornerArc(px.w, py.w, 0.5) * scArc;
+    }
+    t = isCut * clamp(d + 0.5, 0.0, 1.0);
+  }
+#else
+  vec4 act45 = vec4(greaterThan(t, vec4(0.0))) * doLineBlend * (1.0 - haveShallowLine) * (1.0 - haveSteepLine) * vec4(equal(longL, vec4(0.0)));
+  if (dot(act45, vec4(1.0)) > 0.0)
+  {
+    if (act45.x > 0.5)
+    {
+      vec4 iD = floor(INFO_AT(-1.0,  0.0) * 255.0 + 0.5);
+      vec4 iB = floor(INFO_AT( 0.0, -1.0) * 255.0 + 0.5);
+      if (flat45ArcF(iD.z, iB.z, iD.y, iB.w)) d.x = sdCornerArc(px.x, py.x, 0.5) * scArc;
+    }
+    if (act45.y > 0.5)
+    {
+      vec4 iB = floor(INFO_AT( 0.0, -1.0) * 255.0 + 0.5);
+      vec4 iF = floor(INFO_AT( 1.0,  0.0) * 255.0 + 0.5);
+      if (flat45ArcF(iB.w, iF.w, iB.z, iF.x)) d.y = sdCornerArc(px.y, py.y, 0.5) * scArc;
+    }
+    if (act45.z > 0.5)
+    {
+      vec4 iF = floor(INFO_AT( 1.0,  0.0) * 255.0 + 0.5);
+      vec4 iH = floor(INFO_AT( 0.0,  1.0) * 255.0 + 0.5);
+      if (flat45ArcF(iF.x, iH.x, iF.w, iH.y)) d.z = sdCornerArc(px.z, py.z, 0.5) * scArc;
+    }
+    if (act45.w > 0.5)
+    {
+      vec4 iH = floor(INFO_AT( 0.0,  1.0) * 255.0 + 0.5);
+      vec4 iD = floor(INFO_AT(-1.0,  0.0) * 255.0 + 0.5);
+      if (flat45ArcF(iH.y, iD.y, iH.x, iD.z)) d.w = sdCornerArc(px.w, py.w, 0.5) * scArc;
+    }
+    t = isCut * clamp(d + 0.5, 0.0, 1.0);
+  }
+#endif
+  if (dot(t, vec4(1.0)) <= 1e-4)
+  {
+    FRAG_OUT = vec4(P_CENTER, 1.0);
+    return;
+  }
+//#crisp}
   MP vec4 ratios = t * t * (3.0 - 2.0 * t);
 
   // ============================================================================================

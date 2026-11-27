@@ -438,7 +438,10 @@ layout(set = 0, binding = 3) uniform sampler2D xbrz_crisp_refpass;
 //#plain #define P_CENTER texelFetch(xbrz_fs_refpass, ipx, 0).rgb
 //#plain #define P(x,y) texelFetch(xbrz_fs_refpass, clamp(ipx + ivec2(int(x), int(y)), ivec2(0), maxOrig), 0).rgb
 #define OUT_SIZE params.OutputSize
-#define INFO_CENTER texelFetch(Source, ipx, 0)""",
+#define INFO_CENTER texelFetch(Source, ipx, 0)
+//#crisp{{
+#define INFO_AT(x, y) texelFetch(Source, clamp(ipx + ivec2(int(x), int(y)), ivec2(0), maxOrig), 0)
+//#crisp}}""",
             "@PASS1_COORDS@": """  vec2 scale = vScale;
   vec3 scK = vScK.xyz;
   float scArea = vScK.w;
@@ -651,6 +654,9 @@ uniform COMPAT_PRECISION vec2 PassPrev4InputSize;
 //#plain #define P_CENTER texelFetch(PassPrev3Texture, ipx, 0).rgb
 //#plain #define P(x,y) texelFetch(PassPrev3Texture, clamp(ipx + ivec2(int(x), int(y)), ivec2(0), maxOrig), 0).rgb
 #define INFO_CENTER texelFetch(Texture, ipx, 0)
+//#crisp{{
+#define INFO_AT(x, y) texelFetch(Texture, clamp(ipx + ivec2(int(x), int(y)), ivec2(0), maxOrig), 0)
+//#crisp}}
 #else
 #define CLAMP_ORIG(uv) min((uv), origMax)
 //#crisp{{
@@ -661,6 +667,9 @@ uniform COMPAT_PRECISION vec2 PassPrev4InputSize;
 //#plain #define P(x,y) COMPAT_TEXTURE(PassPrev3Texture, CLAMP_ORIG(ocoord + origInv * vec2(x, y))).rgb
 #define INFO(uv) COMPAT_TEXTURE(Texture, uv)
 #define INFO_CENTER INFO(coord)
+//#crisp{{
+#define INFO_AT(x, y) INFO(clamp(coord + srcInv * vec2(x, y), vec2(0.0), (InputSize - 0.5) * srcInv))
+//#crisp}}
 #endif""",
         "@PASS1_COORDS@": """  vec2 scale = TEX0.zw;
   vec3 scK = TEX1.xyz;

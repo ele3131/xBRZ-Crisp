@@ -23,14 +23,14 @@ precision highp int;
 // decisions from those of its 4 points, the resolve pass, also once per game pixel, finishes the rules
 // that need the neighbours' decisions, and the output pass (pass 1) only draws the corners.
 //#crisp{
-// The match pass, between the resolve pass and pass 1, runs rules 26-28, 38-45 and 47-49 (rule 46 runs in the point pass).
+// The match pass, between the resolve pass and pass 1, runs rules 26, 28, 38-45, 48 and 49 (rule 46 runs in the point pass).
 //
 // Pass-to-Rule Index:
-//   point   (point.inc, point_checker46.inc)           : xBRZ 2x2 preprocessing, Rules 31, 36, 46
-//   pass0   (pass0.inc)                                : xBRZ corner decisions, Rules 1-11, 13, 15, 16, 18, 30, 32-35
-//   resolve (resolve.inc, resolve_steps14/junc20.inc)  : Rules 1 (weak), 2 (chain/meet), 9 (2nd), 14-15b, 17, 19-25, 28, 29, 37
-//   match   (match.inc, match_r26/r28/junc/strokes.inc): Rules 26-28b, 38-45, 47-49
-//   pass1   (pass1.inc)                                : Output-scale corner rasterization (45-deg, 2:1, 3:1, 4:1, small/thin)
+//   point   (point.inc, point_checker46.inc)           : xBRZ 2x2 preprocessing, T-junction/dark-outline guards, Rules 31, 36, 46
+//   pass0   (pass0.inc)                                : xBRZ corner decisions, Rules 1-11, 13, 15, 16, 18, 30, 32, 33
+//   resolve (resolve.inc, resolve_steps14/junc20.inc)  : Rules 1 (weak), 2 (chain/meet), 9 (2nd), 14-15b, 17, 19-21 (incl. 20b crosshair bar), 23, 24, 28, 29, 37
+//   match   (match.inc, match_r26/r28/junc/strokes.inc): Rules 26, 28-28b, 38-41, 42b, 43-45, 48, 49
+//   pass1   (pass1.inc)                                : Output-scale corner rasterization (45-deg, 2:1, 3:1, 4:1, small/thin, C1 circular fillets on bevels & flat-wall 45-deg corners)
 //
 // Decision-Word Bit Layout (0..255 per corner channel: x=TL, y=TR, z=BR, w=BL):
 //   bits 0..1 (BLEND)  : 0 none | 1 normal | 2 dominant (pass0) or thin sliver R14 (resolve+) | 3 weak (pass0) or small tip R23/R40 (resolve+)
@@ -128,8 +128,7 @@ precision highp int;
 //     the corner keeps xBRZ's line, so a hood's light edge is not drawn up against the blue beside it (the boy
 //     in Final Fantasy Tactics Advance). Before the step walk, a surviving non-line stub on a dark outline
 //     (E.x <= XBRZ_DARK) that continues straight along the step beside a straight wall and an active 2:1 ramp
-//     pixel couples to that 2:1 slope, and a clean 2-color 45-degree step (cand20 < XBRZ_SAME) flanked on both
-//     diagonals by pixels of E's color drawing the same 2:1 slope follows that 2:1 curve.
+//     pixel couples to that 2:1 slope.
 // 15. Lone pixel and L-shape tests on strong edges: xBRZ draws no line through a pixel that already
 //     has another corner cut and differs from the pixel across it, so a lone pixel keeps its shape, and
 //     only rounds a corner, without a line, where one color wraps around it in an L. Where the pixel
@@ -184,13 +183,13 @@ precision highp int;
 //     corner, the pixel's own color does not continue along the cut, and fewer than three pixels in a
 //     row cut that corner), so a pixel at a junction of several colors keeps its square shape, while
 //     antialiased curves, whose cuts run on, stay round. A corner on a dark outline with an
-//     antialiasing pixel is still cut: the pixel and its two neighbors form a ramp (XBRZ_JUNC_RAMP),
+//     antialiasing pixel is still cut: the pixel and its two neighbors form a geometric ramp (geomRamp4),
 //     the darkest of them is dark, and one neighbor's color goes on just past the other along the cut,
-//     like the outline of a neck that runs on behind its transition pixel. On a looser ramp
-//     (XBRZ_JUNC_RAMP2) a corner also stays round where another pixel cuts the same corner along the
+//     like the outline of a neck that runs on behind its transition pixel. On a looser geometric ramp
+//     a corner also stays round where another pixel cuts the same corner along the
 //     line, or where the opposite corner of the pixel stays cut, so a pixel on an antialiased curve
 //     is not cut at one end and square at the other, like the corner of a trunk in Minish Cap. Where the
-//     pixel is one end of a strong ramp (XBRZ_JUNC_RAMP3), like foam on water, the ramp may be looser still.
+//     pixel is one end of a strong ramp, like foam on water, the ramp may be looser still.
 //     At a
 //     crossing of four clearly different colors, where the pixel is dark and darker than both neighbors and
 //     the cut's color comes from a pixel that stands alone, a color that goes on only inside a flat area
@@ -214,7 +213,8 @@ precision highp int;
 //     (where both arms wrap the facing corner cleanly) keeps its cut. On a
 //     4-color orthogonal tile crosshair (where two adjacent quadrants are solid 2x2 blocks and both opposite
 //     colors extend straight orthogonally), flat-block continuations, diagonal runs, and wide ramps do not
-//     rescue the corner.
+//     rescue the corner, and any 3+ color corner (dLO >= 30) on a 1-pixel bar flush against an adjacent
+//     4-color orthogonal crosshair (20b, folded from ex-38b) likewise stays square.
 // 21. A straight line does not bend: a corner is not painted with the color of a pixel that lies in a
 //     straight line of three of its color along the pixel's side (including when the two flanking pixels
 //     match within XBRZ_SAME and the middle pixel sits within XBRZ_MINC of both), where the corner's other
@@ -235,11 +235,7 @@ precision highp int;
 //     outline 1 pixel wide (its color goes on past both ends of the corner, diagonally beside the line and
 //     on the side away from it) with contrast 64 or more, the line does not count either, so the outline
 //     bends diagonally to its end, like the corner of the "0" in Golden Sun's battle menu.
-// 22. Crossed cuts: where two neighboring pixels of close but distinct shades cut into each other from the two ends
-//     of their shared side, the lighter one ends a 45-degree stripe of its color and the darker one
-//     stands apart from its other neighbors, both corners stay square, so the darker shade does not
-//     bulge into the stripe and the side between them is straight; the darker pixel then leaks no
-//     round tip into the pixel past the stripe's end either.
+// 22. (Removed in v4.0 — pruned low-impact micro-rule.)
 // 24. A line with nothing to go on to: a 2:1 or 1:2 line between two colors XBRZ_HOOK or more apart is drawn only
 //     where a corner at one of the two ends of its step is cut too (the pixel beside E along the line has the
 //     other half of the line), or where the facing corner diagonally across a uniform band (cand20 < XBRZ_SAME)
@@ -254,11 +250,7 @@ precision highp int;
 //     where those corners would take colors that differ from each other (a red eye between white, lilac
 //     and purple), keeps the small tip only at a corner between two neighbors of the same color; a corner
 //     between two different colors stays square, so no color around the dot reaches into it.
-// 25. A point on a shared edge: where both corners of a pixel at one edge are cut with a 45-degree line in
-//     the color across that edge (the two lines meet in a point), the pixel is the vertex of a V of its color
-//     with no further arms, and the edge is straight and shared by three colors (XBRZ_POINT), both corners
-//     stay square, so a small detail keeps its whole edge instead of an arrow tip, like the lower khaki pixel
-//     of Isaac's sword hilt in Golden Sun's village.
+// 25. (Removed in v4.0 — pruned low-impact micro-rule.)
 // 26. Matching corners: a pass after the resolve pass compares each corner the resolve pass left square
 //     with pass 0's decision. Where the square corner leaves a burr in a diagonal, it is cut again as pass 0
 //     decided: in a clean line between two colors (the corner's two neighbors within XBRZ_MATCH_WRAP, the same
@@ -299,12 +291,7 @@ precision highp int;
 //     diagonal partner already draws the matching 2:1 slope, and a 45-degree line cutting a 2-pixel light sclera
 //     (lE - max(lP, lQ) >= 0.15, minSide >= 60, pair >= XBRZ_JUNC4) tucked inside two orthogonal uncut straight
 //     dark bars (such as a 2-pixel iris under a squared eyebrow) stays square.
-// 27. A bar at a vertex: where two arms of an outline end a knight's move apart and a bar of another color
-//     (three pixels or more) comes down to the gap pixel between them, pass 0 cuts the gap pixel's corner
-//     along a line in the bar's color, so the bar runs on past the vertex as a spike. The corner becomes a
-//     plain 45-degree cut in the bar's color where the gap pixel is an in-between tone of the bar and the
-//     outline, like the yellow bar between the red outlines of the Scooby-Doo 2 title, and otherwise the gap
-//     pixel's corners under the bar stay square, so the bar ends flat (XBRZ_VERTEX_TOL, _EDGE, _BAR).
+// 27. (Removed in v4.0 — pruned low-impact micro-rule.)
 // 28. Two 2:1 cuts that cross: two pixels of one color a knight's move apart make xBRZ see a 2:1 line, and
 //     the two pixels between them then cut into each other along their shared side, each with a 2:1 line in
 //     the other's color, so the two colors seem to swap places. The pixel that is held less by its
@@ -335,7 +322,7 @@ precision highp int;
 //     background, like an orange diamond on a scaffold.
 // 31. Exact ties: where xBRZ's two diagonal sums of a 2x2 checkerboard of two colors (64 or more apart)
 //     are exactly equal, xBRZ cuts neither corner and the two diagonals touch. Where only one diagonal
-//     goes on as a stroke 1 pixel wide, the rarer of the two colors in the 8x8 around it wins and keeps
+//     goes on as a stroke 1 pixel wide, the rarer of the two colors in the 4x4 around it wins and keeps
 //     its diagonal joined, and the other is cut where each of its two pixels has a neighbor of its own
 //     color, so a dark outline closes on a light background and a light stroke on a dark one (the "O" of
 //     YOSHI in Zenju's test image, a kanji in Harry Potter).
@@ -346,17 +333,15 @@ precision highp int;
 // 33. Hole in a thick stroke: the inner corner of a thick dark stroke that bends, with an antialiasing
 //     pixel of a third color at the outer corner, keeps only the small cut, without a line, so a hole
 //     in a digit has the same four corners.
-// 34. Small square of close shades: in a 2x2 of close shades that are not all exactly equal, closed on
-//     its 8 side neighbors by one color (48 or more apart), the outer corner is only rounded, without a
-//     line, so the four corners match (the studs in Street Boxing's fence).
-// 35. Edge of a thin band: along a band 1 pixel wide that runs on in a 2:1 line, with a strong color
-//     past it and close shades on E's side, the lone pixel test uses the reference tolerance (30) also
-//     at medium contrast (40 to 64), as rule 15 does at 64, so the band's edge has no tooth.
-// 36. Crossing strokes: in a 2x2 where one diagonal has one exact color and the other two close shades of
-//     one stroke, far from the first, the stroke is joined where each of its two pixels goes on outward by
+// 34. (Removed in v4.0 — pruned low-impact micro-rule.)
+// 35. (Removed in v4.0 — pruned low-impact micro-rule.)
+// 36. Crossing strokes & point guards: in a 2x2 where one diagonal has one exact color and the other two close
+//     shades of one stroke, far from the first, the stroke is joined where each of its two pixels goes on outward by
 //     one pixel of its shades at a side (a stroke 1 pixel wide) and the exact color has two or more pixels
 //     outward (a mass), so a thin halo crossed by a skirt in Buu's Fury stays whole. A dark outline beside a
-//     dull stroke (XBRZ_X36_DARK, XBRZ_X36_DULL) separates two areas and stays joined.
+//     dull stroke (XBRZ_X36_DARK, XBRZ_X36_DULL) separates two areas and stays joined. Under the same point pass,
+//     a continuous dark outline (luma < XBRZ_X36_DARK) is protected from a non-dominant heterochromatic cut, and
+//     a 3-color T-junction rejects an inverted off-ramp vote (> XBRZ_DIAG) caused by outer 4x4 weights.
 // 37. A contour by a knight's move: where a corner takes the color of a neighbor P while the other neighbor
 //     has the color of the pixel just past P (the two a knight's move apart) and P's facing corner on the same
 //     cut already takes that color, the corner takes the other neighbor's color, so an outline that skips a
@@ -374,8 +359,7 @@ precision highp int;
 //     Not where the two colors the cut joins are two shades of one stroke (under XBRZ_STEP38 as far apart as
 //     the other colors, capped at 50 YCbCr so genuinely distinct colors at high-contrast junctions still stay
 //     square), like the dark brown and brown outline of a hood, which bends there as in xBRZ.
-//     A 3+ color corner (pairSq >= XBRZ_JUNC4^2) on a 1-pixel bar flush against a 4-color orthogonal crosshair
-//     likewise stays square so straight tile-border bars do not notch across the seam.
+//     (Ex-38b 1-pixel bar at a 4-color orthogonal crosshair was folded into rule 20b in resolve.inc in v4.0.)
 // 39. A tie on a ramp: where E's two neighbors at a corner are equally far from E and E lies on the straight
 //     ramp between them, neither color has a better claim to the corner when the pixel across it is a
 //     fourth color, so the corner stays square and E touches both, like the light pink under the white of
@@ -395,14 +379,10 @@ precision highp int;
 //     colliding 2:1 cuts are stripped to 45 degrees and a missing multi-tone 45-degree corner whose two
 //     outer neighbors are closer to each other than to E (pairSq < minSideSq) is completed when confirmed
 //     by an adjacent 45-degree line in E's color.
-// 42. A step in a 45-degree edge: a corner that xBRZ leaves square, where its two neighbors at the corner and
-//     the pixel across it are one color K (XBRZ_MINC or more from E) and E's other two neighbors are not K,
-//     is cut along the edge when the same corner of both pixels along the edge is cut with a 45-degree line
-//     painting K. xBRZ leaves such a corner square where its two diagonals nearly tie and a pixel farther
-//     away tips them the other way, which leaves a square step in a straight diagonal edge. Likewise, where a
-//     2-pixel run of a mid-tone pixel E sits beside a 2-pixel brighter wall S and shares a darker background U
-//     whose facing corner already cuts into E with a 45-degree line (with the outer corners of U and S uncut),
-//     E's uncut corner is beveled at 45 degrees in U's color to complete the convex corner.
+// 42. Convex bevel completion (42b; 42a pruned in v4.0): where a 2-pixel run of a mid-tone pixel E sits beside
+//     a 2-pixel brighter wall S and shares a darker background U whose facing corner already cuts into E with a
+//     45-degree line (with the outer corners of U and S uncut), E's uncut corner is beveled at 45 degrees in
+//     U's color to complete the convex corner.
 // 43. A dome: where the resolve pass took back a corner of a 2-pixel run, and a cap color runs over the run
 //     and past both ends while the run ends on both sides in one other color, the corner is cut again (if the
 //     mirror corner of the run's other pixel is cut), so the cap ends round on both sides, like the top of
@@ -434,10 +414,7 @@ precision highp int;
 //     mesh, with any non-mesh wall distinct from the adjacent non-mesh pixels) keeps its squares, so checker
 //     dithering and 50% HUD mesh overlays stay square right up to their borders and corners without affecting
 //     1-pixel dotted lines, compact glyphs, sawtooth edges, or diagonal strokes.
-// 47. A notch in a straight stroke: where E's corner would be cut in the color of a lone pixel beside it
-//     that is a close shade of E, while E's color goes on straight past its other neighbor and diagonally
-//     past the lone pixel, and the color on E's far side is XBRZ_FAR47 or more away, the corner stays square,
-//     so a shade at the bend of a stroke does not cut a notch into its straight side (a wizard's staff).
+// 47. (Removed in v4.0 — pruned low-impact micro-rule.)
 // 48. One slope beside a lone shade: where E's corner is cut by a shallow or steep line whose long side runs
 //     along the edge E shares with the neighbor A whose color it takes, and A's corner at the other end of
 //     that edge is cut at 45 degrees in E's color, while A and E are close shades (under XBRZ_SHADE48) and one
@@ -611,7 +588,6 @@ vec4 cut4(vec4 w)        { return vec4(greaterThan(BLEND(w), vec4(0.0))); }
 vec4 activeCutOf(vec4 w) { vec4 bl = BLEND(w); return vec4(greaterThan(bl, vec4(0.0))) * vec4(lessThan(bl, vec4(3.0))) * vec4(lessThan(w, vec4(BIT_BLOCKED))); }
 // A cut that is not weak (blend 3); keeps blocked (bit 128) when resolve may still rescue it
 vec4 cutNoWeak(vec4 w)   { vec4 bl = BLEND(w); return vec4(greaterThan(bl, vec4(0.0))) * vec4(lessThan(bl, vec4(3.0))); }
-float drawsLine(float r) { float bl = BLEND(r); return float(r < BIT_BLOCKED && bl > 0.0 && bl < 3.0 && FLAG(r, BIT_LINE) > 0.0); }
 vec4 drawsLine4(vec4 r)  { return activeCutOf(r) * FLAG(r, BIT_LINE); }
 vec4 isLine45(vec4 r)    { return FLAG(r, BIT_LINE) * (1.0 - FLAG(r, BIT_SHALLOW)) * (1.0 - FLAG(r, BIT_STEEP)) * vec4(equal(FLAG(r, BIT_LONG3) + FLAG(r, BIT_LONG4), vec4(0.0))); }
 float wordPlain(bool sec)  { return sec ? (1.0 + BIT_SEC) : 1.0; }
@@ -622,7 +598,6 @@ float wordLine45(bool sec) { return sec ? (1.0 + BIT_LINE + BIT_SEC) : (1.0 + BI
 #define CRISP_RULES (XBRZ_MINC > 0.0 && XBRZ_DIAG > 0.0)
 #define XBRZ_ALIKE 20.0        // colors this close (x/255) count as alike
 #define XBRZ_HYST 4.0          // 1. a corner this close below XBRZ_MINC is weak
-#define XBRZ_RAMP 1.15         // 2, 6. a ramp: (d(E,P) + d(P,Q)) / d(E,Q) up to this
 #define XBRZ_STRIPE 64.0       // 2, 3. a diagonal stripe keeps a close color (within this) along its length
 #define XBRZ_OUTLINE 0.15      // 2, 3. an outline is darker (in luma) than both inner tones by this much
 #define XBRZ_NOT_LIGHTER 4.0   // 2. P is not lighter than E up to this much more luma (x/255)
@@ -642,7 +617,6 @@ float wordLine45(bool sec) { return sec ? (1.0 + BIT_LINE + BIT_SEC) : (1.0 + BI
 #define XBRZ_GUARD_EDGE 64.0   // 15. a strong edge: the pixel differs from both corner colors by this much
 #define XBRZ_GUARD_EDGE_L 54.0 // 15. the same for the L-shape test
 #define XBRZ_TINT 20.0         // 16. the two colors beside the line differ by more than this
-#define XBRZ_TINT_RAMP 1.2     // 16. not a ramp: d(E,P) + d(P,L) above this times d(E,L)
 #define XBRZ_TINT_DARK 0.25    // 18. a near-black outline is darker than this (luma)
 #define XBRZ_TINT_CONTOUR 0.36 // 18. a non-black dark contour is darker than this (luma)
 #define XBRZ_TINT_GAP 0.20     // 18. and darker (luma) than both E and the other color by this much
@@ -692,6 +666,20 @@ bool withinY255(vec3 a, vec3 b, float lim)
 bool withinEqY255(vec3 a, vec3 b, float lim)
 {
   return distSqY(a, b) <= SQ255(lim);
+}
+
+// Unified geometric AA-ramp test from squared pairwise color distances (a2, b2, c2):
+// returns 1.0 when the middle color projects strictly onto the segment of length sqrt(c2)
+// and its exact perpendicular distance sits within min(relLim * sqrt(c2), absLim255/255).
+// Exact D4-symmetric in (a2, b2) and sqrt-free (reuses squared distances already in registers).
+vec4 geomRamp4(vec4 a2, vec4 b2, vec4 c2, float relLim, float absLim255)
+{
+  vec4 diff2 = a2 - b2;
+  vec4 safeC2 = max(c2, vec4(SAFE_EPS));
+  vec4 mono = vec4(lessThan(abs(diff2), c2));
+  vec4 perpSq = max(vec4(0.0), 0.5 * (a2 + b2) - 0.25 * c2 - (diff2 * diff2) / (4.0 * safeC2));
+  vec4 limSq = min(vec4(SQ255(absLim255)), (relLim * relLim) * c2);
+  return mono * vec4(lessThanEqual(perpSq, limSq));
 }
 #define PY(x, y) toYCbCr(P(x, y))
 
@@ -827,9 +815,6 @@ float bandSide(vec2 coord, vec2 o, vec2 t, vec3 e, vec3 cp, vec3 cpq,
   if (dAESq >= SQ255(XBRZ_BAND_FAR2)) return 1.0;
   return (eq(cp, cPpt) || eq(cp, (fetchQmt ? at5x5(coord, qmtOff) : cQmt))) ? 1.0 : 0.0;
 }
-
-// 32 to 34: two close shades (under 30 apart)
-bool near(vec3 a, vec3 b) { return withinY255(a, b, 30.0); }
 
 vec4 diagonalBands(vec4 xbrz, vec4 mask, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3 E, vec3 F, vec3 G, vec3 H, vec3 I)
 {
@@ -987,8 +972,9 @@ vec4 diagLimitRule26(vec4 res, vec2 coord, vec4 cut, vec4 sec, vec4 pair, vec4 d
                      inout vec4 eDiagSq, inout bool haveDiagDist, out vec4 kept)
 {
   kept = vec4(0.0);
-  vec4 ramp = min((dEP + pair) / max(dEQ, vec4(SAFE_EPS)), (dEQ + pair) / max(dEP, vec4(SAFE_EPS)));
-  vec4 limit = mix(vec4(XBRZ_DIAG), vec4(XBRZ_DIAG * 0.92), vec4(lessThanEqual(ramp, vec4(XBRZ_RAMP))));
+  vec4 pair2 = pair * pair, dEP2 = dEP * dEP, dEQ2 = dEQ * dEQ;
+  vec4 onRamp2 = geomRamp4(min(dEP2, dEQ2), pair2, max(dEP2, dEQ2), 0.22, 22.0);
+  vec4 limit = mix(vec4(XBRZ_DIAG), vec4(XBRZ_DIAG * 0.92), onRamp2);
   vec4 keep = max(vec4(lessThanEqual(pair * 255.0, limit)), vec4(greaterThanEqual(res, vec4(BIT_SHALLOW))) * notLighter);
   if (dot((1.0 - keep) * cut, vec4(1.0)) <= 0.0)
     return res;
@@ -1028,7 +1014,7 @@ vec4 diagLimitRule26(vec4 res, vec2 coord, vec4 cut, vec4 sec, vec4 pair, vec4 d
     computeLonePQ(sec, A, B, C, D, F, G, H, I, loneP, loneQ);
     haveLone = true;
     vec4 dQc = mix(dEQ, dEP, sec);
-    vec4 notch = vec4(lessThanEqual((dEPc + pair) / max(dQc, vec4(SAFE_EPS)), vec4(XBRZ_RAMP)))
+    vec4 notch = geomRamp4(dEPc * dEPc, pair2, dQc * dQc, 0.22, 22.0)
                * vec4(lessThanEqual(pair * 255.0, vec4(XBRZ_DIAG + XBRZ_NOTCH))) * loneP * blocked2;
     if (dot(notch, vec4(1.0)) > 0.0)
     {
@@ -1457,7 +1443,7 @@ vec4 lineInOtherColor(vec4 res, vec2 coord, vec3 A, vec3 B, vec3 C, vec3 D, vec3
   vec4 dE1 = vec4(dED, dEB, dEF, dEH);
   vec4 dE2 = vec4(dEB, dEF, dEH, dED);
   vec4 dP = mix(dE1, dE2, sec), dL = mix(dE2, dE1, sec);
-  tint *= vec4(greaterThan(dP + pair, XBRZ_TINT_RAMP * dL));
+  tint *= (1.0 - geomRamp4(dP * dP, pair * pair, dL * dL, 0.24, 24.0));
   if (dot(tint, vec4(1.0)) <= 0.0)
     return res;
   bool lone = !(IsPixEqual(A, E) || IsPixEqual(B, E) || IsPixEqual(C, E) || IsPixEqual(D, E) ||
@@ -1563,31 +1549,17 @@ float holeInStroke(Win n, float r)
   return r;
 }
 
-// 32 & 35. Lone pixel test redone and edge of a thin band
+// 32. Lone pixel test redone on strong 2-color corners
 float lonePixelRedone(Win n, vec4 r, ivec4 b)
 {
   vec4 bl = mod(r, 4.0);
   float ln = mod(floor(r.z / 4.0), 2.0);
   float c4 = min(n.dE.y, n.dE.z) * 255.0;
-  float dEB = n.dE.x, dED = n.dE.w;
-  if ((bl.z > 0.0 && ln < 0.5 && !((eq(n.E,n.D) && !eq(n.E,n.m2_p0)) || (eq(n.E,n.B) && !eq(n.E,n.p0_m2))) && bl.y == 0.0 && bl.w == 0.0
-       && c4 >= 64.0 && b.z == BLEND_NORMAL && eq(n.F,n.H) && eq(n.F,n.C) && eq(n.H,n.G) && neq(n.F, n.p2_p0) && neq(n.H, n.p0_p2)
-       && cornerCut(b.z, BLEND_NONE, BLEND_NONE, min(n.dE.y, n.dE.z), n.E, n.G, n.H, n.I, n.F, n.C))
-      || (bl.z == 1.0 && ln < 0.5 && c4 >= 40.0 && c4 < XBRZ_GUARD_EDGE && eq(n.F,n.H) && !withinY255(n.I, n.F, 40.0)
-       && ((eq(n.G,n.H) && eq(n.F,n.p2_p0) && (dED * 255.0 < 30.0) && near(n.E,n.C) && !withinY255(n.p0_p2, n.H, 40.0))
-        || (eq(n.C,n.F) && eq(n.H,n.p0_p2) && (dEB * 255.0 < 30.0) && near(n.E,n.G) && !withinY255(n.p2_p0, n.F, 40.0)))
-       && cornerCut(b.z, b.y, b.w, 1.0, n.E, n.G, n.H, n.I, n.F, n.C)))
+  if (bl.z > 0.0 && ln < 0.5 && !((eq(n.E,n.D) && !eq(n.E,n.m2_p0)) || (eq(n.E,n.B) && !eq(n.E,n.p0_m2))) && bl.y == 0.0 && bl.w == 0.0
+      && c4 >= 64.0 && b.z == BLEND_NORMAL && eq(n.F,n.H) && eq(n.F,n.C) && eq(n.H,n.G) && neq(n.F, n.p2_p0) && neq(n.H, n.p0_p2)
+      && cornerCut(b.z, BLEND_NONE, BLEND_NONE, min(n.dE.y, n.dE.z), n.E, n.G, n.H, n.I, n.F, n.C))
     return cutFlags(n, cornerLines(n));
   return 0.0;
-}
-
-// 34. Small square of close shades
-float smallSquare(Win n, float r)
-{
-  if (min(n.dE.y, n.dE.z) * 255.0 >= 48.0 && (n.dE.w * 255.0 < 30.0) && (n.dE.x * 255.0 < 30.0) && near(n.E,n.A) && (n.E != n.D || n.E != n.B || n.E != n.A)
-      && eq(n.F,n.C) && eq(n.F,n.H) && eq(n.F,n.G) && eq(n.F,n.m2_p0) && eq(n.F,n.m2_m1) && eq(n.F,n.p0_m2) && eq(n.F,n.m1_m2))
-    return noLine(r);
-  return r;
 }
 
 void main()
@@ -1722,42 +1694,38 @@ void main()
   res = closedPixel(res, A, B, C, D, E, F, G, H, I);                            // 10
   res = tilesBetweenWalls(res, coord, A, B, C, D, E, F, G, H, I);               // 13
   res = lineInOtherColor(res, coord, A, B, C, D, E, F, G, H, I, pair, dEB, dED, dEF, dEH);  // 16, 18
-  if (CRISP_RULES)                                                              // 32 to 35
+  if (CRISP_RULES)                                                              // 32 & 33
   {
     vec4 eqPair = vec4(float(eq(B, D)), float(eq(B, F)), float(eq(F, H)), float(eq(H, D)));
     vec4 flankAny = vec4(float(eq(D, G) || eq(B, C)), float(eq(B, A) || eq(F, I)),
                          float(eq(F, C) || eq(H, G)), float(eq(H, I) || eq(D, A)));
     vec4 oppMax = max(vec4(dEH, dED, dEB, dEF), vec4(dEF, dEH, dED, dEB));
-    vec4 ok3235 = max(1.0 - FLAG(res, 4.0), vec4(lessThan(oppMax * 255.0, vec4(30.0))));
-    vec4 r32gate = vec4(greaterThan(BLEND(res), vec4(0.0))) * eqPair * flankAny * ok3235
-                 * vec4(greaterThanEqual(contrast, vec4(40.0)));
+    vec4 ok3233 = max(1.0 - FLAG(res, 4.0), vec4(lessThan(oppMax * 255.0, vec4(30.0))));
+    vec4 r32gate = vec4(greaterThan(BLEND(res), vec4(0.0))) * eqPair * flankAny * ok3233
+                 * vec4(greaterThanEqual(contrast, vec4(64.0)));
     if (dot(r32gate, vec4(1.0)) > 0.0)
     {
       Win w = Win(A, B, C, D, E, F, G, H, I, N_m1_m2, N_p0_m2, N_p1_m2, N_m2_m1, N_p2_m1, N_m2_p0, N_p2_p0, N_m2_p1, N_p2_p1, N_m1_p2, N_p0_p2, N_p1_p2,
                   vec4(dEB, dEF, dEH, dED), pairSq);
       vec4 r33 = res;
-      if (r32gate.z > 0.5) { r33.z = holeInStroke(w, res.z); res.z = smallSquare(w, r33.z + lonePixelRedone(w, r33, blendResult)); }
+      if (r32gate.z > 0.5) { r33.z = holeInStroke(w, res.z); res.z = r33.z + lonePixelRedone(w, r33, blendResult); }
       if (r32gate.w + r32gate.x + r32gate.y > 0.5)
       {
         w = turn(w);
-        if (r32gate.w > 0.5) { r33.w = holeInStroke(w, res.w); res.w = smallSquare(w, r33.w + lonePixelRedone(w, r33.yzwx, blendResult.yzwx)); }
+        if (r32gate.w > 0.5) { r33.w = holeInStroke(w, res.w); res.w = r33.w + lonePixelRedone(w, r33.yzwx, blendResult.yzwx); }
         if (r32gate.x + r32gate.y > 0.5)
         {
           w = turn(w);
-          if (r32gate.x > 0.5) { r33.x = holeInStroke(w, res.x); res.x = smallSquare(w, r33.x + lonePixelRedone(w, r33.zwxy, blendResult.zwxy)); }
+          if (r32gate.x > 0.5) { r33.x = holeInStroke(w, res.x); res.x = r33.x + lonePixelRedone(w, r33.zwxy, blendResult.zwxy); }
           if (r32gate.y > 0.5)
           {
             w = turn(w);
-            r33.y = holeInStroke(w, res.y); res.y = smallSquare(w, r33.y + lonePixelRedone(w, r33.wxyz, blendResult.wxyz));
+            r33.y = holeInStroke(w, res.y); res.y = r33.y + lonePixelRedone(w, r33.wxyz, blendResult.wxyz);
           }
         }
       }
     }
   }
-  vec4 band30 = band30Lo;
-  vec4 needBandHi = vec4(notEqual(res, xbrz)) * cutXbrz * (1.0 - low30);
-  if (XBRZ_MINC > 0.0 && dot(needBandHi, vec4(1.0)) > 0.0)
-    band30 = max(band30, diagonalBands(xbrz, needBandHi, coord, A, B, C, D, E, F, G, H, I));
-  res = mix(res, xbrz, band30);                                                 // 30, the band wins over the rules above
+  res = mix(res, xbrz, band30Lo);                                               // 30, the band wins over the rules above
   FRAG_OUT = res / 255.0;
 }

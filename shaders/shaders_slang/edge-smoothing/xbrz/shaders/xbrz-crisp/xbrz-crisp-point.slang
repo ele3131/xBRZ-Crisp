@@ -145,6 +145,20 @@ bool withinEqY255(vec3 a, vec3 b, float lim)
 {
   return distSqY(a, b) <= SQ255(lim);
 }
+
+// Unified geometric AA-ramp test from squared pairwise color distances (a2, b2, c2):
+// returns 1.0 when the middle color projects strictly onto the segment of length sqrt(c2)
+// and its exact perpendicular distance sits within min(relLim * sqrt(c2), absLim255/255).
+// Exact D4-symmetric in (a2, b2) and sqrt-free (reuses squared distances already in registers).
+vec4 geomRamp4(vec4 a2, vec4 b2, vec4 c2, float relLim, float absLim255)
+{
+  vec4 diff2 = a2 - b2;
+  vec4 safeC2 = max(c2, vec4(SAFE_EPS));
+  vec4 mono = vec4(lessThan(abs(diff2), c2));
+  vec4 perpSq = max(vec4(0.0), 0.5 * (a2 + b2) - 0.25 * c2 - (diff2 * diff2) / (4.0 * safeC2));
+  vec4 limSq = min(vec4(SQ255(absLim255)), (relLim * relLim) * c2);
+  return mono * vec4(lessThanEqual(perpSq, limSq));
+}
 #define PY(x,y) toYCbCr(P(x, y))
 
 //#crisp{
@@ -688,48 +702,48 @@ ivec4 pointBlend(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3 k
         }
       }
     }
-    // Protect a continuous dark outline diagonal (eqFK or eqGJ, Y < 0.15, darker than both light colors,
-    // massOuter on both sides) from being cut by a non-dominant heterochromatic diagonal (>= 50 apart)
-    // where at least one light color continues cardinally (not a shaded 1px diagonal stroke through bg).
+    // 36 & dark-outline guard: when exactly one diagonal is exact (eqFK != eqGJ), protect a continuous dark
+    // outline against a non-dominant heterochromatic cut, or let a thin crossing stroke win over dark mass.
     if (eqFK != eqGJ)
     {
       bool bgFK = eqFK;
       vec3 bg = bgFK ? kf : kg;
-      float dWinSq = bgFK ? dJgSq : dFkSq;
+      vec3 st1 = bgFK ? kg : kf, st2 = bgFK ? kj : kk;
+      float dStSq = bgFK ? dJgSq : dFkSq;
       int winT = bgFK ? r.x : r.y;
-      if (winT == BLEND_NORMAL && bg.x < XBRZ_X36_DARK && dWinSq >= SQ255(50.0))
+      vec3 m1s1 = bgFK ? kb : kc, m1s2 = bgFK ? ke : kh, m1a1 = bgFK ? kc : kb, m1a2 = bgFK ? ki : kl;
+      vec3 m2s1 = bgFK ? kl : ki, m2s2 = bgFK ? ko : kn, m2a1 = bgFK ? kh : ke, m2a2 = bgFK ? kn : ko;
+      vec2 m1d = bgFK ? vec2(-1.0, -1.0) : vec2(2.0, -1.0);
+      vec2 m2d = bgFK ? vec2( 2.0,  2.0) : vec2(-1.0, 2.0);
+      if (winT == BLEND_NORMAL && bg.x < XBRZ_X36_DARK && dStSq >= SQ255(50.0))
       {
-        vec3 st1 = bgFK ? kg : kf, st2 = bgFK ? kj : kk;
         float farSq = min(distSqY(bg, st1), distSqY(bg, st2));
         bool cardCont = bgFK
           ? (min(distSqY(kc, st1), distSqY(kh, st1)) < SQ255(30.0) || min(distSqY(ki, st2), distSqY(kn, st2)) < SQ255(30.0))
           : (min(distSqY(kb, st1), distSqY(ke, st1)) < SQ255(30.0) || min(distSqY(kl, st2), distSqY(ko, st2)) < SQ255(30.0));
         if (cardCont && farSq >= SQ255(64.0) && bg.x + 0.15 < min(st1.x, st2.x)
-            && massOuter(coord, bgFK ? kb : kc, bgFK ? ke : kh, bgFK ? kc : kb, bgFK ? ki : kl, bgFK ? vec2(-1.0, -1.0) : vec2(2.0, -1.0), bg)
-            && massOuter(coord, bgFK ? kl : ki, bgFK ? ko : kn, bgFK ? kh : ke, bgFK ? kn : ko, bgFK ? vec2(2.0, 2.0) : vec2(-1.0, 2.0), bg))
+            && massOuter(coord, m1s1, m1s2, m1a1, m1a2, m1d, bg)
+            && massOuter(coord, m2s1, m2s2, m2a1, m2a2, m2d, bg))
         {
           vec3 c1 = PY(bgFK ? 2.0 : -1.0, -1.0);
           vec3 c2 = PY(bgFK ? -1.0 : 2.0,  2.0);
           if ((distSqY(c1, bg) < SQ255(30.0) || distSqY(c2, bg) < SQ255(30.0))
               && distSqY(c1, st1) >= SQ255(30.0) && distSqY(c2, st2) >= SQ255(30.0))
+          {
             r = bgFK ? ivec4(BLEND_NONE, BLEND_NORMAL, BLEND_NORMAL, BLEND_NONE)
                      : ivec4(BLEND_NORMAL, BLEND_NONE, BLEND_NONE, BLEND_NORMAL);
+            winT = BLEND_NONE;
+          }
         }
       }
-    }
-    // 36. Crossing strokes: join j-g (if kf==kk) or f-k (if kg==kj); skip when r already chose that diagonal (no-op)
-    if (eqFK != eqGJ)
-    {
-      float dStSq = eqFK ? dJgSq : dFkSq;
-      if ((eqFK ? r.x : r.y) == BLEND_NONE && crossWinCore(eqFK ? kf : kg, eqFK ? kg : kf, eqFK ? kj : kk, dStSq))
+      if (winT == BLEND_NONE && crossWinCore(bg, st1, st2, dStSq))
       {
         float limSq = max(SQ255(30.0), 0.64 * dStSq);
-        vec3 st1 = eqFK ? kg : kf, st2 = eqFK ? kj : kk, bg = eqFK ? kf : kg;
-        if (thinOuter(coord, eqFK ? kc : kb, eqFK ? kh : ke, eqFK ? kb : kc, eqFK ? kl : ki, eqFK ? vec2(2.0, -1.0) : vec2(-1.0, -1.0), st1, st2, limSq)
-            && thinOuter(coord, eqFK ? ki : kl, eqFK ? kn : ko, eqFK ? ke : kh, eqFK ? ko : kn, eqFK ? vec2(-1.0, 2.0) : vec2(2.0, 2.0), st1, st2, limSq)
-            && (massOuter(coord, eqFK ? kb : kc, eqFK ? ke : kh, eqFK ? kc : kb, eqFK ? ki : kl, eqFK ? vec2(-1.0, -1.0) : vec2(2.0, -1.0), bg)
-                || massOuter(coord, eqFK ? kl : ki, eqFK ? ko : kn, eqFK ? kh : ke, eqFK ? kn : ko, eqFK ? vec2(2.0, 2.0) : vec2(-1.0, 2.0), bg)))
-          r = eqFK ? ivec4(BLEND_NORMAL, BLEND_NONE, BLEND_NONE, BLEND_NORMAL) : ivec4(BLEND_NONE, BLEND_NORMAL, BLEND_NORMAL, BLEND_NONE);
+        if (thinOuter(coord, bgFK ? kc : kb, bgFK ? kh : ke, bgFK ? kb : kc, bgFK ? kl : ki, bgFK ? vec2(2.0, -1.0) : vec2(-1.0, -1.0), st1, st2, limSq)
+            && thinOuter(coord, bgFK ? ki : kl, bgFK ? kn : ko, bgFK ? ke : kh, bgFK ? ko : kn, bgFK ? vec2(-1.0, 2.0) : vec2(2.0, 2.0), st1, st2, limSq)
+            && (massOuter(coord, m1s1, m1s2, m1a1, m1a2, m1d, bg)
+                || massOuter(coord, m2s1, m2s2, m2a1, m2a2, m2d, bg)))
+          r = bgFK ? ivec4(BLEND_NORMAL, BLEND_NONE, BLEND_NONE, BLEND_NORMAL) : ivec4(BLEND_NONE, BLEND_NORMAL, BLEND_NORMAL, BLEND_NONE);
       }
     }
     // 46. a 2x2 checker (exact, shaded, or 50% mesh) inside a checker texture (or its edge against a solid wall) keeps its corners square

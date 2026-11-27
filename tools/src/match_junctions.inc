@@ -1,58 +1,8 @@
 // ============================================================================================
-// Match pass — Vertex, 4-color junction, ramp, dot, and 45-degree edge rules (Rules 27, 38-40, 42)
+// Match pass — 4-color junction, ramp, dot, and convex bevel rules (Rules 38-40, 42b)
 // ============================================================================================
 
-// ---- Rule 27: a bar at a vertex ----
-bool vtxSame(vec3 a, vec3 b) { return withinEqY255(a, b, XBRZ_VERTEX_TOL); }
-bool vtxAt(vec2 u, vec2 v)
-{
-  if (sideSq(-u) <= SQ255(XBRZ_VERTEX_EDGE)) return false;
-  vec3 C = cardColor(-u), T = cardColor(-v);
-  if (vtxSame(C, cardColor(u))) return false;
-  return vtxSame(C, at3(u - v)) && !vtxSame(C, at3(-u - v))
-      && vtxSame(C, toYCbCr(P(v.x - 2.0 * u.x, v.y - 2.0 * u.y))) && vtxSame(C, toYCbCr(P(2.0 * u.x, 2.0 * u.y)))
-      && withinEqY255(T, toYCbCr(P(-2.0 * v.x, -2.0 * v.y)), XBRZ_VERTEX_BAR)
-      && withinEqY255(T, toYCbCr(P(-3.0 * v.x, -3.0 * v.y)), XBRZ_VERTEX_BAR);
-}
-bool vtxBetween(vec3 g, vec3 t, vec3 c)
-{
-  vec3 tc = t - c;
-  float k = dot(g - c, tc) / max(dot(tc, tc), SAFE_EPS);
-  float yt = t.x, yc = c.x, kY = (g.x - yc) / (abs(yt - yc) > 1e-3 ? yt - yc : 1e-3);
-  return k > 0.15 && k < 0.85 && withinY255(c + k * tc, g, 24.0) && abs(yt - yc) > 1e-3 && kY > 0.15 && kY < 0.85;
-}
-void vtx(vec2 u, vec2 v, vec4 pairSq, inout vec4 res)
-{
-  vec2 c = -u - v;
-  vec4 m = vtxCorner(c);
-  float w = dot(res, m);
-  if (BLEND(w) < 0.5 || FLAG(w, BIT_LINE) < 0.5 || (FLAG(w, BIT_SEC) > 0.5) != vtxSec(c, -v)
-      || dot(pairSq, m) <= SQ255(XBRZ_VERTEX_EDGE) || !vtxAt(u, v)) return;
-  if (vtxBetween(nE, cardColor(-v), cardColor(-u)))
-    res = mix(res, vec4(wordPlain(vtxSec(c, -v))), m);
-  else
-  {
-    res = mix(res, vec4(0.0), m);
-    vec2 c2 = u - v;
-    vec4 m2 = vtxCorner(c2);
-    if ((FLAG(dot(res, m2), BIT_SEC) > 0.5) == vtxSec(c2, -v)) res = mix(res, vec4(0.0), m2);
-  }
-}
-vec4 applyRule27(vec4 res, vec4 pairSq, float maxSideSq)
-{
-  if (maxSideSq <= SQ255(XBRZ_VERTEX_EDGE)
-      || dot(cut4(res) * FLAG(res, BIT_LINE) * vec4(greaterThan(pairSq, vec4(SQ255(XBRZ_VERTEX_EDGE)))), vec4(1.0)) <= 0.5)
-    return res;
-  for (int i = 0; i < 8; i++)
-  {
-    vec2 u = i == 0 || i == 2 ? vec2(1.0, 0.0) : i == 1 || i == 3 ? vec2(-1.0, 0.0) : i == 4 || i == 6 ? vec2(0.0, 1.0) : vec2(0.0, -1.0);
-    vec2 v = i < 2 ? vec2(0.0, 1.0) : i < 4 ? vec2(0.0, -1.0) : i < 6 ? vec2(1.0, 0.0) : vec2(-1.0, 0.0);
-    vtx(u, v, pairSq, res);
-  }
-  return res;
-}
-
-// ---- Rule 38 & 38b: a pixel kept whole at a junction of four colors ----
+// ---- Rule 38: a pixel kept whole at a junction of four colors ----
 bool keptWhole(vec2 n)
 {
   if (dot(cut4(cardInfo(n)), vec4(1.0)) > 0.5) return false;
@@ -82,33 +32,6 @@ vec4 junc4(vec4 res, vec4 pairSq, vec4 minCornerSq)
     if ((withinY255(diagColor(vec2(c.x, -c.y)), Ch, XBRZ_SAME_M) && withinY255(toYCbCr(P(0.0, 2.0 * c.y)), Cv, XBRZ_SAME_M))
         || (withinY255(diagColor(vec2(-c.x, c.y)), Cv, XBRZ_SAME_M) && withinY255(toYCbCr(P(2.0 * c.x, 0.0)), Ch, XBRZ_SAME_M)))
       continue;
-    res = mix(res, vec4(0.0), m);
-  }
-  return res;
-}
-// 38b. 3+ color corner on a 1px bar flush against a 4-color orthogonal crosshair
-vec4 applyRule38b(vec4 res, vec4 pairSq)
-{
-  vec4 sec38 = FLAG(res, BIT_SEC);
-  vec4 hz38 = vec4(1.0 - sec38.x, sec38.y, 1.0 - sec38.z, sec38.w);
-  vec4 m38b = cut4(res) * vec4(greaterThanEqual(pairSq, vec4(SQ255(XBRZ_JUNC4))))
-            * vec4(lessThan(mix(vec4(sHSq, sHSq, sBSq, sBSq), vec4(sFSq, sDSq, sDSq, sFSq), hz38), vec4(SQ255(XBRZ_SAME_M))))
-            * vec4(greaterThan(mix(vec4(sBSq, sBSq, sHSq, sHSq), vec4(sDSq, sFSq, sFSq, sDSq), hz38), vec4(SQ255(40.0))))
-            * vec4(greaterThan(mix(vec4(sFSq, sDSq, sDSq, sFSq), vec4(sHSq, sHSq, sBSq, sBSq), hz38), vec4(SQ255(40.0))))
-            * vec4(greaterThan(mix(pairSq.yxwz, pairSq.wzyx, hz38), vec4(SQ255(40.0))));
-  if (dot(m38b, vec4(1.0)) <= 0.5) return res;
-  for (int i = 0; i < 4; i++)
-  {
-    vec2 c = cornerOff(i);
-    vec4 m = vtxCorner(c);
-    if (dot(m38b, m) < 0.5) continue;
-    vec2 h = dot(hz38, m) > 0.5 ? vec2(c.x, 0.0) : vec2(0.0, c.y), v = c - h;
-    vec3 Hc = cardColor(h), Bc = cardColor(-v);
-    vec3 Cc = diagColor(h - v);
-    if (distSqY(Bc, Cc) <= SQ255(40.0) || distSqY(Hc, Cc) <= SQ255(XBRZ_JUNC4) || distSqY(nE, Cc) <= SQ255(40.0)) continue;
-    if (!withinY255(Hc, at3(2.0 * h), XBRZ_SAME_M)) continue;
-    if (!withinY255(Bc, diagColor(-v - h), XBRZ_SAME_M) || !withinY255(Bc, at3(-2.0 * v), XBRZ_SAME_M)) continue;
-    if (!withinY255(Cc, at3(2.0 * h - v), XBRZ_SAME_M) || !withinY255(Cc, at3(h - 2.0 * v), XBRZ_SAME_M)) continue;
     res = mix(res, vec4(0.0), m);
   }
   return res;
@@ -207,37 +130,7 @@ vec4 dots40(vec4 res, float minSideSq, vec4 pairSq)
   return res;
 }
 
-// ---- Rule 42 & 42b: a step in a 45-degree edge & convex corner bevel ----
-vec2 paintOf(vec2 c, float w) { return ((c.x * c.y > 0.0) != (FLAG(w, BIT_SEC) > 0.5)) ? vec2(c.x, 0.0) : vec2(0.0, c.y); }
-vec4 edgeStep42(vec4 res, vec4 m42)
-{
-  for (int i = 0; i < 4; i++)
-  {
-    vec2 c = cornerOff(i);
-    vec4 m = vtxCorner(c);
-    if (dot(m42, m) < 0.5) continue;
-    vec3 Kh = c.x > 0.0 ? nF : nD, Kv = c.y > 0.0 ? nH : nB;
-    vec3 K = 0.5 * (Kh + Kv);
-    if (withinY255(K, c.x > 0.0 ? nD : nF, XBRZ_SAME_M) || withinY255(K, c.y > 0.0 ? nB : nH, XBRZ_SAME_M)) continue;
-    if (!withinY255(K, diagColor(c), XBRZ_SAME_M)) continue;
-    float ok = 1.0;
-    for (int j = 0; j < 2; j++)
-    {
-      vec2 q = j == 0 ? vec2(c.x, -c.y) : vec2(-c.x, c.y);
-      float wq = dot(diagInfo(q), m);
-      if (BLEND(wq) < 0.5 || FLAG(wq, BIT_LINE) < 0.5 || FLAG(wq, BIT_SHALLOW) + FLAG(wq, BIT_STEEP) + FLAG(wq, BIT_LONG3) + FLAG(wq, BIT_LONG4) > 0.5)
-      { ok = 0.0; break; }
-      vec2 pOff = paintOf(c, wq);
-      // When dot(q, pOff) < -0.5, q + pOff is Kh or Kv, whose distance to K = 0.5*(Kh+Kv) is 0.5*pair < 7.5 < XBRZ_SAME_M
-      if (dot(q, pOff) > -0.5 && !withinY255(at3(q + pOff), K, XBRZ_SAME_M))
-      { ok = 0.0; break; }
-    }
-    if (ok > 0.5)
-      res = mix(res, vec4(wordLine45(pickCornerSec(c))), m);
-  }
-  return res;
-}
-// 42b. Convex corner bevel painting a shared darker background beside an adjacent brighter wall
+// ---- Rule 42b: convex corner bevel painting a shared darker background beside an adjacent brighter wall ----
 vec4 applyRule42b(vec4 res, vec4 pairSq, vec4 minCornerSq)
 {
   vec4 uSq42b = vec4(nD.x < nB.x ? sFSq : sHSq, nF.x < nB.x ? sDSq : sHSq,

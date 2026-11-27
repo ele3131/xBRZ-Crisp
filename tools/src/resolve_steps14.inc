@@ -1,14 +1,6 @@
 // ============================================================================================
-// Resolve pass — Straight steps (Rule 14) & Point on a shared edge (Rule 25)
+// Resolve pass — Straight steps (Rule 14)
 // ============================================================================================
-
-float point25(vec3 E, vec3 N, vec3 s1, vec3 s2, vec3 a1, vec3 a2, vec3 notch, vec2 o1, vec2 o2, vec3 b1, vec3 b2)
-{
-  if (!(sameColor(E, a1) && sameColor(E, a2) && !sameColor(E, notch))) return 0.0;
-  if (withinY255(E, N, XBRZ_JUNCTION) || withinY255(s1, N, XBRZ_JUNC_NEAR) || withinY255(s2, N, XBRZ_JUNC_NEAR) || withinY255(s1, s2, XBRZ_POINT)) return 0.0;
-  if (!(sameColor(N, b1) || sameColor(N, b2))) return 0.0;
-  return (!sameColor(E, at(o1)) && !sameColor(E, at(o2))) ? 1.0 : 0.0;
-}
 
 bool lighterSide(vec3 side, vec3 stroke) { return side.x > stroke.x && !withinY255(side, stroke, XBRZ_STRAIGHT); }
 float sideTones(inout vec3 t1, inout vec3 t2, float n, vec3 c)
