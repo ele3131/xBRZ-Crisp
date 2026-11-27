@@ -53,7 +53,17 @@ vec4 applyRule26Lost(vec4 res, vec4 w0, vec4 aW0, vec4 pairSq, vec4 minCornerSq,
     vec4 w0Sec = FLAG(w0, BIT_SEC);
     vec4 iB = INFO_AT(0.0, -1.0), iD = INFO_AT(-1.0, 0.0), iF = INFO_AT(1.0, 0.0), iH = INFO_AT(0.0, 1.0);
     vec4 pOpp = mix(vec4(iD.z, iB.w, iF.x, iH.y), vec4(iB.z, iF.w, iH.x, iD.y), w0Sec);
-    vec4 fix45 = cont45 * cut4(pOpp) * isLine45(pOpp) * vec4(equal(FLAG(pOpp, BIT_SEC), w0Sec));
+    vec4 base45 = cont45 * cut4(pOpp) * isLine45(pOpp);
+    vec4 secOk = vec4(equal(FLAG(pOpp, BIT_SEC), w0Sec));
+    vec4 needTie = base45 * (1.0 - secOk);
+    if (dot(needTie, vec4(1.0)) > 0.5)
+    {
+      if (needTie.x > 0.5 && distSqY(nE, diagColor(w0Sec.x > 0.5 ? vec2( 1.0, -1.0) : vec2(-1.0,  1.0))) < SQ255(XBRZ_SAME_M)) secOk.x = 1.0;
+      if (needTie.y > 0.5 && distSqY(nE, diagColor(w0Sec.y > 0.5 ? vec2( 1.0,  1.0) : vec2(-1.0, -1.0))) < SQ255(XBRZ_SAME_M)) secOk.y = 1.0;
+      if (needTie.z > 0.5 && distSqY(nE, diagColor(w0Sec.z > 0.5 ? vec2(-1.0,  1.0) : vec2( 1.0, -1.0))) < SQ255(XBRZ_SAME_M)) secOk.z = 1.0;
+      if (needTie.w > 0.5 && distSqY(nE, diagColor(w0Sec.w > 0.5 ? vec2(-1.0, -1.0) : vec2( 1.0,  1.0))) < SQ255(XBRZ_SAME_M)) secOk.w = 1.0;
+    }
+    vec4 fix45 = base45 * secOk;
     if (dot(fix45, vec4(1.0)) > 0.5)
       res = mix(res, 1.0 + BIT_LINE + BIT_SEC * w0Sec, fix45);
   }

@@ -141,6 +141,24 @@ ivec4 pointBlend(vec2 coord, vec3 kb, vec3 kc, vec3 ke, vec3 kf, vec3 kg, vec3 k
 //#crisp{
   if (CRISP_RULES)
   {
+    // On a 3-color T-junction (one straight 2-pixel wall, so only one corner of the 2x2 is cut),
+    // reject an upside-down vote where outer 4x4 weights let a worse diagonal (> XBRZ_DIAG and farther
+    // than the rejected diagonal) win across a distinct off-ramp third color (all 3 pairs >= 64 apart).
+    // Two-tone shaded slopes (e.g. light/dark green on a hill) and soft shadows stay untouched.
+    bool oneJG = (r.x > 0) != (r.w > 0);
+    bool oneFK = (r.y > 0) != (r.z > 0);
+    if (oneJG && dJgSq > dFkSq && dJgSq > SQ255(XBRZ_DIAG) && dFkSq >= SQ255(64.0))
+    {
+      float dOSq = r.x > 0 ? (eqGK ? distSqY(kf, kj) : distSqY(kf, kg))
+                           : (eqFG ? distSqY(kk, kj) : distSqY(kk, kg));
+      if (dOSq >= SQ255(64.0) && sDiag.y + sqrt(dOSq) > 1.15 * sDiag.x) r = ivec4(BLEND_NONE);
+    }
+    else if (oneFK && dFkSq > dJgSq && dFkSq > SQ255(XBRZ_DIAG) && dJgSq >= SQ255(64.0))
+    {
+      float dOSq = r.y > 0 ? (eqFJ ? distSqY(kg, kk) : distSqY(kg, kf))
+                           : (eqFG ? distSqY(kj, kk) : distSqY(kj, kf));
+      if (dOSq >= SQ255(64.0) && sDiag.x + sqrt(dOSq) > 1.15 * sDiag.y) r = ivec4(BLEND_NONE);
+    }
     bool eqFK = eq(kf, kk), eqGJ = eq(kg, kj);
     bool isChecker = eqFK && eqGJ && !eqFG;
     // 31. an exact tie between two diagonals of one color each

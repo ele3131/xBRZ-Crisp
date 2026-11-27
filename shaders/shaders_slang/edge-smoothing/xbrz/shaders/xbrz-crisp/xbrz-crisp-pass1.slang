@@ -232,6 +232,11 @@ void main()
   // ============================================================================================
 //#crisp{
   MP float sumR = dot(ratios, vec4(1.0));
+  if (sumR <= 1e-4)
+  {
+    FRAG_OUT = vec4(P_CENTER, 1.0);
+    return;
+  }
   MP vec4 om = 1.0 - ratios;
   MP float keepE = (om.x * om.y) * (om.z * om.w);
   MP float wF = ratios.z * (1.0 - secondPix.z) + ratios.y * secondPix.y;

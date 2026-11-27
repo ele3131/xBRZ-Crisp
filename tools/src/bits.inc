@@ -1,5 +1,5 @@
 // Decision-word bit layout (0..255 per corner: x = TL, y = TR, z = BR, w = BL):
-//   bits 0..1 (BLEND): 0 = none, 1 = normal, 2 = dominant (or thin sliver / small tip), 3 = weak (pass0 -> resolve)
+//   bits 0..1 (BLEND): 0 = none, 1 = normal, 2 = dominant (pass0) / thin sliver R14 (resolve+), 3 = weak (pass0) / small tip R23/R40 (resolve+)
 //   bit  2 (  4.0): BIT_LINE    - line blend (45-deg unless BIT_SHALLOW or BIT_STEEP is also set)
 //   bit  3 (  8.0): BIT_SEC     - blend with second candidate neighbor (B, F, H, D instead of D, B, F, H)
 //   bit  4 ( 16.0): BIT_SHALLOW - shallow 2:1 (or 3:1 / 4:1 when paired with BIT_LONG3 / BIT_LONG4)

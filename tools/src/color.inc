@@ -17,8 +17,14 @@ float distSqY(vec3 a, vec3 b)
   return dot(d, d);
 }
 
-// Squared threshold in [0..255] YCbCr units, kept in [0..1.5] so GLSL ES mediump never overflows
-#define SQ255(x) (((x) / 255.0) * ((x) / 255.0))
+// Squared threshold in [0..255] YCbCr units, kept in [0..1.5] so GLSL ES mediump never overflows.
+// Implemented as a function (not a macro) so older glslang preprocessors (RetroArch Vulkan/Slang)
+// never double-expand self-referential `#define XBRZ_* global.XBRZ_*` arguments into `global.global.*`.
+float SQ255(float x)
+{
+  float t = x / 255.0;
+  return t * t;
+}
 // FP16-safe division guard (> 6.1e-5 smallest FP16 normal) so FTZ GPUs never produce NaN
 const float SAFE_EPS = 1e-4;
 

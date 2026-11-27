@@ -119,8 +119,14 @@ float distSqY(vec3 a, vec3 b)
   return dot(d, d);
 }
 
-// Squared threshold in [0..255] YCbCr units, kept in [0..1.5] so GLSL ES mediump never overflows
-#define SQ255(x) (((x) / 255.0) * ((x) / 255.0))
+// Squared threshold in [0..255] YCbCr units, kept in [0..1.5] so GLSL ES mediump never overflows.
+// Implemented as a function (not a macro) so older glslang preprocessors (RetroArch Vulkan/Slang)
+// never double-expand self-referential `#define XBRZ_* global.XBRZ_*` arguments into `global.global.*`.
+float SQ255(float x)
+{
+  float t = x / 255.0;
+  return t * t;
+}
 // FP16-safe division guard (> 6.1e-5 smallest FP16 normal) so FTZ GPUs never produce NaN
 const float SAFE_EPS = 1e-4;
 
@@ -134,7 +140,7 @@ bool withinEqY255(vec3 a, vec3 b, float lim)
   return distSqY(a, b) <= SQ255(lim);
 }
 // Decision-word bit layout (0..255 per corner: x = TL, y = TR, z = BR, w = BL):
-//   bits 0..1 (BLEND): 0 = none, 1 = normal, 2 = dominant (or thin sliver / small tip), 3 = weak (pass0 -> resolve)
+//   bits 0..1 (BLEND): 0 = none, 1 = normal, 2 = dominant (pass0) / thin sliver R14 (resolve+), 3 = weak (pass0) / small tip R23/R40 (resolve+)
 //   bit  2 (  4.0): BIT_LINE    - line blend (45-deg unless BIT_SHALLOW or BIT_STEEP is also set)
 //   bit  3 (  8.0): BIT_SEC     - blend with second candidate neighbor (B, F, H, D instead of D, B, F, H)
 //   bit  4 ( 16.0): BIT_SHALLOW - shallow 2:1 (or 3:1 / 4:1 when paired with BIT_LONG3 / BIT_LONG4)
@@ -484,12 +490,13 @@ bool kin37(vec3 O, vec3 K, vec3 Pc)
   float okSq = distSqY(O, K);
   return okSq < SQ255(XBRZ_SAME) || okSq < (XBRZ_KIN37 * XBRZ_KIN37) * min(distSqY(O, Pc), distSqY(K, Pc));
 }
-float knightFlip37(bool s1, vec3 cPri, vec3 cSec, vec3 kPri, vec3 kSec, float dPri, float dSec, float cand,
+float knightFlip37(bool s1, vec3 E, vec3 cPri, vec3 cSec, vec3 kPri, vec3 kSec, float dPri, float dSec, float cand,
                    float cutPri, float secPri, float cutSec, float secSec)
 {
   bool face = s1 ? (cutSec > 0.5 && secSec < 0.5) : (cutPri > 0.5 && secPri > 0.5);
   if (!face) return 0.0;
   vec3 Pc = s1 ? cSec : cPri, O = s1 ? cPri : cSec, K = s1 ? kSec : kPri;
+  if (sameColor(E, K)) return 0.0;
   float dPcE = s1 ? dSec : dPri, dOE = s1 ? dPri : dSec;
   return float(dPcE >= XBRZ_JUNCTION && dOE >= XBRZ_JUNCTION && cand + dPcE >= 1.15 * dOE && kin37(O, K, Pc));
 }
@@ -914,9 +921,11 @@ void main()
               on20 *= 1.0 - mix(tipV, tipH, vec4(1.0 - sec.x, sec.y, 1.0 - sec.z, sec.w));
               vec4 half20 = mix(vec4(cD.z, cB.w, cF.x, cH.y), vec4(cB.z, cF.w, cH.x, cD.y), sec);
               vec4 w20 = mix(vec4(iG.z, iA.w, iC.x, iI.y), vec4(iC.z, iI.w, iG.x, iA.y), haveShallowLine);
+              vec4 w20Tie = mix(vec4(sameF(H, ldd), sameF(D, llu), sameF(B, ruu), sameF(F, rrd)),
+                                vec4(sameF(F, rru), sameF(H, rdd), sameF(D, lld), sameF(B, luu)), haveShallowLine);
               vec4 far20 = line * abs(haveShallowLine - haveSteepLine) * mix(sECard.wyxz, sECard.zwyx, haveShallowLine)
                          * drawsLine4(w20)
-                         * vec4(equal(FLAG(w20, BIT_SEC), haveShallowLine))
+                         * max(vec4(equal(FLAG(w20, BIT_SEC), haveShallowLine)), w20Tie)
                          * vec4(equal(FLAG(w20, BIT_SHALLOW), haveShallowLine))
                          * vec4(equal(FLAG(w20, BIT_STEEP), haveSteepLine))
                          * (1.0 - orthoBlock);
@@ -984,10 +993,10 @@ void main()
           vec4 cutK = isCut(blendResult);
           vec4 sB = FLAG(iB, BIT_SEC), sD = FLAG(iD, BIT_SEC), sF = FLAG(iF, BIT_SEC), sH = FLAG(iH, BIT_SEC);
           vec4 flipK = vec4(0.0);
-          if (cutK.x > 0.5 && cand20.x >= 24.0) flipK.x = knightFlip37(sec.x > 0.5, D, B, G, C, dE4.y, dE4.x, cand20.x, cD.z, sD.z, cB.z, sB.z);
-          if (cutK.y > 0.5 && cand20.y >= 24.0) flipK.y = knightFlip37(sec.y > 0.5, B, F, A, I, dE4.x, dE4.z, cand20.y, cB.w, sB.w, cF.w, sF.w);
-          if (cutK.z > 0.5 && cand20.z >= 24.0) flipK.z = knightFlip37(sec.z > 0.5, F, H, C, G, dE4.z, dE4.w, cand20.z, cF.x, sF.x, cH.x, sH.x);
-          if (cutK.w > 0.5 && cand20.w >= 24.0) flipK.w = knightFlip37(sec.w > 0.5, H, D, I, A, dE4.w, dE4.y, cand20.w, cH.y, sH.y, cD.y, sD.y);
+          if (cutK.x > 0.5 && cand20.x >= 24.0) flipK.x = knightFlip37(sec.x > 0.5, E, D, B, G, C, dE4.y, dE4.x, cand20.x, cD.z, sD.z, cB.z, sB.z);
+          if (cutK.y > 0.5 && cand20.y >= 24.0) flipK.y = knightFlip37(sec.y > 0.5, E, B, F, A, I, dE4.x, dE4.z, cand20.y, cB.w, sB.w, cF.w, sF.w);
+          if (cutK.z > 0.5 && cand20.z >= 24.0) flipK.z = knightFlip37(sec.z > 0.5, E, F, H, C, G, dE4.z, dE4.w, cand20.z, cF.x, sF.x, cH.x, sH.x);
+          if (cutK.w > 0.5 && cand20.w >= 24.0) flipK.w = knightFlip37(sec.w > 0.5, E, H, D, I, A, dE4.w, dE4.y, cand20.w, cH.y, sH.y, cD.y, sD.y);
           if (any(greaterThan(flipK, vec4(0.0))))
           {
             vec4 straightO = vec4(sameF(A, sec.x > 0.5 ? D : B), sameF(C, sec.y > 0.5 ? B : F), sameF(I, sec.z > 0.5 ? F : H), sameF(G, sec.w > 0.5 ? H : D));

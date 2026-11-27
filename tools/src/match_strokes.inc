@@ -449,8 +449,9 @@ vec4 applyRule49(vec4 res, vec4 res0, vec4 pairSq, float minSideSq, float maxSid
       vec3 cS1 = s1.y < 0.0 ? (s1.x < 0.0 ? dA : dC) : (s1.x < 0.0 ? dG : dI);
       vec3 cS2 = s2.y < 0.0 ? (s2.x < 0.0 ? dA : dC) : (s2.x < 0.0 ? dG : dI);
       vec3 cE  = e.y  < 0.0 ? (e.x  < 0.0 ? dA : dC) : (e.x  < 0.0 ? dG : dI);
-      bool plug = dot(pairSq, me) < SQ255(XBRZ_SAME_M) && !withinY255(R1, C1, XBRZ_SAME_M) &&
-                  !withinY255(R1, C2, XBRZ_SAME_M);
+      bool plug = dot(pairSq, me) < SQ255(XBRZ_SAME_M)
+               && !withinY255(R1, C1, XBRZ_SAME_M) && !withinY255(R1, C2, XBRZ_SAME_M)
+               && !withinY255(R2, C1, XBRZ_SAME_M) && !withinY255(R2, C2, XBRZ_SAME_M);
       bool ok1 = dot(pairSq, m1) < SQ255(100.0) || withinY255(C1, cS1, 100.0);
       bool ok2 = dot(pairSq, m2) < SQ255(100.0) || withinY255(C2, cS2, 100.0);
       if (!plug && ok1 && BLEND(dot(res, m1)) < 0.5 && !goesOn(s1)) res = mix(res, vec4(wordLine45(s1.x * s1.y <= 0.0)), m1);

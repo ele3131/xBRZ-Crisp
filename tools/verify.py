@@ -350,15 +350,33 @@ class HeadlessGLES:
 
 def check_static_lint() -> None:
     bad_p = re.compile(r"\b(?:vec[234]|ivec[234]|bvec[234]|float|int|bool)\s+P\b")
-    for fn in sorted(os.listdir(SRC_DIR)):
-        if not fn.endswith(".inc"):
-            continue
+    fn_macro_def = re.compile(r"^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)\(")
+    ubo_syms = ("XBRZ_TOL", "XBRZ_DOM", "XBRZ_STEEP", "XBRZ_MINC", "XBRZ_DIAG", "TOL_E", "DOM_E", "STEEP_E")
+    fn_macros = set()
+    inc_files = sorted(fn for fn in os.listdir(SRC_DIR) if fn.endswith(".inc"))
+    for fn in inc_files:
+        with open(os.path.join(SRC_DIR, fn), "r", encoding="utf-8") as f:
+            for line in f:
+                m = fn_macro_def.match(line)
+                if m:
+                    fn_macros.add(m.group(1))
+    bad_ubo_arg = (
+        re.compile(r"\b(?:" + "|".join(sorted(fn_macros)) + r")\s*\([^;\n]*\b(?:" + "|".join(ubo_syms) + r")\b")
+        if fn_macros
+        else None
+    )
+    for fn in inc_files:
         p = os.path.join(SRC_DIR, fn)
         with open(p, "r", encoding="utf-8") as f:
             for lineno, line in enumerate(f, 1):
                 code = line.split("//", 1)[0]
                 if bad_p.search(code):
                     raise RuntimeError(f"Macro shadowing `P` variable/param in {fn}:{lineno}: {line.strip()}")
+                if bad_ubo_arg and not code.lstrip().startswith("#") and bad_ubo_arg.search(code):
+                    raise RuntimeError(
+                        f"UBO parameter macro passed to function-like macro in {fn}:{lineno} "
+                        f"(breaks older RetroArch Vulkan glslang): {line.strip()}"
+                    )
 
 
 def check_single_source_sync() -> str:

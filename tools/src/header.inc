@@ -30,7 +30,7 @@
 //   pass1   (pass1.inc)                                : Output-scale corner rasterization (45-deg, 2:1, 3:1, 4:1, small/thin)
 //
 // Decision-Word Bit Layout (0..255 per corner channel: x=TL, y=TR, z=BR, w=BL):
-//   bits 0..1 (BLEND)  : 0 none | 1 normal | 2 dominant (pass0) or small tip / thin sliver (resolve+) | 3 weak (pass0 only)
+//   bits 0..1 (BLEND)  : 0 none | 1 normal | 2 dominant (pass0) or thin sliver R14 (resolve+) | 3 weak (pass0) or small tip R23/R40 (resolve+)
 //   bit  2 (BIT_LINE)  :   4 = line blend (45-deg unless BIT_SHALLOW or BIT_STEEP is set)
 //   bit  3 (BIT_SEC)   :   8 = blend with second candidate neighbor (B, F, H, D instead of D, B, F, H)
 //   bit  4 (BIT_SHALLOW): 16 = shallow 2:1 (or 3:1 / 4:1 with BIT_LONG3 / BIT_LONG4)

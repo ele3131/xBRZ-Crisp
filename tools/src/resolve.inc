@@ -402,9 +402,11 @@ void main()
               on20 *= 1.0 - mix(tipV, tipH, vec4(1.0 - sec.x, sec.y, 1.0 - sec.z, sec.w));
               vec4 half20 = mix(vec4(cD.z, cB.w, cF.x, cH.y), vec4(cB.z, cF.w, cH.x, cD.y), sec);
               vec4 w20 = mix(vec4(iG.z, iA.w, iC.x, iI.y), vec4(iC.z, iI.w, iG.x, iA.y), haveShallowLine);
+              vec4 w20Tie = mix(vec4(sameF(H, ldd), sameF(D, llu), sameF(B, ruu), sameF(F, rrd)),
+                                vec4(sameF(F, rru), sameF(H, rdd), sameF(D, lld), sameF(B, luu)), haveShallowLine);
               vec4 far20 = line * abs(haveShallowLine - haveSteepLine) * mix(sECard.wyxz, sECard.zwyx, haveShallowLine)
                          * drawsLine4(w20)
-                         * vec4(equal(FLAG(w20, BIT_SEC), haveShallowLine))
+                         * max(vec4(equal(FLAG(w20, BIT_SEC), haveShallowLine)), w20Tie)
                          * vec4(equal(FLAG(w20, BIT_SHALLOW), haveShallowLine))
                          * vec4(equal(FLAG(w20, BIT_STEEP), haveSteepLine))
                          * (1.0 - orthoBlock);
@@ -472,10 +474,10 @@ void main()
           vec4 cutK = isCut(blendResult);
           vec4 sB = FLAG(iB, BIT_SEC), sD = FLAG(iD, BIT_SEC), sF = FLAG(iF, BIT_SEC), sH = FLAG(iH, BIT_SEC);
           vec4 flipK = vec4(0.0);
-          if (cutK.x > 0.5 && cand20.x >= 24.0) flipK.x = knightFlip37(sec.x > 0.5, D, B, G, C, dE4.y, dE4.x, cand20.x, cD.z, sD.z, cB.z, sB.z);
-          if (cutK.y > 0.5 && cand20.y >= 24.0) flipK.y = knightFlip37(sec.y > 0.5, B, F, A, I, dE4.x, dE4.z, cand20.y, cB.w, sB.w, cF.w, sF.w);
-          if (cutK.z > 0.5 && cand20.z >= 24.0) flipK.z = knightFlip37(sec.z > 0.5, F, H, C, G, dE4.z, dE4.w, cand20.z, cF.x, sF.x, cH.x, sH.x);
-          if (cutK.w > 0.5 && cand20.w >= 24.0) flipK.w = knightFlip37(sec.w > 0.5, H, D, I, A, dE4.w, dE4.y, cand20.w, cH.y, sH.y, cD.y, sD.y);
+          if (cutK.x > 0.5 && cand20.x >= 24.0) flipK.x = knightFlip37(sec.x > 0.5, E, D, B, G, C, dE4.y, dE4.x, cand20.x, cD.z, sD.z, cB.z, sB.z);
+          if (cutK.y > 0.5 && cand20.y >= 24.0) flipK.y = knightFlip37(sec.y > 0.5, E, B, F, A, I, dE4.x, dE4.z, cand20.y, cB.w, sB.w, cF.w, sF.w);
+          if (cutK.z > 0.5 && cand20.z >= 24.0) flipK.z = knightFlip37(sec.z > 0.5, E, F, H, C, G, dE4.z, dE4.w, cand20.z, cF.x, sF.x, cH.x, sH.x);
+          if (cutK.w > 0.5 && cand20.w >= 24.0) flipK.w = knightFlip37(sec.w > 0.5, E, H, D, I, A, dE4.w, dE4.y, cand20.w, cH.y, sH.y, cD.y, sD.y);
           if (any(greaterThan(flipK, vec4(0.0))))
           {
             vec4 straightO = vec4(sameF(A, sec.x > 0.5 ? D : B), sameF(C, sec.y > 0.5 ? B : F), sameF(I, sec.z > 0.5 ? F : H), sameF(G, sec.w > 0.5 ? H : D));

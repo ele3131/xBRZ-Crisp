@@ -33,7 +33,7 @@ precision highp int;
 //   pass1   (pass1.inc)                                : Output-scale corner rasterization (45-deg, 2:1, 3:1, 4:1, small/thin)
 //
 // Decision-Word Bit Layout (0..255 per corner channel: x=TL, y=TR, z=BR, w=BL):
-//   bits 0..1 (BLEND)  : 0 none | 1 normal | 2 dominant (pass0) or small tip / thin sliver (resolve+) | 3 weak (pass0 only)
+//   bits 0..1 (BLEND)  : 0 none | 1 normal | 2 dominant (pass0) or thin sliver R14 (resolve+) | 3 weak (pass0) or small tip R23/R40 (resolve+)
 //   bit  2 (BIT_LINE)  :   4 = line blend (45-deg unless BIT_SHALLOW or BIT_STEEP is set)
 //   bit  3 (BIT_SEC)   :   8 = blend with second candidate neighbor (B, F, H, D instead of D, B, F, H)
 //   bit  4 (BIT_SHALLOW): 16 = shallow 2:1 (or 3:1 / 4:1 with BIT_LONG3 / BIT_LONG4)
@@ -581,7 +581,7 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 // bit layout and BLEND/FLAG macros live in bits.inc. The candidate colors of corners x, y, z, w
 // are D or B, B or F, F or H and H or D. Below, the one a corner blends with is P and the other Q.
 // Decision-word bit layout (0..255 per corner: x = TL, y = TR, z = BR, w = BL):
-//   bits 0..1 (BLEND): 0 = none, 1 = normal, 2 = dominant (or thin sliver / small tip), 3 = weak (pass0 -> resolve)
+//   bits 0..1 (BLEND): 0 = none, 1 = normal, 2 = dominant (pass0) / thin sliver R14 (resolve+), 3 = weak (pass0) / small tip R23/R40 (resolve+)
 //   bit  2 (  4.0): BIT_LINE    - line blend (45-deg unless BIT_SHALLOW or BIT_STEEP is also set)
 //   bit  3 (  8.0): BIT_SEC     - blend with second candidate neighbor (B, F, H, D instead of D, B, F, H)
 //   bit  4 ( 16.0): BIT_SHALLOW - shallow 2:1 (or 3:1 / 4:1 when paired with BIT_LONG3 / BIT_LONG4)
@@ -666,8 +666,14 @@ float distSqY(vec3 a, vec3 b)
   return dot(d, d);
 }
 
-// Squared threshold in [0..255] YCbCr units, kept in [0..1.5] so GLSL ES mediump never overflows
-#define SQ255(x) (((x) / 255.0) * ((x) / 255.0))
+// Squared threshold in [0..255] YCbCr units, kept in [0..1.5] so GLSL ES mediump never overflows.
+// Implemented as a function (not a macro) so older glslang preprocessors (RetroArch Vulkan/Slang)
+// never double-expand self-referential `#define XBRZ_* global.XBRZ_*` arguments into `global.global.*`.
+float SQ255(float x)
+{
+  float t = x / 255.0;
+  return t * t;
+}
 // FP16-safe division guard (> 6.1e-5 smallest FP16 normal) so FTZ GPUs never produce NaN
 const float SAFE_EPS = 1e-4;
 

@@ -29,12 +29,13 @@ bool kin37(vec3 O, vec3 K, vec3 Pc)
   float okSq = distSqY(O, K);
   return okSq < SQ255(XBRZ_SAME) || okSq < (XBRZ_KIN37 * XBRZ_KIN37) * min(distSqY(O, Pc), distSqY(K, Pc));
 }
-float knightFlip37(bool s1, vec3 cPri, vec3 cSec, vec3 kPri, vec3 kSec, float dPri, float dSec, float cand,
+float knightFlip37(bool s1, vec3 E, vec3 cPri, vec3 cSec, vec3 kPri, vec3 kSec, float dPri, float dSec, float cand,
                    float cutPri, float secPri, float cutSec, float secSec)
 {
   bool face = s1 ? (cutSec > 0.5 && secSec < 0.5) : (cutPri > 0.5 && secPri > 0.5);
   if (!face) return 0.0;
   vec3 Pc = s1 ? cSec : cPri, O = s1 ? cPri : cSec, K = s1 ? kSec : kPri;
+  if (sameColor(E, K)) return 0.0;
   float dPcE = s1 ? dSec : dPri, dOE = s1 ? dPri : dSec;
   return float(dPcE >= XBRZ_JUNCTION && dOE >= XBRZ_JUNCTION && cand + dPcE >= 1.15 * dOE && kin37(O, K, Pc));
 }

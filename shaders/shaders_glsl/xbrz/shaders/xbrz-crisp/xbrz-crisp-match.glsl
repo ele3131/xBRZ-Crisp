@@ -152,7 +152,7 @@ vec2 coord = vec2(0.0), ocoord = vec2(0.0), c0 = vec2(0.0);
 #endif
 
 // Decision-word bit layout (0..255 per corner: x = TL, y = TR, z = BR, w = BL):
-//   bits 0..1 (BLEND): 0 = none, 1 = normal, 2 = dominant (or thin sliver / small tip), 3 = weak (pass0 -> resolve)
+//   bits 0..1 (BLEND): 0 = none, 1 = normal, 2 = dominant (pass0) / thin sliver R14 (resolve+), 3 = weak (pass0) / small tip R23/R40 (resolve+)
 //   bit  2 (  4.0): BIT_LINE    - line blend (45-deg unless BIT_SHALLOW or BIT_STEEP is also set)
 //   bit  3 (  8.0): BIT_SEC     - blend with second candidate neighbor (B, F, H, D instead of D, B, F, H)
 //   bit  4 ( 16.0): BIT_SHALLOW - shallow 2:1 (or 3:1 / 4:1 when paired with BIT_LONG3 / BIT_LONG4)
@@ -201,8 +201,14 @@ float distSqY(vec3 a, vec3 b)
   return dot(d, d);
 }
 
-// Squared threshold in [0..255] YCbCr units, kept in [0..1.5] so GLSL ES mediump never overflows
-#define SQ255(x) (((x) / 255.0) * ((x) / 255.0))
+// Squared threshold in [0..255] YCbCr units, kept in [0..1.5] so GLSL ES mediump never overflows.
+// Implemented as a function (not a macro) so older glslang preprocessors (RetroArch Vulkan/Slang)
+// never double-expand self-referential `#define XBRZ_* global.XBRZ_*` arguments into `global.global.*`.
+float SQ255(float x)
+{
+  float t = x / 255.0;
+  return t * t;
+}
 // FP16-safe division guard (> 6.1e-5 smallest FP16 normal) so FTZ GPUs never produce NaN
 const float SAFE_EPS = 1e-4;
 
@@ -816,8 +822,9 @@ vec4 applyRule49(vec4 res, vec4 res0, vec4 pairSq, float minSideSq, float maxSid
       vec3 cS1 = s1.y < 0.0 ? (s1.x < 0.0 ? dA : dC) : (s1.x < 0.0 ? dG : dI);
       vec3 cS2 = s2.y < 0.0 ? (s2.x < 0.0 ? dA : dC) : (s2.x < 0.0 ? dG : dI);
       vec3 cE  = e.y  < 0.0 ? (e.x  < 0.0 ? dA : dC) : (e.x  < 0.0 ? dG : dI);
-      bool plug = dot(pairSq, me) < SQ255(XBRZ_SAME_M) && !withinY255(R1, C1, XBRZ_SAME_M) &&
-                  !withinY255(R1, C2, XBRZ_SAME_M);
+      bool plug = dot(pairSq, me) < SQ255(XBRZ_SAME_M)
+               && !withinY255(R1, C1, XBRZ_SAME_M) && !withinY255(R1, C2, XBRZ_SAME_M)
+               && !withinY255(R2, C1, XBRZ_SAME_M) && !withinY255(R2, C2, XBRZ_SAME_M);
       bool ok1 = dot(pairSq, m1) < SQ255(100.0) || withinY255(C1, cS1, 100.0);
       bool ok2 = dot(pairSq, m2) < SQ255(100.0) || withinY255(C2, cS2, 100.0);
       if (!plug && ok1 && BLEND(dot(res, m1)) < 0.5 && !goesOn(s1)) res = mix(res, vec4(wordLine45(s1.x * s1.y <= 0.0)), m1);
@@ -1211,7 +1218,17 @@ vec4 applyRule26Lost(vec4 res, vec4 w0, vec4 aW0, vec4 pairSq, vec4 minCornerSq,
     vec4 w0Sec = FLAG(w0, BIT_SEC);
     vec4 iB = INFO_AT(0.0, -1.0), iD = INFO_AT(-1.0, 0.0), iF = INFO_AT(1.0, 0.0), iH = INFO_AT(0.0, 1.0);
     vec4 pOpp = mix(vec4(iD.z, iB.w, iF.x, iH.y), vec4(iB.z, iF.w, iH.x, iD.y), w0Sec);
-    vec4 fix45 = cont45 * cut4(pOpp) * isLine45(pOpp) * vec4(equal(FLAG(pOpp, BIT_SEC), w0Sec));
+    vec4 base45 = cont45 * cut4(pOpp) * isLine45(pOpp);
+    vec4 secOk = vec4(equal(FLAG(pOpp, BIT_SEC), w0Sec));
+    vec4 needTie = base45 * (1.0 - secOk);
+    if (dot(needTie, vec4(1.0)) > 0.5)
+    {
+      if (needTie.x > 0.5 && distSqY(nE, diagColor(w0Sec.x > 0.5 ? vec2( 1.0, -1.0) : vec2(-1.0,  1.0))) < SQ255(XBRZ_SAME_M)) secOk.x = 1.0;
+      if (needTie.y > 0.5 && distSqY(nE, diagColor(w0Sec.y > 0.5 ? vec2( 1.0,  1.0) : vec2(-1.0, -1.0))) < SQ255(XBRZ_SAME_M)) secOk.y = 1.0;
+      if (needTie.z > 0.5 && distSqY(nE, diagColor(w0Sec.z > 0.5 ? vec2(-1.0,  1.0) : vec2( 1.0, -1.0))) < SQ255(XBRZ_SAME_M)) secOk.z = 1.0;
+      if (needTie.w > 0.5 && distSqY(nE, diagColor(w0Sec.w > 0.5 ? vec2(-1.0, -1.0) : vec2( 1.0,  1.0))) < SQ255(XBRZ_SAME_M)) secOk.w = 1.0;
+    }
+    vec4 fix45 = base45 * secOk;
     if (dot(fix45, vec4(1.0)) > 0.5)
       res = mix(res, 1.0 + BIT_LINE + BIT_SEC * w0Sec, fix45);
   }
